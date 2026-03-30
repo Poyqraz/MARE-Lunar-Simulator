@@ -1,0 +1,43 @@
+# --- Compiled Binaries & Executables ---
+Binaries/
+Build/
+DerivedDataCache/
+Intermediate/
+Saved/
+Workspaces/
+
+# --- Visual Studio & IDE Files ---
+.vs/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+*.layout
+*.user
+*.opendb
+*.ncb
+
+# --- Xcode (for Mac developers) ---
+DerivedData/
+*.xcworkspace
+*.xcodeproj
+
+# --- VS Code ---
+.vscode/
+
+# --- Plugins ---
+# Ignore binaries and intermediate files inside plugins
+Plugins/*/Binaries/
+Plugins/*/Intermediate/
+
+# --- Crash Reports & Logs ---
+SourceControlSnapshot.json
+*.log
+
+# --- System & Misc ---
+.DS_Store
+Thumbs.db
+*.bak
+*.sav
