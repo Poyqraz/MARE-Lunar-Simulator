@@ -3,12 +3,12 @@ import os
 import json
 import numpy as np
 import math
+import sys
 
 # =============================================================================
 # Global Configuration & Environment Constraints
 # =============================================================================
 BASE_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
-INPUT_DEM_FILEPATH = os.path.join(BASE_DIRECTORY, "lunalab.npy")
 DEBUG_MODE = True
 
 # Unreal Engine specific landscape constants
@@ -19,26 +19,25 @@ UINT16_MAX = 65535
 CM_PER_METER = 100.0
 
 
-def main():
+def main(input_filepath, spatial_resolution):
     """
     Primary execution block for the DEM conversion and Landscape generation pipeline.
     Coordinates data ingestion, format conversion, and actor instantiation.
     """
-    spatial_resolution = 0.01
     
     # Isolate the file extension to dynamically route the data ingestion
-    _, file_extension = os.path.splitext(INPUT_DEM_FILEPATH)
+    _, file_extension = os.path.splitext(input_filepath)
     file_extension = file_extension.lower()
     
-    unreal.log(f"Initializing DEM ingestion for file format: {file_extension}")
+    unreal.log(f"Initializing DEM ingestion for file: {input_filepath} at {spatial_resolution} resolution")
     
     # Route to the appropriate NumPy I/O function based on the detected extension
     if file_extension == '.npy':
-        raw_elevation_data = np.load(INPUT_DEM_FILEPATH)
+        raw_elevation_data = np.load(input_filepath)
     elif file_extension in ['.csv', '.txt']:
         # Fallback to standard text parsing for human-readable datasets
         # Note: Delimiter is set to comma. If using space-separated .txt files, change delimiter to " "
-        raw_elevation_data = np.loadtxt(INPUT_DEM_FILEPATH, delimiter=",", skiprows=0)
+        raw_elevation_data = np.loadtxt(input_filepath, delimiter=",", skiprows=0)
     else:
         unreal.log_error(f"Process Terminated: Unsupported file extension '{file_extension}'. Must be .npy, .csv, or .txt.")
         return
@@ -46,7 +45,7 @@ def main():
     # Process the raw array into an Unreal-compatible format
     converted_dem_filepath = convert_to_unreal_format(
         elevation_data=raw_elevation_data, 
-        input_filepath=INPUT_DEM_FILEPATH, 
+        input_filepath=input_filepath, 
         output_directory=BASE_DIRECTORY, 
         interpolation_resolution=spatial_resolution
     )
@@ -300,5 +299,22 @@ def calculate_optimal_landscape_config(dem_width, dem_height):
         
     return best_config
 
+# =========================================================================
+# EXECUTION ENTRY POINT - Handles inputs from Unreal UI
+# =========================================================================
 if __name__ == "__main__":
-    main()
+    # Default fallbacks in case the script is run directly without UI arguments
+    target_filepath = os.path.join(BASE_DIRECTORY, "lunalab.npy")
+    target_resolution = 0.01
+
+    # If arguments are passed via Unreal's "Execute Python Command" node
+    if len(sys.argv) >= 3:
+        target_filepath = sys.argv[1]
+        try:
+            target_resolution = float(sys.argv[2])
+        except ValueError:
+            unreal.log_error(f"Invalid spatial resolution '{sys.argv[2]}' passed. Defaulting to 0.01.")
+            target_resolution = 0.01
+
+    # Execute the main function with the gathered parameters
+    main(target_filepath, target_resolution)
