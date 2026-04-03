@@ -2,17 +2,16 @@ import unreal
 import os
 import json
 import numpy as np
+import math
 
 # Configuration constraints
 BASE_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
-INPUT_DEM_FILEPATH = os.path.join(BASE_DIRECTORY, "DEM_interest_zone.csv")
+INPUT_DEM_FILEPATH = os.path.join(BASE_DIRECTORY, "lunalab.npy")
 DEBUG_MODE = True
 
 # Unreal Engine & Landscape Specific Constants
 UNREAL_SEA_LEVEL = 32767
 UNREAL_Z_SCALE_DIVISOR = 256.0
-UNREAL_QUADS_PER_SECTION = 255
-UNREAL_SECTIONS_PER_COMPONENT = 2
 MAX_COMPONENT_GRID_SIZE = 50
 UINT16_MAX = 65535
 CM_PER_METER = 100.0
@@ -20,10 +19,11 @@ CM_PER_METER = 100.0
 
 def main():
     """Primary execution block for the DEM conversion and Landscape generation process."""
-    spatial_resolution = 1.0
+    spatial_resolution = 0.01
     
     # Load the initial elevation data from the CSV file
-    raw_elevation_data = np.loadtxt(INPUT_DEM_FILEPATH, delimiter=",", skiprows=0)
+    # raw_elevation_data = np.loadtxt(INPUT_DEM_FILEPATH, delimiter=",", skiprows=0)
+    raw_elevation_data = np.load(INPUT_DEM_FILEPATH)
     
     converted_dem_filepath = convert_to_unreal_format(
         elevation_data=raw_elevation_data, 
@@ -61,31 +61,16 @@ def create_landscape(converted_dem_filepath, x_offset=0, y_offset=0, z_offset=0)
     # =========================================================================
     # 2. CALCULATE OPTIMAL LANDSCAPE COMPONENTS
     # =========================================================================
-    optimal_component_count_x = 0
-    optimal_component_count_y = 0
-    max_covered_area = 0
-    
-    # Iterate through possible component grid configurations
-    for comp_x in range(1, MAX_COMPONENT_GRID_SIZE):
-        for comp_y in range(1, MAX_COMPONENT_GRID_SIZE):
-            predicted_dimensions = unreal.PythonLandscapeLib.cal_landscape_size(
-                UNREAL_QUADS_PER_SECTION, 
-                sections_per_component=UNREAL_SECTIONS_PER_COMPONENT, 
-                component_count_x=comp_x, 
-                component_count_y=comp_y
-            )
-            
-            predicted_width = predicted_dimensions[0]
-            predicted_height = predicted_dimensions[1]
-            predicted_area = predicted_width * predicted_height
-            
-            if (predicted_height <= dem_height and predicted_width <= dem_width and predicted_area > max_covered_area):
-                max_covered_area = predicted_area
-                optimal_component_count_x = comp_x
-                optimal_component_count_y = comp_y
+    config = calculate_optimal_landscape_config(dem_width, dem_height)
+    if not config:
+        return None
+        
+    optimal_comp_x, optimal_comp_y, quads, sections, final_width, final_height = config
 
     if DEBUG_MODE:
-        unreal.log(f"Optimal Component Layout: {optimal_component_count_x}x by {optimal_component_count_y}y")
+        unreal.log(f"Optimal Setup Found: {quads} Quads, {sections} Sections.")
+        unreal.log(f"Component Layout: {optimal_comp_x}x by {optimal_comp_y}y")
+        unreal.log(f"Final Vertices: {final_width}x by {final_height}y (DEM was {dem_width}x by {dem_height}y)")
 
     unreal_map_scale_x = int(CM_PER_METER * abs(interpolation_resolution))
     unreal_map_scale_y = int(CM_PER_METER * abs(interpolation_resolution))
@@ -101,21 +86,12 @@ def create_landscape(converted_dem_filepath, x_offset=0, y_offset=0, z_offset=0)
     
     landscape_actor = unreal.PythonLandscapeLib.create_landscape(
         landscape_transform, 
-        section_size=UNREAL_QUADS_PER_SECTION, 
-        sections_per_component=UNREAL_SECTIONS_PER_COMPONENT, 
-        component_count_x=optimal_component_count_x, 
-        component_count_y=optimal_component_count_y
+        section_size=quads, 
+        sections_per_component=sections, 
+        component_count_x=optimal_comp_x, 
+        component_count_y=optimal_comp_y
     )
     
-    final_landscape_size = unreal.PythonLandscapeLib.cal_landscape_size(
-        UNREAL_QUADS_PER_SECTION, 
-        sections_per_component=UNREAL_SECTIONS_PER_COMPONENT, 
-        component_count_x=optimal_component_count_x, 
-        component_count_y=optimal_component_count_y
-    )
-    final_width = final_landscape_size[0]
-    final_height = final_landscape_size[1]
-
     # =========================================================================
     # 4. NORMALIZE ELEVATION DATA TO 16-BIT (NUMPY VECTORIZED)
     # =========================================================================
@@ -238,6 +214,47 @@ def convert_to_unreal_format(elevation_data, input_filepath, output_directory, i
     )
     
     return output_filepath
+
+
+def calculate_optimal_landscape_config(dem_width, dem_height):
+    """
+    Determines the most memory-efficient Unreal Engine landscape configuration 
+    that fully encloses the provided DEM dimensions.
+    """
+    # Valid Unreal Engine configurations
+    VALID_QUADS = [63, 127, 255]
+    VALID_SECTIONS = [1, 2]
+    
+    best_area = float('inf')
+    best_config = None
+
+    # Test all 6 combinations of Quads and Sections
+    for quads in VALID_QUADS:
+        for sections in VALID_SECTIONS:
+            vertices_per_comp = quads * sections
+            
+            # Round UP to find the exact components needed to cover the DEM
+            comp_x = math.ceil((dem_width - 1) / vertices_per_comp)
+            comp_y = math.ceil((dem_height - 1) / vertices_per_comp)
+            
+            # Skip if this requires too many components (Unreal starts lagging > 50x50)
+            if comp_x > MAX_COMPONENT_GRID_SIZE or comp_y > MAX_COMPONENT_GRID_SIZE:
+                continue
+                
+            predicted_width = (comp_x * vertices_per_comp) + 1
+            predicted_height = (comp_y * vertices_per_comp) + 1
+            predicted_area = predicted_width * predicted_height
+            
+            # If this setup covers the DEM and has less wasted space, save it!
+            if predicted_area < best_area:
+                best_area = predicted_area
+                best_config = (comp_x, comp_y, quads, sections, predicted_width, predicted_height)
+
+    if not best_config:
+        unreal.log_error("DEM is too large to fit within the 50x50 component limit. Consider splitting the map.")
+        return None
+        
+    return best_config
 
 if __name__ == "__main__":
     main()
