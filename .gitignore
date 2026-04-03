@@ -41,3 +41,4 @@ SourceControlSnapshot.json
 Thumbs.db
 *.bak
 *.sav
+__pycache__/
