@@ -1,9 +1,28 @@
+"""
+Unreal Engine DEM Landscape Generator
+-------------------------------------
+Converts digital elevation data (.npy, .csv, .txt, .tif) into Unreal Engine 
+Landscape actors and generates native .r16 heightmaps. 
+Uses 'tifffile' for lightweight, C++ dependency-free GeoTIFF parsing.
+"""
+
 import unreal
 import os
 import json
 import numpy as np
 import math
 import sys
+
+# --- Optional Dependency: tifffile ---
+# We attempt to import tifffile for GeoTIFF support. If it is missing from the 
+# Unreal Python environment, we log a warning but allow the script to continue 
+# for standard array formats (.npy, .csv).
+try:
+    import tifffile
+    TIFFFILE_AVAILABLE = True
+except ImportError:
+    TIFFFILE_AVAILABLE = False
+    unreal.log_warning("[-] 'tifffile' not found. Processing .tif files will not be supported.")
 
 # =============================================================================
 # Global Configuration & Environment Constraints
@@ -12,11 +31,11 @@ BASE_DIRECTORY = os.path.dirname(os.path.abspath(__file__))
 DEBUG_MODE = True
 
 # Unreal Engine specific landscape constants
-UNREAL_SEA_LEVEL = 32767
-UNREAL_Z_SCALE_DIVISOR = 256.0
-MAX_COMPONENT_GRID_SIZE = 50
-UINT16_MAX = 65535
-CM_PER_METER = 100.0
+UNREAL_SEA_LEVEL = 32767             # 16-bit midpoint (0-65535) used as Z-axis zero
+UNREAL_Z_SCALE_DIVISOR = 256.0       # Engine-hardcoded divisor for Z-scale calculations
+MAX_COMPONENT_GRID_SIZE = 50         # Max recommended components to prevent Editor freezing
+UINT16_MAX = 65535                   # Maximum value for 16-bit unsigned integer
+CM_PER_METER = 100.0                 # Unreal Engine uses Centimeters as its base unit
 
 
 def main(input_filepath, spatial_resolution):
@@ -29,20 +48,56 @@ def main(input_filepath, spatial_resolution):
     _, file_extension = os.path.splitext(input_filepath)
     file_extension = file_extension.lower()
     
-    unreal.log(f"Initializing DEM ingestion for file: {input_filepath} at {spatial_resolution} resolution")
+    unreal.log(f"[*] Initializing DEM ingestion for file: {input_filepath}")
     
-    # Route to the appropriate NumPy I/O function based on the detected extension
+    # --- 1. Data Ingestion Routing ---
     if file_extension == '.npy':
         raw_elevation_data = np.load(input_filepath)
+        
     elif file_extension in ['.csv', '.txt']:
         # Fallback to standard text parsing for human-readable datasets
-        # Note: Delimiter is set to comma. If using space-separated .txt files, change delimiter to " "
         raw_elevation_data = np.loadtxt(input_filepath, delimiter=",", skiprows=0)
+        
+    elif file_extension in ['.tif', '.tiff']:
+        # Route through tifffile for GeoTIFFs to preserve spatial metadata safely
+        if not TIFFFILE_AVAILABLE:
+            unreal.log_error("[-] Process Terminated: 'tifffile' library is required for .tif files. Please run: pip install tifffile")
+            return
+            
+        unreal.log("[*] GeoTIFF detected. Utilizing 'tifffile' to parse elevation matrix...")
+        
+        try:
+            with tifffile.TiffFile(input_filepath) as tif:
+                # 1. Extract the raw elevation array
+                raw_elevation_data = tif.asarray().astype(np.float32)
+                
+                # 2. Extract spatial metadata (ModelPixelScaleTag is standardized as TIFF tag 33550)
+                tags = tif.pages[0].tags
+                if 'ModelPixelScaleTag' in tags:
+                    # ModelPixelScaleTag value is a tuple: (ScaleX, ScaleY, ScaleZ)
+                    native_x_res = tags['ModelPixelScaleTag'].value[0]
+                    unreal.log(f"[+] GeoTIFF Native Spatial Resolution detected: {native_x_res}")
+                    # Override the arbitrary UI resolution with the scientifically accurate file resolution
+                    spatial_resolution = native_x_res
+                
+                # 3. Sanitize 'NoData' values (GDAL_NODATA is custom TIFF tag 42113)
+                if 'GDAL_NODATA' in tags:
+                    ndv = float(tags['GDAL_NODATA'].value)
+                    unreal.log(f"[*] Sanitizing 'NoData' values (identified as {ndv})")
+                    raw_elevation_data[raw_elevation_data == ndv] = np.nan
+                    
+        except Exception as e:
+            unreal.log_error(f"[-] Process Terminated: Failed to read GeoTIFF. Error: {e}")
+            return
+            
     else:
-        unreal.log_error(f"Process Terminated: Unsupported file extension '{file_extension}'. Must be .npy, .csv, or .txt.")
+        unreal.log_error(f"[-] Process Terminated: Unsupported file extension '{file_extension}'.")
         return
     
-    # Process the raw array into an Unreal-compatible format
+    unreal.log(f"[*] Proceeding with spatial resolution: {spatial_resolution}")
+    
+    # --- 2. Unreal Format Conversion ---
+    # Process the raw array to match Unreal's required scaling and midpoint logic
     converted_dem_filepath = convert_to_unreal_format(
         elevation_data=raw_elevation_data, 
         input_filepath=input_filepath, 
@@ -50,18 +105,18 @@ def main(input_filepath, spatial_resolution):
         interpolation_resolution=spatial_resolution
     )
 
-    print(f"Conversion complete. Unreal-formatted DEM saved to: {converted_dem_filepath}\n")
+    unreal.log(f"[+] Conversion complete. Cached at: {converted_dem_filepath}")
     
-    # Instantiate the landscape actor in the current Unreal Engine level
+    # --- 3. Engine Instantiation ---
+    # Generate the landscape actor in the current Unreal Engine level
     landscape_actor, z_axis_scale, dem_width, dem_height = create_landscape(converted_dem_filepath)
 
 
 def create_landscape(converted_dem_filepath, x_offset=0, y_offset=0, z_offset=0):
     """
     Parses pre-processed DEM data, configures an optimal Unreal Landscape actor, 
-    and exports a normalized 16-bit heightmap for manual terrain generation.
+    and exports a normalized 16-bit heightmap for manual terrain relief application.
     """
-
     # =========================================================================
     # 1. PARSE PRE-PROCESSED DEM DATA
     # =========================================================================
@@ -86,11 +141,11 @@ def create_landscape(converted_dem_filepath, x_offset=0, y_offset=0, z_offset=0)
     optimal_comp_x, optimal_comp_y, quads, sections, final_width, final_height = config
 
     if DEBUG_MODE:
-        unreal.log(f"Optimal Setup Found: {quads} Quads, {sections} Sections.")
-        unreal.log(f"Component Layout: {optimal_comp_x}x by {optimal_comp_y}y")
-        unreal.log(f"Final Vertices: {final_width}x by {final_height}y (DEM bounds: {dem_width}x by {dem_height}y)")
+        unreal.log(f"[+] Optimal Setup Found: {quads} Quads, {sections} Sections.")
+        unreal.log(f"[*] Component Layout: {optimal_comp_x}x by {optimal_comp_y}y")
+        unreal.log(f"[*] Final Vertices: {final_width}x by {final_height}y (DEM bounds: {dem_width}x by {dem_height}y)")
 
-    # Compute physical scale multipliers derived from the spatial resolution
+    # Compute physical scale multipliers mapped from standard meters to Unreal centimeters
     unreal_map_scale_x = int(CM_PER_METER * abs(interpolation_resolution))
     unreal_map_scale_y = int(CM_PER_METER * abs(interpolation_resolution))
 
@@ -104,7 +159,7 @@ def create_landscape(converted_dem_filepath, x_offset=0, y_offset=0, z_offset=0)
         scale=[unreal_map_scale_x, unreal_map_scale_y, z_axis_scale]
     )
     
-    # Spawn the procedural landscape utilizing the TAPython Landscape API
+    # Spawn the procedural landscape framework utilizing the TAPython Landscape API
     landscape_actor = unreal.PythonLandscapeLib.create_landscape(
         landscape_transform, 
         section_size=quads, 
@@ -116,14 +171,14 @@ def create_landscape(converted_dem_filepath, x_offset=0, y_offset=0, z_offset=0)
     # =========================================================================
     # 4. NORMALIZE ELEVATION DATA TO 16-BIT 
     # =========================================================================
-    unreal.log("Processing and normalizing elevation data to 16-bit format...")
+    unreal.log("[*] Processing and normalizing elevation data to 16-bit format...")
     
     min_elevation = np.min(elevation_grid)
     max_elevation = np.max(elevation_grid)
     elevation_range = max(1.0, max_elevation - min_elevation)
 
-    # Apply edge padding to the array to align with the final landscape bounds, 
-    # mitigating edge artifacts and matching Unreal's vertex requirements
+    # Apply edge padding to the array to perfectly align with the final landscape bounds.
+    # This mitigates "cliff" edge artifacts and fulfills Unreal's strict vertex math requirements.
     pad_y = max(0, final_height - dem_height)
     pad_x = max(0, final_width - dem_width)
     padded_grid = np.pad(elevation_grid, ((0, pad_y), (0, pad_x)), mode='edge')
@@ -131,8 +186,6 @@ def create_landscape(converted_dem_filepath, x_offset=0, y_offset=0, z_offset=0)
     # Execute vectorized normalization across the entire grid to map values 
     # strictly within the Unreal 16-bit grayscale spectrum (0 to 65535)
     normalized_grid = ((padded_grid - min_elevation) / elevation_range) * UINT16_MAX
-    
-    # Cast the normalized float array to a 16-bit unsigned integer format natively
     heightmap_data = np.clip(normalized_grid, 0, UINT16_MAX).astype(np.uint16)
 
     # =========================================================================
@@ -148,32 +201,27 @@ def create_landscape(converted_dem_filepath, x_offset=0, y_offset=0, z_offset=0)
             try: os.remove(file_path)
             except OSError: pass
     
-    unreal.log(f"Writing {heightmap_data.size} data points to the R16 file...")
-    
     try:
-        # Export the 16-bit array to a binary file via direct memory dump 
-        # for optimized I/O performance
+        # Export the 16-bit array to a binary file via direct memory dump for optimized I/O performance
         with open(heightmap_filepath, "wb") as binary_file:
             heightmap_data.tofile(binary_file) 
-            
-            # Force the OS buffer to flush to disk to ensure data integrity
             binary_file.flush()
-            os.fsync(binary_file.fileno())
+            os.fsync(binary_file.fileno()) # Force the OS buffer to flush to disk
         
         file_size_mb = os.path.getsize(heightmap_filepath) / (1024 * 1024)
-        unreal.log(f"SUCCESS: R16 file generated successfully. Size: {file_size_mb:.2f} MB")
+        unreal.log(f"[+] SUCCESS: R16 file generated. Size: {file_size_mb:.2f} MB")
         
     except Exception as e:
-        unreal.log_error(f"Critical I/O failure while writing the R16 file: {e}")
+        unreal.log_error(f"[-] Critical I/O failure while writing the R16 file: {e}")
         
-    # Generate JSON metadata to assist with automated dimension resolution during Editor import
+    # Generate JSON metadata to assist with automated dimension resolution during future imports
     with open(metadata_filepath, "w") as json_file:
         json.dump({"width": final_width, "height": final_height, "bpp": 16}, json_file)
 
     # =========================================================================
     # 6. UPDATE VIEWPORT AND EDITOR STATE
     # =========================================================================
-    # Update editor selection state and focus the viewport camera on the new geometry
+    # Update editor selection state and focus the viewport camera on the newly created geometry
     unreal.PythonBPLib.select_actor(landscape_actor, selected=True, notify=True)
     unreal.PythonBPLib.request_viewport_focus_on_selection()
     
@@ -192,7 +240,7 @@ def create_landscape(converted_dem_filepath, x_offset=0, y_offset=0, z_offset=0)
         "The terrain relief will be applied immediately."
     )
     
-    # Suspend Editor execution and notify the user of pending manual operations
+    # Suspend Editor execution and visually notify the user of pending manual operations
     unreal.EditorDialog.show_message(
         dialog_title, dialog_message, unreal.AppMsgType.OK, unreal.AppReturnType.OK
     )
@@ -205,7 +253,7 @@ def convert_to_unreal_format(elevation_data, input_filepath, output_directory, i
     Transforms and scales a raw Digital Elevation Model (DEM) array to conform 
     to Unreal Engine's standard landscape specifications and sea-level offsets.
     """
-    # Sanitize zero-values to prevent skewing the global height scale minimums
+    # Sanitize strict zero-values to prevent skewing the global height scale bounds
     elevation_data[elevation_data == 0] = np.nan
     
     # Convert metric elevation data to centimeters (Unreal standard units)
@@ -216,11 +264,11 @@ def convert_to_unreal_format(elevation_data, input_filepath, output_directory, i
     if max_elevation_cm == 0 or np.isnan(max_elevation_cm): 
         max_elevation_cm = 1.0 
 
-    # Derive Unreal Engine scaling parameters
+    # Derive Unreal Engine scaling parameters for the actor transform
     z_axis_scale = max_elevation_cm / UNREAL_Z_SCALE_DIVISOR
     height_scaling_factor = UNREAL_SEA_LEVEL / max_elevation_cm   
     
-    # Execute primary scaling transformation against the Unreal 16-bit midpoint
+    # Execute primary scaling transformation against the Unreal 16-bit midpoint (32767)
     scaled_elevation = (elevation_cm * height_scaling_factor) + UNREAL_SEA_LEVEL
     
     # Replace anomalous data ('No Data' NaNs and infinities) with the standard Unreal sea level baseline
@@ -234,7 +282,7 @@ def convert_to_unreal_format(elevation_data, input_filepath, output_directory, i
     # Cast the finalized float data to integers to satisfy Unreal landscape import protocols
     unreal_elevation_data = np.floor(sanitized_elevation).astype(int)
 
-    # Formulate the spatial resolution header
+    # Formulate the spatial resolution header for the intermediate caching file
     file_header = f"{elevation_data.shape[1]} {elevation_data.shape[0]} {interpolation_resolution} {z_axis_scale}"
 
     # Construct the output filepath based on the source filename
@@ -242,7 +290,7 @@ def convert_to_unreal_format(elevation_data, input_filepath, output_directory, i
     filename_without_extension = os.path.splitext(filename)[0]
     output_filepath = os.path.join(output_directory, f"{filename_without_extension}_converted.txt")
     
-    # Export the formatted payload to a serialized text file for intermediate caching
+    # Export the formatted payload to a serialized text file
     np.savetxt(
         output_filepath, 
         unreal_elevation_data, 
@@ -263,19 +311,19 @@ def calculate_optimal_landscape_config(dem_width, dem_height):
     Analyzes DEM dimensions to iteratively compute the most memory-efficient 
     Unreal Engine landscape configuration that fully encompasses the designated bounds.
     """
-    # Valid architectural bounds for Unreal Engine Landscapes
+    # Valid architectural bounds for Unreal Engine Landscapes (Must adhere strictly to these)
     VALID_QUADS = [63, 127, 255]
     VALID_SECTIONS = [1, 2]
     
     best_area = float('inf')
     best_config = None
 
-    # Evaluate all valid permutations of Quads and Sections
+    # Evaluate all valid permutations of Quads and Sections to find the tightest fitting grid
     for quads in VALID_QUADS:
         for sections in VALID_SECTIONS:
             vertices_per_comp = quads * sections
             
-            # Apply ceiling division to ensure the generated component grid fully encompasses the DEM
+            # Apply ceiling division to ensure the generated component grid fully encompasses the DEM data
             comp_x = math.ceil((dem_width - 1) / vertices_per_comp)
             comp_y = math.ceil((dem_height - 1) / vertices_per_comp)
             
@@ -292,29 +340,30 @@ def calculate_optimal_landscape_config(dem_width, dem_height):
                 best_area = predicted_area
                 best_config = (comp_x, comp_y, quads, sections, predicted_width, predicted_height)
 
-    # Halt execution if the DEM dimensions drastically exceed standard landscape capability
+    # Halt execution if the DEM dimensions drastically exceed standard single-landscape capability
     if not best_config:
-        unreal.log_error("DEM dimensions exceed the maximum 50x50 component threshold. Consider world partitioning or map splitting.")
+        unreal.log_error("[-] DEM dimensions exceed the maximum 50x50 component threshold. Consider world partitioning.")
         return None
         
     return best_config
 
+
 # =========================================================================
-# EXECUTION ENTRY POINT - Handles inputs from Unreal UI
+# EXECUTION ENTRY POINT - CLI Arguments / Remote Execution Receiver
 # =========================================================================
 if __name__ == "__main__":
-    # Default fallbacks in case the script is run directly without UI arguments
-    target_filepath = os.path.join(BASE_DIRECTORY, "lunalab.npy")
+    # Default fallbacks in case the script is run directly without arguments
+    target_filepath = os.path.join(BASE_DIRECTORY, "maps/Lunar_LROnac_Haworth_sfs-dem_1m_v3.tif") 
     target_resolution = 0.01
 
-    # If arguments are passed via Unreal's "Execute Python Command" node
+    # Safely parse arguments if passed via Unreal's UI or Remote Execution
     if len(sys.argv) >= 3:
         target_filepath = sys.argv[1]
         try:
             target_resolution = float(sys.argv[2])
         except ValueError:
-            unreal.log_error(f"Invalid spatial resolution '{sys.argv[2]}' passed. Defaulting to 0.01.")
+            unreal.log_error(f"[-] Invalid spatial resolution '{sys.argv[2]}' passed. Defaulting to 0.01.")
             target_resolution = 0.01
 
-    # Execute the main function with the gathered parameters
+    # Execute pipeline
     main(target_filepath, target_resolution)
