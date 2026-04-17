@@ -1,41 +1,51 @@
 """
 Unreal Engine Landscape Instantiator
 ------------------------------------
-Runs exclusively inside Unreal Engine. Receives processed DEM configuration
-from the local Python client and generates the Landscape Actor.
+Executes natively within the Unreal Engine Python environment. 
+Receives processed DEM (Digital Elevation Model) topology from the local 
+Python client and orchestrates the generation of the Landscape Actor in the current level.
 """
 
 import unreal
 
-CM_PER_METER = 100.0  # Unreal Engine uses Centimeters as its base unit
+# --- Global Constants ---
+# Unreal Engine uses Centimeters (cm) as its native base unit for all world transforms.
+CM_PER_METER = 100.0 
 
-def create_landscape(landscape_config, interpolation_resolution, z_axis_scale, heightmap_filepath="outputs/lunar_terrain.r16", x_offset=0, y_offset=0, z_offset=0):
+def create_landscape(landscape_config, interpolation_resolution, z_axis_scale, heightmap_filepath="outputs/lunar_terrain.r16", x_offset=0.0, y_offset=0.0, z_offset=0.0):
     """
-    Parses pre-processed DEM data, configures an optimal Unreal Landscape actor, 
-    and exports a normalized 16-bit heightmap for manual terrain relief application.
+    Instantiates and configures a Landscape actor based on pre-calculated DEM dimensions.
+    
+    Args:
+        landscape_config (tuple): Topology parameters (comp_x, comp_y, quads, sections, width, height).
+        interpolation_resolution (float): Spatial resolution of the source DEM (meters per pixel).
+        z_axis_scale (float): Normalized vertical scaling factor for the Landscape transform.
+        heightmap_filepath (str): Absolute path to the generated .r16 file for user reference.
+        x_offset, y_offset, z_offset (float): World-space spawn coordinates in meters.
     """
     
-    # Unpack the tuple sent by the local execute.py script
+    # Unpack the pre-calculated component topology configuration
     optimal_comp_x, optimal_comp_y, quads, sections, final_width, final_height = landscape_config
 
     unreal.log(f"[*] Spawning Landscape: {optimal_comp_x}x{optimal_comp_y} components, {quads} quads")
 
-    # Compute physical scale multipliers mapped from standard meters to Unreal centimeters.
-    # FIX: Changed 'int()' to 'float()' to prevent rounding errors on resolutions like 0.015
+    # Compute physical scale multipliers (Meter to Centimeter conversion).
+    # Note: Float casting is strictly required here to prevent truncation of sub-centimeter resolutions (e.g., 0.015).
     unreal_map_scale_x = float(CM_PER_METER * abs(interpolation_resolution))
     unreal_map_scale_y = float(CM_PER_METER * abs(interpolation_resolution))
 
     # =========================================================================
     # 1. INSTANTIATE LANDSCAPE ACTOR IN UNREAL
     # =========================================================================
-    # Define the foundational transform for the Landscape actor
+    
+    # Construct the foundational world transform for the Landscape actor
     landscape_transform = unreal.Transform(
         location=[x_offset * CM_PER_METER, y_offset * CM_PER_METER, z_offset * CM_PER_METER], 
         rotation=[0.0, 0.0, 0.0], 
         scale=[unreal_map_scale_x, unreal_map_scale_y, z_axis_scale]
     )
     
-    # Spawn the procedural landscape framework utilizing the TAPython Landscape API
+    # Dispatch the spawn command to the Editor via the TAPython Landscape API
     landscape_actor = unreal.PythonLandscapeLib.create_landscape(
         landscape_transform, 
         section_size=quads, 
@@ -47,16 +57,18 @@ def create_landscape(landscape_config, interpolation_resolution, z_axis_scale, h
     # =========================================================================
     # 2. UPDATE VIEWPORT AND EDITOR STATE
     # =========================================================================
-    # Update editor selection state and focus the viewport camera on the newly created geometry
+    
+    # Force the Editor selection state to the newly created actor and frame the viewport camera
     unreal.PythonBPLib.select_actor(landscape_actor, selected=True, notify=True)
     unreal.PythonBPLib.request_viewport_focus_on_selection()
     
     # =========================================================================
     # 3. PROMPT USER WITH IMPORT INSTRUCTIONS
     # =========================================================================
+    
     dialog_title = "Landscape Generation Complete"
     
-    # FIX: Injected the heightmap_filepath so the user knows exactly where to look!
+    # Format the dialog message, dynamically injecting the target heightmap path for user reference
     dialog_message = (
         "The Landscape actor has been successfully generated with precise physical scaling.\n\n"
         "To apply the generated heightmap data, please proceed with the following steps:\n\n"
