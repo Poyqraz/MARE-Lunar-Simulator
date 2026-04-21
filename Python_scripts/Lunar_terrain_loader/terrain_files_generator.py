@@ -200,6 +200,12 @@ def create_unreal_heightmap(unreal_elevation_data, dem_width, dem_height, landsc
     
     normalized_grid = ((padded_grid - min_elevation) / elevation_range) * UINT16_MAX
     heightmap_data = np.clip(normalized_grid, 0, UINT16_MAX).astype('<u2')
+    print("[*] Applying Left-Right flip (fliplr) to heightmap data...")
+    
+    # np.fliplr returns a view, so we use np.ascontiguousarray to ensure 
+    # safe and predictable binary I/O when writing to the .r16 file.
+    # Unreal flips the heightmap by default, so we pre-flip it here to maintain the original orientation in-engine
+    heightmap_data = np.ascontiguousarray(np.fliplr(heightmap_data))
 
     # =========================================================================
     # 5. EXPORT NATIVE .R16 HEIGHTMAP AND METADATA

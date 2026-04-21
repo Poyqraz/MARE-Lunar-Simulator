@@ -151,7 +151,7 @@ if __name__ == "__main__":
         os.makedirs(BASE_OUTPUT_DIRECTORY)
 
     # Establish fallback defaults for direct script execution
-    input_map_filepath   = os.path.join(BASE_MAPS_DIRECTORY, "generated_elevationMap_moon.npy").replace("\\", "/") 
+    input_map_filepath   = os.path.join(BASE_MAPS_DIRECTORY, "procedural_lunar_terrain_1_elevationMap.npy").replace("\\", "/") 
     output_map_directory = BASE_OUTPUT_DIRECTORY 
     input_resolution     = 1.0
 

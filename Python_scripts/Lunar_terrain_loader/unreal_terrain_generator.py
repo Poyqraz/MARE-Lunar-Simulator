@@ -6,6 +6,8 @@ Receives processed DEM (Digital Elevation Model) topology from the local
 Python client and orchestrates the generation of the Landscape Actor in the current level.
 """
 
+import os
+
 import unreal
 
 # --- Global Constants ---
@@ -26,13 +28,24 @@ def create_landscape(landscape_config, interpolation_resolution, z_axis_scale, h
     
     # Unpack the pre-calculated component topology configuration
     optimal_comp_x, optimal_comp_y, quads, sections, final_width, final_height = landscape_config
-
+    
+    # Extract the base filename (e.g., 'lunar_terrain' from 'outputs/lunar_terrain.r16')
+    base_filename = os.path.basename(heightmap_filepath)
+    actor_label = os.path.splitext(base_filename)[0]
+    
     unreal.log(f"[*] Spawning Landscape: {optimal_comp_x}x{optimal_comp_y} components, {quads} quads")
 
     # Compute physical scale multipliers (Meter to Centimeter conversion).
     # Note: Float casting is strictly required here to prevent truncation of sub-centimeter resolutions (e.g., 0.015).
     unreal_map_scale_x = float(CM_PER_METER * abs(interpolation_resolution))
     unreal_map_scale_y = float(CM_PER_METER * abs(interpolation_resolution))
+
+    # Calculate the physical width of the map in meters. 
+    # (Number of vertices wide * distance between vertices in meters)
+    map_width_meters = final_width * abs(interpolation_resolution)
+    
+    # Shift the X offset in the negative direction by the exact width of the map
+    x_offset -= map_width_meters
 
     # =========================================================================
     # 1. INSTANTIATE LANDSCAPE ACTOR IN UNREAL
@@ -54,6 +67,15 @@ def create_landscape(landscape_config, interpolation_resolution, z_axis_scale, h
         component_count_y=optimal_comp_y
     )
     
+    landscape_actor.set_actor_label(actor_label)
+
+    # Enable Nanite on the Landscape (Requires UE 5.3+)
+    try:
+        landscape_actor.set_editor_property("bEnableNanite", True)
+        unreal.log(f"[*] Nanite enabled for Landscape '{actor_label}'.")
+    except Exception as e:
+        unreal.log_warning(f"[*] Could not enable Nanite. Ensure you are using UE 5.3+. Error: {e}")
+
     # =========================================================================
     # 2. UPDATE VIEWPORT AND EDITOR STATE
     # =========================================================================
