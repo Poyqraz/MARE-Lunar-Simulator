@@ -21,20 +21,29 @@ void AVelodyneLidarActor::BeginPlay()
   {
     ConfigureUDPScan();
     UdpScanComponent->OpenSendSocket(UdpScanComponent->Settings.SendIP, UdpScanComponent->Settings.SendPort);
-    UdpScanComponent->OpenReceiveSocket(UdpScanComponent->Settings.ReceiveIP, UdpScanComponent->Settings.SendPort);
+    // UdpScanComponent->OpenReceiveSocket(UdpScanComponent->Settings.ReceiveIP, UdpScanComponent->Settings.ReceivePort);
   }
 
-  FTimespan ThreadSleepTime =
-  FTimespan::FromMilliseconds(LidarComponent->Sensor.NumberDataBlock * (LidarComponent->Sensor.NumberDataChannel / LidarComponent->Sensor.NumberLaserEmitter) * (0.000001f * FIRING_CYCLE));
-  FString UniqueThreadName = "LidarThread";
+  // Safely calculate the thread sleep time to prevent Divide-By-Zero and Integer Division bugs
+  FTimespan ThreadSleepTime = FTimespan::FromMilliseconds(1.0); // Default fallback
+  
+  if (LidarComponent && LidarComponent->Sensor.NumberLaserEmitter > 0)
+  {
+      double ChannelRatio = static_cast<double>(LidarComponent->Sensor.NumberDataChannel) / 
+                            static_cast<double>(LidarComponent->Sensor.NumberLaserEmitter);
+                            
+      double Milliseconds = LidarComponent->Sensor.NumberDataBlock * ChannelRatio * (0.000001 * FIRING_CYCLE);
+      ThreadSleepTime = FTimespan::FromMilliseconds(Milliseconds);
+  }
 
-  LidarThread = new LidarThreadProcess(ThreadSleepTime,*UniqueThreadName, this);
+  FString UniqueThreadName = "LidarThread";
+  LidarThread = new LidarThreadProcess(ThreadSleepTime, *UniqueThreadName, this);
 
   if(LidarThread)
   {
     LidarThread->Init();
     LidarThread->LidarThreadInit();
-    UE_LOG(LogTemp, Warning, TEXT("Lidar thread initialized!"));
+    UE_LOG(LogTemp, Warning, TEXT("!!! Lidar thread initialized successfully !!!"));
   }
 }
 
@@ -53,14 +62,18 @@ void AVelodyneLidarActor::EndPlay(EEndPlayReason::Type Reason)
   //! closing of the game while complex calcs occurring on the
   //! thread have a chance to finish
   //!
-  while(!LidarThread->ThreadHasStopped())
+  while(LidarThread && !LidarThread->ThreadHasStopped())
   {
     FPlatformProcess::Sleep(0.1);
   }
   //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
   //Do this last
-  delete LidarThread;
+  if (LidarThread)
+  {
+      delete LidarThread;
+      LidarThread = nullptr;
+  }
 
   Super::EndPlay(Reason);
 }
@@ -90,14 +103,18 @@ void AVelodyneLidarActor::LidarThreadTick()
   }
   BeginTimestamp = FPlatformTime::Seconds();
 
-  // Generate raycasting data
-  LidarComponent->GetScanData();
+  // Prevent thread crashes by ensuring components exist before calling functions on them
+  if (LidarComponent && UdpScanComponent)
+  {
+      // Generate raycasting data
+      LidarComponent->GetScanData();
 
-  // Generate veldyne data packet
-  LidarComponent->GenerateDataPacket(PacketTimestamp);
+      // Generate velodyne data packet
+      LidarComponent->GenerateDataPacket(PacketTimestamp);
 
-  // Multicast Delegate event for broadcating packet data
-  UdpScanComponent->EmitBytes(LidarComponent->Sensor.DataPacket);
+      // Multicast Delegate event for broadcasting packet data
+      UdpScanComponent->EmitBytes(LidarComponent->Sensor.DataPacket);
+  }
 
   TimeDiffMs = (float)(FPlatformTime::Seconds() - BeginTimestamp);
 
@@ -113,9 +130,15 @@ void AVelodyneLidarActor::LidarThreadTick()
 
 void AVelodyneLidarActor::ConfigureUDPScan()
 {
-  UdpScanComponent->Settings.SendIP    = LidarComponent->DestinationIP;
-  UdpScanComponent->Settings.ReceiveIP = LidarComponent->SensorIP;
-  UdpScanComponent->Settings.SendPort  = LidarComponent->ScanPort;
+  // Safety check, and explicitly assigning ReceivePort to 0 to prevent socket collisions
+  if (!UdpScanComponent || !LidarComponent) return;
+
+  UdpScanComponent->Settings.SendIP    = FString("127.0.0.1");
+  UdpScanComponent->Settings.ReceiveIP = FString("0.0.0.0"); // The magic wildcard!
+  
+  UdpScanComponent->Settings.SendPort  = 2368;
+  UdpScanComponent->Settings.ReceivePort = 0; 
+  
   UdpScanComponent->Settings.SendSocketName = FString(TEXT("ue5-scan-send"));
   UdpScanComponent->Settings.BufferSize = PACKET_HEADER_SIZE + DATA_PACKET_PAYLOAD;
 }
