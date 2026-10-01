@@ -1,5 +1,0 @@
-- Operating System:
-- UE4 Version:
-- UnrealCV Version:
-- Client (python2, 3 or matlab):
-- Problem Description:
