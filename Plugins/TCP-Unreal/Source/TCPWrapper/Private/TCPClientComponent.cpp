@@ -66,6 +66,11 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 	ClientSocket->SetSendBufferSize(BufferMaxSize, BufferMaxSize);
 	ClientSocket->SetReceiveBufferSize(BufferMaxSize, BufferMaxSize);
 
+	//Set the loop flags here on the game thread, before the worker starts, so a
+	//CloseSocket() that runs early can't have its 'false' overwritten by the worker
+	bShouldAttemptConnection = true;
+	bShouldReceiveData = true;
+
 	//Listen for data on our end
 	ClientConnectionFinishedFuture = FTCPWrapperUtility::RunLambdaOnBackGroundThread([&]()
 	{
@@ -73,7 +78,6 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 
 		uint32 BufferSize = 0;
 		TArray<uint8> ReceiveBuffer;
-		bShouldAttemptConnection = true;
 
 		while (bShouldAttemptConnection)
 		{
@@ -87,11 +91,12 @@ void UTCPClientComponent::ConnectToSocketAsClient(const FString& InIP /*= TEXT("
 				continue;
 			}
 		
-			//reconnect attempt every 3 sec
-			FPlatformProcess::Sleep(3.f);
+			//reconnect attempt every 3 sec, waking early if CloseSocket() asks us to stop
+			for (int32 i = 0; i < 30 && bShouldAttemptConnection; ++i)
+			{
+				FPlatformProcess::Sleep(0.1f);
+			}
 		}
-
-		bShouldReceiveData = true;
 
 		while (bShouldReceiveData)
 		{
@@ -147,8 +152,13 @@ void UTCPClientComponent::CloseSocket()
 {
 	if (ClientSocket)
 	{
+		//Stop both loops: if we never connected the worker is still in the connect loop
+		bShouldAttemptConnection = false;
 		bShouldReceiveData = false;
-		ClientConnectionFinishedFuture.Get();
+		if (ClientConnectionFinishedFuture.IsValid())
+		{
+			ClientConnectionFinishedFuture.Get();
+		}
 
 		ClientSocket->Close();
 		ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->DestroySocket(ClientSocket);
