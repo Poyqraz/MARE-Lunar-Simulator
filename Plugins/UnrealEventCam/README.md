@@ -2,26 +2,10 @@
 
 Renders an intensity image with each game frame, generates brightness-change
 **events** from it with the ESIM model, and streams them to a ROS node over TCP.
-Same no-stall design as the sibling `StereoCamStreamer` plugin: the SceneCapture
+Same no-stall design as the sibling `UnrealStereoCam` plugin: the SceneCapture
 renders on the render thread, the readback is asynchronous, and a worker thread
 runs the event model and drains to the socket. The game thread never blocks.
 
-## Credit
-
-The event-generation core (`EventSimulator.h` / `.cpp`) is a port of the
-**EventSimulator** from **ESIM (rpg_esim)** by the Robotics and Perception Group,
-University of Zurich — used under its MIT License (see [`LICENSE`](LICENSE)).
-
-> Upstream: https://github.com/uzh-rpg/rpg_esim
->
-> H. Rebecq, D. Gehrig, D. Scaramuzza, **"ESIM: an Open Event Camera Simulator"**,
-> Conference on Robot Learning (CoRL), 2018.
-
-The port keeps ESIM's algorithm — per-pixel log-intensity threshold crossings,
-linear timestamp interpolation between frames, per-polarity contrast thresholds,
-optional Gaussian threshold noise and a per-pixel refractory period — and only
-swaps the OpenCV / glog / ze types for Unreal primitives so it has no external
-dependencies.
 
 ## How an event camera works (and the one caveat here)
 
@@ -120,3 +104,18 @@ message. Mirror the `FrameStreamReceiver` in
 `component_stereo_depth/src/component_stereo_depth.py`, which already does exactly
 this handshake for the RGB stream. Ask and this can be scaffolded as a
 `component_event_camera` package.
+
+
+## Acknowledgments
+
+The event-generation core (`EventSimulator.h` / `.cpp`) is a port of the
+**EventSimulator** from **ESIM (rpg_esim)** by the Robotics and Perception Group,
+University of Zurich — used under MIT License (see [`LICENSE`](LICENSE)).
+
+The port keeps ESIM's algorithm — per-pixel log-intensity threshold crossings,
+linear timestamp interpolation between frames, per-polarity contrast thresholds,
+optional Gaussian threshold noise and a per-pixel refractory period — and only
+swaps the OpenCV / glog / ze types for Unreal primitives so it has no external
+dependencies.
+
+Upstream: https://github.com/uzh-rpg/rpg_esim

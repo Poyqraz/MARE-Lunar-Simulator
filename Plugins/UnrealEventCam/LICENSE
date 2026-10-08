@@ -11,20 +11,10 @@ under the same MIT terms.
 
 Upstream: https://github.com/uzh-rpg/rpg_esim
 
-If you use this in academic work, please cite:
-
-    H. Rebecq, D. Gehrig, D. Scaramuzza,
-    "ESIM: an Open Event Camera Simulator",
-    Conference on Robot Learning (CoRL), 2018.
-
 
 ================================================================================
-MIT License (rpg_esim)
+MIT License 
 ================================================================================
-
-MIT License
-
-Copyright (c) 2018 Robotics and Perception Group, University of Zurich
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
