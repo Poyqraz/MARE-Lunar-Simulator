@@ -107,14 +107,15 @@ the RGB cameras.
    - **Painted foliage:** set them on the **Foliage Type asset**, not on the
      placed instances.
 
-3. **Colouriser material `PPM_ObjectMask`.** A Material with *Material Domain =
+3. **Colouriser material `PPM_GroundTruthMask`** (in `/Game/GroundTruth_Masks/Mask`,
+   where Terrain Studio looks for it). A Material with *Material Domain =
    Post Process*, *Blendable Location = After Tonemapping*, that reads a
    `SceneTexture: CustomStencil` node (R channel) and maps the value to a flat
    colour into **Emissive Color** (e.g. a `Custom` HLSL node hashing the id to
    RGB, black when the value is 0).
 
 4. **Mask capture.** A fourth `SceneCaptureComponent2D` (e.g. **`Navcam_Mask`**),
-   posed and FOV-matched to `NavcamCenter`, with `PPM_ObjectMask` added to its
+   posed and FOV-matched to `NavcamCenter`, with `PPM_GroundTruthMask` added to its
    *Post Process Settings → Post Process Materials* (weight 1). Leave its render
    target empty (auto-created). On the **StereoCamStreamer** component set
    **MaskCaptureName** to it; its **MaskCamId** (default 3, under *Advanced*)
@@ -126,7 +127,23 @@ the RGB cameras.
    entries — **keep these ids in sync with the CustomDepth Stencil Values from
    step 2**. The stereo node republishes them as JSON on
    `navcam/central/object_mask_mapping`; `ros2 topic echo` it to read the legend,
-   e.g. `{"10": "landscape", "20": "boulder", "30": "crater"}`.
+   e.g. `{"1": "sky", "5": "landscape", "9": "boulder"}`.
+
+## Ground-truth depth (on by default)
+
+With **Stream Center Depth** (`bStreamCenterDepth`, Details → *StereoCam |
+Cameras*), the component also streams Unreal's own depth for the central camera.
+At Play it adds a depth-only `SceneCaptureComponent2D` attached to the centre
+capture, with its projection, FOV, resolution and hidden / show-only actors, so
+it sees exactly the same view; nothing has to be added to the blueprint. Each
+pixel is the scene depth in centimetres along the camera axis (planar depth),
+sent as float on **DepthCamId** (default 4, under *Advanced*; must match
+`depth_ground_truth_camera_id` in `component_stereo_depth/config/params.yaml`).
+
+The stereo node publishes it as `navcam/central/depth_ground_truth` (32FC1,
+metres, +Inf for the sky) and `.../visualization`, with the same stamp and frame
+as `image_color` and `image_depth`, so the stereo depth can be checked against
+it pixel for pixel.
 
 ## Exposure
 
@@ -158,9 +175,16 @@ captures are resolved at BeginPlay).
 One packet per frame, little-endian, 24-byte header:
 
 ```
-'NAVF' | ver u8 | cam_id u8 | format u8 (1 = BGRA8) | pad u8
+'NAVF' | ver u8 | cam_id u8 | format u8 | pad u8
 width u16 | height u16 | frame_id u64 | payload u32 | pixels (w*h*4)
 ```
+
+`format` 1 is BGRA8 colour; 2 is R32F depth (float32 centimetres of planar
+depth, the ground-truth depth above). Both use 4 bytes per pixel.
+
+The socket is non-blocking: when a pump's frames exceed the send buffer, the
+sender waits for room and continues; only a real socket error drops the link
+(it then redials every 3 s).
 
 ## Version notes
 
