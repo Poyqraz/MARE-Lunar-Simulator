@@ -145,6 +145,21 @@ metres, +Inf for the sky) and `.../visualization`, with the same stamp and frame
 as `image_color` and `image_depth`, so the stereo depth can be checked against
 it pixel for pixel.
 
+## Extra mono cameras (e.g. the rear camera)
+
+Any other SceneCapture2D can ride the same link as a plain colour camera: add
+a second UnrealStereoCam component that streams only that capture — Center =
+the capture, CenterCamId = a free id (10 and up), Left / Right / Mask blank,
+`bStreamCenterDepth` off. The ROS node accepts several streamer connections on
+port 3004 at once, and publishes the camera as listed in `extra_cameras`
+(`"<cam_id>:<topic>[:<hfov_deg>]"`, rate `extra_cameras_hz`) in
+`component_stereo_depth/config/params.yaml`.
+
+Leo_Raph does this for its rear camera: `RearCam` on the body (behind it,
+looking back, pitched -20°, 90° FOV) streamed by `RearCam_Stream` on cam id 10
+-> `rear_cam/image_color` (+ `/compressed`, `/camera_info`), shown as REAR on
+the dashboard.
+
 ## Exposure
 
 By default the captures auto-expose like any Unreal camera. Two optional
@@ -172,12 +187,18 @@ captures are resolved at BeginPlay).
 
 ## Wire format
 
-One packet per frame, little-endian, 24-byte header:
+One packet per frame, little-endian, 32-byte header (version 2):
 
 ```
-'NAVF' | ver u8 | cam_id u8 | format u8 | pad u8
-width u16 | height u16 | frame_id u64 | payload u32 | pixels (w*h*4)
+'NAVF' | ver u8 = 2 | cam_id u8 | format u8 | pad u8
+width u16 | height u16 | frame_id u64 | payload u32 | stamp_ns u64 | pixels (w*h*4)
 ```
+
+`stamp_ns` is the capture time on the simulation clock (UnrealSimClock: ns since
+the Unix epoch), the same for every capture of one tick; the stereo node stamps
+everything it publishes from it. Version 1 (24-byte header, no `stamp_ns`) is
+still read; its frames are stamped on arrival. The time comes from the plugin's
+own `GncSimTime.h` (see the UnrealSimClock README); no other plugin is needed.
 
 `format` 1 is BGRA8 colour; 2 is R32F depth (float32 centimetres of planar
 depth, the ground-truth depth above). Both use 4 bytes per pixel.

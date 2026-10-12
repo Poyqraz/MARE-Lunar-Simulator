@@ -1,4 +1,5 @@
 #include "UnrealSPADCam.h"
+#include "GncSimTime.h"
 
 #include "Sockets.h"
 #include "SocketSubsystem.h"
@@ -251,8 +252,6 @@ void UUnrealSPADCam::TickComponent(float DeltaTime, ELevelTick TickType,
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	AccumulatedSeconds += DeltaTime;
-
 	if (!bConnected || !Stream.IsValid() || !Capture || !Capture->TextureTarget)
 	{
 		return;
@@ -277,7 +276,7 @@ void UUnrealSPADCam::PumpCapture()
 	}
 	const int32 W = Capture->TextureTarget->SizeX;
 	const int32 H = Capture->TextureTarget->SizeY;
-	const int64 FrameTimeNs = static_cast<int64>(AccumulatedSeconds * 1e9);
+	const int64 FrameTimeNs = GncSimTime::NowNs(this);   // Simulation time (GncSimTime.h)
 
 	TSharedPtr<FSpadStreamState, ESPMode::ThreadSafe> S = Stream;
 
@@ -352,6 +351,17 @@ namespace
 			int32 Sent = 0;
 			if (!Socket->Send(Data + Offset, Num - Offset, Sent))
 			{
+				// The socket is non-blocking: a full send buffer (a big packet,
+				// e.g. the burst of events of the first frames) answers "would
+				// block", which is not a broken link. Wait for room and try again;
+				// only a real error drops the link.
+				const ESocketErrors Error =
+					ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetLastErrorCode();
+				if (Error == SE_EWOULDBLOCK || Error == SE_NO_ERROR)
+				{
+					Socket->Wait(ESocketWaitConditions::WaitForWrite, FTimespan::FromMilliseconds(100));
+					continue;
+				}
 				return false;
 			}
 			Offset += Sent;
