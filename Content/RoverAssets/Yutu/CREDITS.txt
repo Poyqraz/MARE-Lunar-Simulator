@@ -1,0 +1,10 @@
+Yutu rover model
+================
+This work is based on "Yutu" (https://sketchfab.com/3d-models/yutu-d9564c9a60c14b85a880cc0bfcf1a6b5)
+by tashtego (https://sketchfab.com/tashtego) licensed under CC-BY-4.0
+(http://creativecommons.org/licenses/by/4.0/)
+
+Changes: the display floor was removed; the model was turned to face +X, scaled x2 to the real
+rover's size, and its six wheels were separated from the body (each with its pivot on its axle)
+for the simulator. Source/ holds the prepared body and wheel (glb) and the wheel positions.
+The original license file is license.txt, next to this one.
