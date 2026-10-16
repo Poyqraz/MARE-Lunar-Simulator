@@ -1,15 +1,13 @@
 // UnrealSPADCam: a simulated single-photon (SPAD) camera front-end for Unreal.
 //
-// A SceneCapture renders an intensity image with each game frame; its readback
-// is asynchronous (never stalls the game thread, same design as the sibling
-// UnrealEventCam / UnrealStereoCam plugins). A worker thread converts each
+// A SceneCapture renders an intensity image with each game frame, read back
+// asynchronously so the game thread never stalls. A worker thread converts each
 // frame to 8-bit grayscale and streams it to a ROS node over TCP.
 //
-// The SPAD sensor MODEL (photon-flux estimation, Poisson photon arrivals, binary
-// thresholding) is NOT in this plugin: it lives in the ROS component
-// component_spad_camera, which ports spadSim (David Rodriguez-Martinez, MIT). The
-// plugin only delivers the intensity frames the model consumes — the same split
-// the stereo pipeline uses (plugin streams pixels, ROS does the processing).
+// The sensor model (photon flux, Poisson photon arrivals, binary thresholding)
+// is not in this plugin: it runs in the ROS node component_spad_camera, which
+// ports spadSim (David Rodriguez-Martinez, MIT). This plugin only delivers the
+// intensity frames the model consumes.
 //
 // Wire format, little-endian, one packet per sampled frame:
 //   offset size  field
@@ -58,8 +56,8 @@ struct FSpadReadyFrame
 };
 
 // Shared between the render commands and the worker through a ref-counted
-// pointer so teardown never blocks (same pattern as UnrealEventCam):
-//   Pending : created, polled, locked and freed ONLY on the render thread.
+// pointer, so teardown never has to block:
+//   Pending : created, polled, locked and freed only on the render thread.
 //   Ready   : lock-free MPSC handoff, render thread -> worker thread.
 struct FSpadStreamState
 {
@@ -86,9 +84,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "SPADCam|Network")
 	int32 CamId = 0;
 
-	// The SceneCapture2D this SPAD camera renders from, chosen by name from a
-	// dropdown of every SceneCapture2D in reach (same scheme as the other
-	// plugins — the details panel cannot point at a per-instance component).
+	// The SceneCapture2D this SPAD camera renders from, chosen by name from
+	// every SceneCapture2D in reach (this Blueprint's components, or the world
+	// when placed in a level). Names rather than object pointers, because the
+	// details panel cannot point at a per-instance component.
 	UPROPERTY(EditAnywhere, Category = "SPADCam|Camera",
 	          meta = (GetOptions = "GetSceneCaptureNames"))
 	FName CaptureName = TEXT("SPADCam");
@@ -97,7 +96,7 @@ public:
 	TArray<FString> GetSceneCaptureNames() const;
 
 	// If the capture has no render target, one is created at this size (RGBA8).
-	// SPAD sensors are low-resolution — keep this modest.
+	// SPAD sensors are low-resolution; keep it modest.
 	UPROPERTY(EditAnywhere, Category = "SPADCam|Camera")
 	int32 CaptureWidth = 256;
 
@@ -116,7 +115,7 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 
-	// FRunnable — the worker thread converts frames to mono8 and drains to the socket.
+	// FRunnable: the worker thread converts frames to mono8 and drains to the socket.
 	virtual uint32 Run() override;
 	virtual void Stop() override;
 

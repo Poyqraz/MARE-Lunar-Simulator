@@ -76,10 +76,9 @@ void UUnrealEventCam::EndPlay(const EEndPlayReason::Type Reason)
 
 TArray<FString> UUnrealEventCam::GetSceneCaptureNames() const
 {
-	// Same discovery as UnrealStereoCam: the owner's SceneCapture2Ds and every
-	// instance in the world when placed in a level, plus the blueprint's own
-	// components when editing the blueprint (this component is then a template
-	// with no owner).
+	// The owner's SceneCapture2Ds and every instance in the world when placed in
+	// a level, plus the Blueprint's own components when editing the Blueprint
+	// (this component is then a template with no owner).
 	TSet<FString> Names;
 
 	if (const AActor* Owner = GetOwner())
@@ -374,7 +373,7 @@ namespace
 		}
 	}
 
-	// Blocking send of a whole buffer; false on socket error.
+	// Sends a whole buffer, waiting for room as needed; false on socket error.
 	bool SendAll(FSocket* Socket, const uint8* Data, int32 Num, const FThreadSafeBool& bStop)
 	{
 		int32 Offset = 0;
@@ -383,9 +382,8 @@ namespace
 			int32 Sent = 0;
 			if (!Socket->Send(Data + Offset, Num - Offset, Sent))
 			{
-				// The socket is non-blocking: a full send buffer (a big packet,
-				// e.g. the burst of events of the first frames) answers "would
-				// block", which is not a broken link. Wait for room and try again;
+				// Non-blocking socket: a full send buffer (e.g. a burst of
+				// events) is "would block", not a broken link. Wait for room;
 				// only a real error drops the link.
 				const ESocketErrors Error =
 					ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetLastErrorCode();

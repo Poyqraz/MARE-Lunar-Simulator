@@ -63,20 +63,17 @@ void UUnrealStereoCam::EndPlay(const EEndPlayReason::Type Reason)
 	bStopSender = true;
 	if (SenderThread)
 	{
-		// Bounded: Run() checks bStopSender between sends and its connect
-		// attempts are capped at the 2 s Wait() in TryConnect, so this join
-		// never hangs the way a blocking Connect() on the game thread would.
+		// Bounded: Run() checks bStopSender between sends, and a connect
+		// attempt waits at most 2 s.
 		SenderThread->Kill(true);
 		delete SenderThread;
 		SenderThread = nullptr;
 	}
 	bConnected = false;         // Run() already closed Socket on its way out.
 
-	// Drop the component's reference. Any render command still in flight holds
-	// its own reference and will free the state — and its readbacks — on the
-	// render thread when it finishes. Nothing to block on here: this is what
-	// makes stopping instant instead of the multi-second freeze that a
-	// FlushRenderingCommands / fence Wait caused.
+	// Drop the component's reference. A render command still in flight holds
+	// its own and frees the state, readbacks included, on the render thread,
+	// so stopping never waits for the GPU.
 	Stream.Reset();
 	Active.Empty();
 	Super::EndPlay(Reason);
@@ -228,13 +225,9 @@ void UUnrealStereoCam::ResolveCapture(const FName& Name, int32 CamId)
 	}
 
 	// With bCaptureOnDemand, rendered only when a frame is sent: TickComponent
-	// calls CaptureScene(), which queues the render on the render thread, and
-	// the readback command is queued right after it, so the render thread runs
-	// them in order and the copy reads this render (as UnrealLidarCam does). An
-	// earlier variant (CaptureSceneDeferred, read back one tick later) read a
-	// stale buffer; the difference is the readback queued behind the render.
-	// The rendering state persists between renders, so exposure, temporal AA
-	// and Lumen keep their history. Otherwise: rendered every engine frame.
+	// queues CaptureScene() and then the readback, so the render thread runs
+	// them in order and the copy reads this render. The persisted rendering
+	// state keeps exposure, temporal AA and Lumen history between renders.
 	Found->bCaptureEveryFrame = !bCaptureOnDemand;
 	Found->bAlwaysPersistRenderingState = true;
 	Found->bCaptureOnMovement = false;
@@ -242,12 +235,8 @@ void UUnrealStereoCam::ResolveCapture(const FName& Name, int32 CamId)
 
 	if (bLockExposure)
 	{
-		// AEM_Manual disables scene-luminance metering entirely, so there is
-		// no auto-exposure feedback loop to fight — unlike pinning
-		// AutoExposureMin/MaxBrightness, which fixes the METERED luminance,
-		// not the output: forcing that to a value far from the scene's real
-		// luminance (a dim lunar surface) drives the exposure curve to
-		// wildly overcompensate, which is what blew the image to white.
+		// AEM_Manual turns metering off, so the exposure is fixed by the bias
+		// alone and cannot drift with the scene.
 		FPostProcessSettings& PP = Found->PostProcessSettings;
 		PP.bOverride_AutoExposureMethod = true;
 		PP.AutoExposureMethod = AEM_Manual;
@@ -256,10 +245,8 @@ void UUnrealStereoCam::ResolveCapture(const FName& Name, int32 CamId)
 	}
 	else if (bLimitAutoExposure)
 	{
-		// Keep auto-exposure, but clamp the EV100 range it may adapt into.
-		// AutoExposureMin/MaxBrightness carry EV100 under UE5's extended
-		// luminance range (the editor's "Min/Max EV100"). Setting the two
-		// equal pins a fixed exposure identical on both stereo eyes.
+		// Keep auto-exposure, clamped to [MinEV100, MaxEV100]. With UE5's
+		// extended luminance range, AutoExposureMin/MaxBrightness hold EV100.
 		FPostProcessSettings& PP = Found->PostProcessSettings;
 		const float MinEv = FMath::Min(MinEV100, MaxEV100);
 		const float MaxEv = FMath::Max(MinEV100, MaxEV100);
@@ -355,13 +342,8 @@ void UUnrealStereoCam::AddCenterDepthCapture()
 
 bool UUnrealStereoCam::TryConnect()
 {
-	// Called only from Run() (background thread). Non-blocking connect with a
-	// short bounded wait: FSocket::Connect() on a BLOCKING socket can take the
-	// full OS TCP timeout (many seconds) to fail, and an earlier version of
-	// this file called the equivalent of this function from TickComponent —
-	// which froze the entire engine (render, input, everything) for that
-	// duration, every 3-second retry, whenever the ROS node wasn't already up
-	// when Play was pressed. Never do socket I/O on the game thread.
+	// Sender thread only. A blocking Connect() can take the OS TCP timeout to
+	// fail, so connect non-blocking and wait at most 2 s for the result.
 	ISocketSubsystem* Subsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
 	FIPv4Address Ip;
 	if (!FIPv4Address::Parse(ServerIp, Ip))
@@ -414,8 +396,8 @@ void UUnrealStereoCam::TickComponent(float DeltaTime, ELevelTick TickType,
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
 
-	// The game thread never touches the socket or a readback — only these two
-	// flags, which the sender/render threads own. No blocking calls here, ever.
+	// The game thread never touches the socket or a readback; it only reads
+	// these flags. Nothing here blocks.
 	if (!bConnected || !Stream.IsValid())
 	{
 		return;
@@ -464,10 +446,10 @@ namespace
 
 void UUnrealStereoCam::PumpCaptures()
 {
-	// Gather render-target pointers on the game thread (the only step that
-	// must be here), then post ONE render command that owns the whole readback
-	// lifecycle. bCaptureEveryFrame means each target already holds this
-	// frame's render; the readback of it completes asynchronously on the GPU.
+	// Gather the render targets on the game thread, then post one render
+	// command that owns the whole readback lifecycle. It runs after this
+	// frame's renders (CaptureScene() or bCaptureEveryFrame), so the copies
+	// read them; the copies complete asynchronously on the GPU.
 	TArray<FStereoCamCap> Caps;
 	for (FStereoCamResolved& Cam : Active)
 	{
@@ -543,8 +525,8 @@ void UUnrealStereoCam::PumpCaptures()
 				S->Pending.RemoveAt(i);
 			}
 
-			// Safety net: never let readbacks pile up unbounded and exhaust
-			// VRAM if the consumer somehow stalls. Up to 5 cameras x a few frames.
+			// Cap the readbacks in flight (up to 5 cameras x a few sends) so a
+			// stalled consumer cannot exhaust VRAM.
 			while (S->Pending.Num() > 16)
 			{
 				S->Pending.RemoveAt(0);
@@ -595,7 +577,7 @@ uint32 UUnrealStereoCam::Run()
 			if (Now - LastConnectAttempt >= 3.0)
 			{
 				LastConnectAttempt = Now;
-				TryConnect();          // blocks this thread only, briefly and boundedly
+				TryConnect();          // Blocks this thread only, for at most 2 s
 			}
 			else
 			{

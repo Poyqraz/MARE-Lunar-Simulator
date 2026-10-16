@@ -1,8 +1,8 @@
-// UnrealStereoCam: pushes stereo/navcam frames to ROS without stalling the game.
+// UnrealStereoCam: streams stereo/navcam frames to ROS without stalling the game.
 //
-// Each SceneCapture renders as part of the normal frame on the render thread, the readback is asynchronous (FRHIGPUTextureReadback,
-// polled until ready, never flushed), and completed frames go out over TCP
-// from a worker thread. The game thread only enqueues copies and memcpys.
+// The captures render on the render thread, their readback is asynchronous
+// (FRHIGPUTextureReadback, polled until ready, never flushed), and finished
+// frames go out over TCP from a worker thread. The game thread only queues work.
 //
 // All captures enqueued in one tick share a frame id (GFrameCounter), which is
 // what lets the ROS side pair left/right images from the same world state.
@@ -36,6 +36,7 @@
 #include "RHIGPUReadback.h"
 #include "HAL/Runnable.h"
 #include "HAL/RunnableThread.h"
+#include "HAL/ThreadSafeBool.h"
 #include "Containers/Queue.h"
 #include "UnrealStereoCam.generated.h"
 
@@ -66,18 +67,13 @@ struct FPendingReadback
 	int64 StampNs = 0;              // Capture time, simulation clock
 };
 
-// Shared between three threads through a ref-counted pointer, so it outlives
-// whichever drops its reference last and teardown never has to block:
-//   - Pending: created, polled, locked and freed ONLY on the render thread.
-//     Every earlier crash/freeze came from touching readbacks off the render
-//     thread; here the game thread never does.
-//   - Ready: lock-free MPSC handoff. The render thread pushes finished frames,
-//     the sender thread pops them. No lock, no wait.
-// The component, each in-flight render command, and the sender thread each
-// hold a shared reference. The last one to finish frees this — and with it
-// the FRHIGPUTextureReadback objects — on whatever thread that happens to be,
-// which for in-flight render commands is the render thread. Correct by
-// construction, with no FlushRenderingCommands / fence / join to stall on.
+// Shared by the component, the in-flight render commands and the sender thread
+// through a ref-counted pointer, so teardown never has to block:
+//   - Pending: readbacks, created, polled, locked and freed only on the render
+//     thread (touching them from another thread is unsafe).
+//   - Ready: lock-free handoff of finished frames, render thread -> sender.
+// The last holder frees it, and with it the readbacks; for an in-flight render
+// command that is the render thread. No FlushRenderingCommands or fence needed.
 struct FStereoCamStreamState
 {
 	TArray<FPendingReadback> Pending;                      // render thread only
@@ -99,33 +95,25 @@ public:
 	UPROPERTY(EditAnywhere, Category = "StereoCam|Network")
 	int32 ServerPort = 3004;
 
-	// Frames per second pushed to ROS. The stereo node's default
-	// image_reading_hz_rate is 1 Hz; every frame beyond what it actually
-	// consumes is still fully parsed and BGRA->RGB converted by the receiver
-	// for nothing — at 640x480x4 bytes x3 cameras, each extra Hz here is
-	// ~3.7 MB/s of wasted work. Keep this close to (a small margin above)
-	// the consumer's real rate, not high "for safety". Frames per simulated
-	// (game) second, so the rate holds when the editor runs below real time.
+	// Frames per simulated (game) second sent to ROS, so the rate holds when the
+	// editor runs below real time. Keep it slightly above the rate the ROS node
+	// consumes: the receiver still parses every extra frame (about 3.7 MB/s per
+	// Hz for three 640x480 cameras).
 	UPROPERTY(EditAnywhere, Category = "StereoCam", meta = (ClampMin = "0.5", ClampMax = "30"))
 	float SendHz = 2.0f;
 
-	// Render the captures only when a frame is sent (SendHz), instead of every
-	// engine frame. Each capture is a full scene render prepared on the render
-	// thread, and most of those were never sent: at ~13 engine frames/s and
-	// SendHz 5, about 60% of them. The captures keep their rendering state
-	// (exposure, temporal AA, Lumen) between renders. Off: every frame, as
-	// before.
+	// Render the captures only when a frame is sent (SendHz) instead of every
+	// engine frame, saving a full scene render per camera on the other frames.
+	// The captures keep their rendering state (exposure, temporal AA, Lumen)
+	// between renders.
 	UPROPERTY(EditAnywhere, Category = "StereoCam")
 	bool bCaptureOnDemand = true;
 
-	// The three navcam SceneCapture2Ds, selected by name from a dropdown
-	// listing every SceneCapture2D in reach (this blueprint's components tree,
-	// or the world when placed in a level). Resolved at BeginPlay with a log
-	// line per camera saying what was found and where.
-	//
-	// Direct object pointers cannot work here: the details panel cannot point
-	// a plain component property at a per-instance component, which is why a
-	// pointer field only ever offered loaded templates.
+	// The three navcam SceneCapture2Ds, chosen by name from every SceneCapture2D
+	// in reach (this Blueprint's components, or the world when placed in a
+	// level). Names rather than object pointers, because the details panel
+	// cannot point a component property at a per-instance component. Resolved
+	// at BeginPlay, with a log line per camera.
 	UPROPERTY(EditAnywhere, Category = "StereoCam|Cameras",
 	          meta = (GetOptions = "GetSceneCaptureNames"))
 	FName LeftCaptureName = TEXT("NavcamLeft");
@@ -138,52 +126,37 @@ public:
 	          meta = (GetOptions = "GetSceneCaptureNames"))
 	FName CenterCaptureName = TEXT("NavcamCenter");
 
-	// Optional object-segmentation capture. Point this at a SceneCapture whose
-	// post-process material colours each object from the Custom Depth-Stencil
-	// buffer. Leave
-	// blank to stream no mask. It rides the same path as the RGB cameras: same
-	// frame id, so the ROS side overlays it on the central image. Nothing about
-	// the segmentation lives in this plugin — the colours come entirely from the
-	// material on the capture; here it is just another SceneCapture to read back.
+	// Optional object-mask capture: a SceneCapture whose post-process material
+	// colours each object from the Custom Depth-Stencil buffer. Blank streams no
+	// mask. It shares the cameras' frame id, so ROS can overlay it on the
+	// central image; the colours come entirely from the material.
 	UPROPERTY(EditAnywhere, Category = "StereoCam|Cameras",
 	          meta = (GetOptions = "GetSceneCaptureNames"))
 	FName MaskCaptureName;
 
-	// Also stream the ground-truth depth of the central camera: a depth-only
-	// capture created at BeginPlay, attached to the centre capture with its
-	// FOV and resolution, so it sees exactly the same view. Each pixel is
-	// Unreal's scene depth (centimetres along the camera axis), sent as float
-	// (format 2) on DepthCamId. Nothing to add to the blueprint.
+	// Also stream the central camera's ground-truth depth: a depth-only capture
+	// created at BeginPlay with the central camera's pose, FOV and size. Each
+	// pixel is Unreal's scene depth (cm along the camera axis), sent as float
+	// (format 2) on DepthCamId.
 	UPROPERTY(EditAnywhere, Category = "StereoCam|Cameras")
 	bool bStreamCenterDepth = true;
 
-	// Feeds the dropdowns above. Lists the blueprint's own SceneCapture2D
-	// components when editing the blueprint, plus every instance in the world
-	// when placed in a level.
+	// Options for the dropdowns above.
 	UFUNCTION()
 	TArray<FString> GetSceneCaptureNames() const;
 
-	// Captures with no TextureRenderTarget2D assigned get one created at this
-	// size automatically (RGBA8). All stereo captures must share one size: the
-	// ROS node solves the rig at the first size and refuses mismatched frames.
+	// Size of the RGBA8 render target created for a capture that has none. All
+	// stereo captures must share one size: the ROS node rejects mismatched frames.
 	UPROPERTY(EditAnywhere, Category = "StereoCam|Cameras")
 	int32 CaptureWidth = 640;
 
 	UPROPERTY(EditAnywhere, Category = "StereoCam|Cameras")
 	int32 CaptureHeight = 480;
 
-	// Lock the captures to manual exposure instead of auto-exposing. Useful
-	// for the glare study (auto-exposure would hide the saturation being
-	// measured, and could let the two eyes expose differently from each
-	// other, poisoning stereo matching) — but NOT the fix for a white image
-	// from sporadic captures; that turned out to be a capture-timing bug, not
-	// exposure. Off by default: verify the base image is correct with this
-	// off before turning it on.
-	//
-	// Manual mode (AEM_Manual) disables scene metering, so there is no
-	// scene-dependent feedback loop to fight. ExposureCompensationEV is a
-	// plain brightness dial: 0 = neutral, positive = brighter, negative =
-	// darker.
+	// Use manual exposure (AEM_Manual) instead of auto-exposure, so both eyes
+	// expose identically and saturation is not adapted away (e.g. glare
+	// studies). ExposureCompensationEV then sets the brightness: 0 neutral,
+	// positive brighter, negative darker.
 	UPROPERTY(EditAnywhere, Category = "StereoCam|Cameras")
 	bool bLockExposure = false;
 
@@ -191,16 +164,10 @@ public:
 	          meta = (EditCondition = "bLockExposure"))
 	float ExposureCompensationEV = 0.0f;
 
-	// Constrain the AUTO-exposure range. Ignored when bLockExposure is on (that
-	// switches to manual metering, which has no adapting range). Unreal's auto-
-	// exposure adapts brightness between a min and max EV100; clamping the range
-	// stops the dim lunar surface from being driven to white (max too high) or
-	// crushed to black (min too low). Setting MinEV100 == MaxEV100 pins a fixed
-	// exposure — the same on both stereo eyes, so their brightness matches
-	// without disabling metering entirely. These map onto the capture's
-	// PostProcessSettings AutoExposure Min/Max Brightness, which carry EV100
-	// values under UE5's extended luminance range (the editor labels them
-	// "Min EV100" / "Max EV100").
+	// Clamp the auto-exposure range (EV100), so a dim scene is neither blown to
+	// white nor crushed to black. Equal values pin one exposure on both eyes.
+	// Sets the captures' Min/Max EV100 post-process overrides; ignored with
+	// bLockExposure.
 	UPROPERTY(EditAnywhere, Category = "StereoCam|Cameras")
 	bool bLimitAutoExposure = false;
 
@@ -236,7 +203,7 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 
-	// FRunnable — the sender thread drains the packet queue into the socket.
+	// FRunnable: the sender thread drains the packet queue into the socket.
 	virtual uint32 Run() override;
 	virtual void Stop() override;
 
@@ -246,20 +213,14 @@ private:
 	// Creates the centre camera's depth capture (bStreamCenterDepth).
 	void AddCenterDepthCapture();
 
-	// Enqueues ONE render command per send tick that does everything on the
-	// render thread: drain the readbacks started last tick (now finished on
-	// the GPU) into Ready, then start this tick's readbacks. The game thread
-	// only gathers render-target pointers and posts the command — it never
-	// locks, waits, or frees a readback.
+	// Posts one render command per send: it moves finished readbacks to Ready,
+	// then starts this send's readbacks. The game thread never locks, waits on
+	// or frees a readback.
 	void PumpCaptures();
 
-	// Socket ownership lives ENTIRELY on the background thread (Run()): create,
-	// connect, send, close. FSocket::Connect() is synchronous and can block for
-	// the OS TCP timeout; calling it from TickComponent — as an earlier version
-	// of this file did — freezes the whole engine (render, input, everything)
-	// for that duration, every retry. TryConnect uses a non-blocking socket
-	// with a short bounded Wait() so even this thread never stalls for long,
-	// keeping EndPlay's Kill(true) join bounded too.
+	// Sender thread only, like all socket I/O: a blocking connect on the game
+	// thread would freeze the editor for the OS TCP timeout. Non-blocking, with
+	// a bounded wait, so EndPlay's join of the thread stays short too.
 	bool TryConnect();
 
 	// Captures found by name at BeginPlay.

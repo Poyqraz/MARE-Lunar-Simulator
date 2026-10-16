@@ -101,9 +101,9 @@ namespace
 }
 
 // -----------------------------------------------------------------------------
-// GPU mode: depth captures read back asynchronously. Like UnrealStereoCam,
-// readbacks are created, polled, locked and freed only on the render thread;
-// finished scans reach the game thread through a lock-free queue.
+// GPU mode: depth captures read back asynchronously. Readbacks are created,
+// polled, locked and freed only on the render thread; finished scans reach the
+// game thread through a lock-free queue.
 // -----------------------------------------------------------------------------
 
 struct FGpuScanJob
@@ -729,7 +729,7 @@ void UUnrealLidarCam::Publish(double Stamp, uint64 FrameId, const TArray<float>&
 bool UUnrealLidarCam::TryConnect()
 {
 	// Sender thread only: a non-blocking connect with a bounded wait, so neither
-	// this thread nor EndPlay's join can stall for long (as in UnrealStereoCam).
+	// this thread nor EndPlay's join can stall for long.
 	ISocketSubsystem* Subsystem = ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM);
 	FIPv4Address Ip;
 	if (!FIPv4Address::Parse(ServerIp, Ip))

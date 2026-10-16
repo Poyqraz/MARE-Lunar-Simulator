@@ -323,6 +323,7 @@ void UUnrealSPADCam::PumpCapture()
 				S->Pending.RemoveAt(i);
 			}
 
+			// Never let readbacks pile up unbounded (consumer stalled).
 			while (S->Pending.Num() > 8)
 			{
 				S->Pending.RemoveAt(0);
@@ -351,6 +352,7 @@ namespace
 		}
 	}
 
+	// Sends a whole buffer, waiting for room as needed; false on socket error.
 	bool SendAll(FSocket* Socket, const uint8* Data, int32 Num, const FThreadSafeBool& bStop)
 	{
 		int32 Offset = 0;
@@ -359,10 +361,8 @@ namespace
 			int32 Sent = 0;
 			if (!Socket->Send(Data + Offset, Num - Offset, Sent))
 			{
-				// The socket is non-blocking: a full send buffer (a big packet,
-				// e.g. the burst of events of the first frames) answers "would
-				// block", which is not a broken link. Wait for room and try again;
-				// only a real error drops the link.
+				// Non-blocking socket: a full send buffer is "would block", not
+				// a broken link. Wait for room; only a real error drops the link.
 				const ESocketErrors Error =
 					ISocketSubsystem::Get(PLATFORM_SOCKETSUBSYSTEM)->GetLastErrorCode();
 				if (Error == SE_EWOULDBLOCK || Error == SE_NO_ERROR)
@@ -414,8 +414,6 @@ uint32 UUnrealSPADCam::Run()
 			continue;
 		}
 
-		// BGRA8 -> mono8 intensity (Rec. 601 luma). The SPAD model on the ROS
-		// side expects an 8-bit intensity image.
 		const int32 Bytes = sizeof(FSpadPacketHeader) + N;
 		Packet.SetNumUninitialized(Bytes);
 
@@ -429,6 +427,7 @@ uint32 UUnrealSPADCam::Run()
 		Hd->PayloadSize = static_cast<uint32>(N);
 		Hd->Reserved = 0;
 
+		// BGRA8 -> mono8 intensity (Rec. 601 luma), what the SPAD model expects.
 		uint8* Dest = Packet.GetData() + sizeof(FSpadPacketHeader);
 		const uint8* P = Frame.Bgra.GetData();
 		for (int32 i = 0; i < N; ++i)

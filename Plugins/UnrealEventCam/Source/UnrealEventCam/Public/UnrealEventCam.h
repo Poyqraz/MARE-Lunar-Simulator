@@ -1,11 +1,10 @@
 // UnrealEventCam: a simulated event (DVS) camera for Unreal.
 //
-// A SceneCapture renders an intensity image with each game frame; its readback
-// is asynchronous (never stalls the game thread, same design as the sibling
-// UnrealStereoCam plugin). A worker thread converts each frame to grayscale,
-// runs the ESIM event-generation model (see EventSimulator.h — ported from
-// rpg_esim, MIT (c) 2018 Robotics and Perception Group), and streams the
-// resulting events to a ROS node over TCP.
+// A SceneCapture renders an intensity image with each game frame, read back
+// asynchronously so the game thread never stalls. A worker thread converts each
+// frame to grayscale, runs the ESIM event-generation model (EventSimulator.h,
+// ported from rpg_esim, MIT (c) 2018 Robotics and Perception Group), and
+// streams the events to a ROS node over TCP.
 //
 // Accuracy note: ESIM assumes the intensity signal is sampled far faster than
 // the scene changes. Here the sampling rate is the render frame rate, so fast
@@ -62,8 +61,8 @@ struct FEventReadyFrame
 };
 
 // Shared between the render commands and the worker through a ref-counted
-// pointer, so teardown never has to block (same pattern as UnrealStereoCam):
-//   Pending : created, polled, locked and freed ONLY on the render thread.
+// pointer, so teardown never has to block:
+//   Pending : created, polled, locked and freed only on the render thread.
 //   Ready   : lock-free MPSC handoff, render thread -> worker thread.
 struct FEventStreamState
 {
@@ -90,11 +89,10 @@ public:
 	UPROPERTY(EditAnywhere, Category = "EventCam|Network")
 	int32 CamId = 0;
 
-	// The SceneCapture2D this event camera renders from, chosen by name from a
-	// dropdown of every SceneCapture2D in reach (this blueprint's components, or
-	// the world when placed in a level). Same selection scheme as
-	// UnrealStereoCam — no object pickers, which cannot target per-instance
-	// components from the details panel.
+	// The SceneCapture2D this event camera renders from, chosen by name from
+	// every SceneCapture2D in reach (this Blueprint's components, or the world
+	// when placed in a level). Names rather than object pointers, because the
+	// details panel cannot point at a per-instance component.
 	UPROPERTY(EditAnywhere, Category = "EventCam|Camera",
 	          meta = (GetOptions = "GetSceneCaptureNames"))
 	FName CaptureName = TEXT("EventCam");
@@ -103,8 +101,7 @@ public:
 	TArray<FString> GetSceneCaptureNames() const;
 
 	// If the capture has no render target, one is created at this size (RGBA8).
-	// DVS sensors are low-resolution; keep this modest — the event model is O(W*H)
-	// per frame on the CPU.
+	// Keep it modest: the event model costs O(W*H) per frame on the CPU.
 	UPROPERTY(EditAnywhere, Category = "EventCam|Camera")
 	int32 CaptureWidth = 346;
 
@@ -114,8 +111,8 @@ public:
 	// Upper bound on how often frames are sampled for event generation (Hz, per
 	// simulated (game) second, so it holds when the editor runs below real time).
 	// The capture still renders every frame; this only caps the readback/event
-	// rate. 0 = every rendered frame (most accurate, most CPU). Higher is better
-	// for event fidelity — unlike an RGB stream, undersampling here loses events.
+	// rate. 0 = every rendered frame (most accurate, most CPU); undersampling
+	// loses events.
 	UPROPERTY(EditAnywhere, Category = "EventCam|Camera", meta = (ClampMin = "0", ClampMax = "1000"))
 	float MaxSampleHz = 0.0f;
 
@@ -148,7 +145,7 @@ public:
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
 	                           FActorComponentTickFunction* ThisTickFunction) override;
 
-	// FRunnable — the worker thread runs the event model and drains to the socket.
+	// FRunnable: the worker thread runs the event model and drains to the socket.
 	virtual uint32 Run() override;
 	virtual void Stop() override;
 
