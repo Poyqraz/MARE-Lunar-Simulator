@@ -28,8 +28,9 @@ DerivedData/
 .vscode/
 
 # --- Plugins ---
-# Ignore binaries and intermediate files inside plugins
+# Ignore binaries and intermediate files inside plugins (TAPython ships only as binaries, so they are kept)
 Plugins/*/Binaries/
+!Plugins/TAPython/Binaries/
 Plugins/*/Intermediate/
 
 # --- Crash Reports & Logs ---
