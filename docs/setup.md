@@ -1,17 +1,37 @@
 # Setup
 
-## Clone
+## Clone the suite
 
-The levels and assets are stored with [Git LFS](https://git-lfs.com). Install it
-before cloning, or the `.uasset` and `.umap` files arrive as small text
-pointers that Unreal cannot open:
+Clone the repositories side by side in one folder. Terrain Studio finds the GNC
+stack's copy of the mask classes when the two sit next to each other.
 
 ```sh
-git lfs install
+git lfs install                # once: this project's levels and assets are in Git LFS
+mkdir MARE && cd MARE
 git clone https://github.com/raulcastar/MARE-Lunar-Simulator.git
+git clone https://github.com/raulcastar/GNC-Moon-Simulator.git
+git clone https://github.com/raulcastar/Unreal-Moon-Terrain-Generation.git
 ```
 
-In a clone made without LFS, run `git lfs pull`.
+| Repository | Needed for |
+|---|---|
+| MARE-Lunar-Simulator | Always: the Unreal project |
+| GNC-Moon-Simulator | Driving the rover: perception, planning, mission control |
+| Unreal-Moon-Terrain-Generation | Building your own terrains, rocks, masks and sun |
+
+Without Git LFS installed first, the `.uasset` and `.umap` files arrive as small
+text pointers that Unreal cannot open; in such a clone, run `git lfs pull`.
+
+The sensor plugins are already in `Plugins/`. Clone their own repositories only
+to work on them (then copy the plugin folder back into `Plugins/`):
+
+```sh
+git clone https://github.com/raulcastar/UnrealStereoCam.git
+git clone https://github.com/raulcastar/UnrealLidarCam.git
+git clone https://github.com/raulcastar/UnrealEventCam.git
+git clone https://github.com/raulcastar/UnrealSPADCam.git
+git clone https://github.com/raulcastar/UnrealSimClock.git
+```
 
 ## Unreal Engine and the plugins
 
@@ -57,8 +77,9 @@ They are set in `Config/DefaultEngine.ini`; check them after cloning:
 | GNC stack | [GNC-Moon-Simulator](https://github.com/raulcastar/GNC-Moon-Simulator) | WSL2 with mirrored networking, Docker; ROS 2 Jazzy runs in the containers |
 | Terrain Studio | [Unreal-Moon-Terrain-Generation](https://github.com/raulcastar/Unreal-Moon-Terrain-Generation) | Python 3 with Tkinter; the editor open |
 
-Clone them next to this one. Nothing in this project depends on where they
-are: they connect to the editor over `127.0.0.1`.
+They connect to the editor over `127.0.0.1`, so this project does not depend
+on where they are cloned ([Clone the suite](#clone-the-suite) puts them side by
+side).
 
 ## First run
 

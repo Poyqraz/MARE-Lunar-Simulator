@@ -55,7 +55,7 @@ tracks:
 ![Front and rear cameras with their object and shadow masks](docs/images/ground_truth.webp)
 
 *The front navcam and the rear camera during a drive, with their ground-truth object
-masks and shadow masks (5x speed; [video](docs/videos/ground_truth.mp4) at 2.5x). Ahead, the rover's own
+masks and shadow masks (2.4x speed; [video](docs/videos/ground_truth.mp4) at 1.2x). Ahead, the rover's own
 shadow (orange) is labelled apart from the terrain's shadows; behind, the wheel
 tracks it leaves are their own class in the object mask.*
 
@@ -74,9 +74,14 @@ path, masks, global map, lidar, local elevation map and telemetry:
 ## Quick start
 
 ```sh
-git lfs install
+git lfs install                # once: the Unreal assets are in Git LFS
 git clone https://github.com/raulcastar/MARE-Lunar-Simulator.git
+git clone https://github.com/raulcastar/GNC-Moon-Simulator.git
+git clone https://github.com/raulcastar/Unreal-Moon-Terrain-Generation.git
 ```
+
+Clone them side by side; what each is for, and the plugin repositories:
+[docs/setup.md](docs/setup.md#clone-the-suite).
 
 1. Open `Moon_Simulator.uproject` and let Unreal build the plugins ([docs/setup.md](docs/setup.md)). It opens on `Lunar_Terrain_Raph`.
 2. Start the GNC stack ([GNC-Moon-Simulator](https://github.com/raulcastar/GNC-Moon-Simulator#quick-start)), press **Play**, and open mission control at http://127.0.0.1:5000 to send the rover to a goal.
