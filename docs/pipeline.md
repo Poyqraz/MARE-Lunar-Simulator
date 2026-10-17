@@ -48,6 +48,15 @@ until their node is up; the rover connects once per Play.
 - **Ground truth** comes with the images: depth in metres, and an object mask in which every pixel carries a class (landscape, crater, crater rim, boulder, small rock, wheel track, rover, sun…) plus a shadow bit. Terrain Studio sets these classes up; the ids are in its [masks docs](https://github.com/raulcastar/Unreal-Moon-Terrain-Generation/blob/main/docs/masks.md#object-mask-ids).
 - **Editor Python** runs alongside: the Terrain Studio watcher keeps the masks aligned with the sun and lays wheel tracks during Play, and the viewport camera follows what mission control asks for (follow, orbit, top-down).
 
+The navcams and the rear camera each have both masks. The shadow mask labels sky, sunlit and shadowed ground, sunlit and shadowed objects, and the rover's own shadow:
+
+![Front and rear cameras with their object and shadow masks](images/ground_truth.webp)
+
+*The front navcam and the rear camera during a drive, with their ground-truth object
+masks and shadow masks (5x speed; [video](videos/ground_truth.mp4) at 2.5x). Ahead, the rover's own
+shadow (orange) is labelled apart from the terrain's shadows; behind, the wheel
+tracks it leaves are their own class in the object mask.*
+
 ## 3. Drive (GNC stack)
 
 [GNC-Moon-Simulator](https://github.com/raulcastar/GNC-Moon-Simulator) runs one

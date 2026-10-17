@@ -48,6 +48,17 @@ sets ([video](docs/videos/flyover.mp4)):
 
 ![Stereo depth, lidar, event camera and SPAD camera](docs/images/sensors.webp)
 
+**Ground truth.** The navcams and the rear camera come with pixel-exact masks
+of object classes and shadows, including the rover's own shadow and its wheel
+tracks:
+
+![Front and rear cameras with their object and shadow masks](docs/images/ground_truth.webp)
+
+*The front navcam and the rear camera during a drive, with their ground-truth object
+masks and shadow masks (5x speed; [video](docs/videos/ground_truth.mp4) at 2.5x). Ahead, the rover's own
+shadow (orange) is labelled apart from the terrain's shadows; behind, the wheel
+tracks it leaves are their own class in the object mask.*
+
 **Mission control.** The web dashboard during a drive: navcams with the planned
 path, masks, global map, lidar, local elevation map and telemetry:
 
