@@ -6,9 +6,16 @@
 
 | Level | What it is |
 |---|---|
-| `Lunar_Terrain_Raph` | The default level (editor and game): Leo_Raph on the `Moon_Terrain_Unreal` Landscape |
-| `Lunar_Terrain_Yutu` | Yutu on the `procedural_lunar_terrain` Landscape, with its planned rock field |
+| `Lunar_Terrain_Raph` | The default level (editor and game): Leo_Raph |
+| `Lunar_Terrain_Yutu` | The same level with Yutu |
 | `Lunar_Demo` | A 300 × 300 m mare built with Terrain Studio, with its 974 planned rocks: the fly-over and shadow comparisons in the README |
+
+Both rover levels share one terrain: the Landscape `procedural_lunar_terrain_elevationMap_heightmap`
+and the rock field `procedural_lunar_terrain_1_2_rocks`, the terrain the GNC
+planner's default maps (`procedural_lunar_terrain_1_elevationMap_2.csv` and its
+soil map) and the crater map describe. Keep them in step: a level on a
+different terrain needs its own planner maps and its own crater map (see
+[the crater map](#the-crater-map-is-shared)).
 
 The GNC stack drives one rover at a time; open the rover's level and choose the
 same rover in mission control (see
@@ -66,6 +73,17 @@ there and copied in.
 | `rover_cameras.py` | from either | Follow, orbit and top-down viewport cameras; also callable from the Output Log (`import rover_cameras as rc; rc.orbit()`) |
 
 Terrain Studio refreshes `Python/TerrainStudio/` whenever it sends to Unreal.
+
+## The crater map is shared
+
+The object mask's craters come from one material, `GroundTruth_Masks/Mask/PPM_GroundTruthMask`,
+which holds a single crater map (`GroundTruth_Masks/CraterMaps/T_CraterIds_<map>`)
+and its placement. Terrain Studio's **Send Masks to Unreal** rewrites both for
+the map it sends, so it changes the craters in **every** level. Today the two
+rover levels share the `_1_2` map. After sending masks for
+another terrain, send the original map again (or keep that work in a separate
+project) before recording ground truth in these levels; rocks, the rover and
+wheel tracks are tagged per actor and are not affected.
 
 ## Settings
 
