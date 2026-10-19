@@ -8,7 +8,6 @@
 |---|---|
 | `Lunar_Terrain_Raph` | The default level (editor and game): Leo_Raph |
 | `Lunar_Terrain_Yutu` | The same level with Yutu |
-| `Lunar_Demo` | A 300 × 300 m mare built with Terrain Studio, with its 974 planned rocks: the fly-over and shadow comparisons in the README |
 
 Both rover levels share one terrain: the Landscape `procedural_lunar_terrain_elevationMap_heightmap`
 and the rock field `procedural_lunar_terrain_1_2_rocks`, the terrain the GNC
