@@ -1,0 +1,170 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 790" width="1200" height="790" font-family="Segoe UI, Helvetica, Arial, sans-serif">
+  <title>MARE pipeline: Terrain Studio builds the world in Unreal, the sensor plugins stream to the ROS 2 GNC stack, which drives the rover back</title>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#4a5563"/>
+    </marker>
+    <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a6d1f"/>
+    </marker>
+    <style>
+      .t  { font-size: 22px; font-weight: 700; fill: #1d2430; }
+      .h  { font-size: 17px; font-weight: 700; fill: #1d2430; }
+      .b  { font-size: 14.5px; font-weight: 700; fill: #1d2430; }
+      .s  { font-size: 13px; fill: #3b4552; }
+      .m  { font-size: 12px; fill: #5b6573; font-family: Consolas, Menlo, monospace; }
+      .l  { font-size: 12.5px; fill: #4a5563; }
+      .lg { font-size: 12.5px; fill: #8a6d1f; }
+      .box { fill: #ffffff; stroke: #c9d1db; stroke-width: 1.2; }
+      .ai  { fill: #f1eef8; stroke: #b9acd9; stroke-width: 1.2; }
+      .w  { stroke: #4a5563; stroke-width: 1.6; fill: none; }
+      .g  { stroke: #8a6d1f; stroke-width: 1.6; fill: none; stroke-dasharray: 6 4; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="790" fill="#f6f7f9"/>
+  <text x="40" y="44" class="t">MARE: from a terrain to an autonomous drive</text>
+  <text x="40" y="68" class="s">Each column is its own repository; the arrows are the links between them, all on one machine (127.0.0.1).</text>
+
+  <!-- ===== Column 1: Terrain Studio ===== -->
+  <rect x="30" y="92" width="330" height="580" rx="14" fill="#eef4ea" stroke="#9cbf8a" stroke-width="1.5"/>
+  <text x="50" y="122" class="h">1 · Terrain Studio</text>
+  <text x="50" y="141" class="m">Unreal-Moon-Terrain-Generation · Python</text>
+
+  <rect x="50" y="158" width="282" height="62" rx="9" class="box"/>
+  <text x="64" y="181" class="b">Terrain</text>
+  <text x="64" y="200" class="s">Procedural DEM with craters,</text>
+  <text x="64" y="215" class="s">or a real one (LRO NAC GeoTIFF)</text>
+
+  <rect x="50" y="232" width="282" height="62" rx="9" class="box"/>
+  <text x="64" y="255" class="b">Rocks &amp; rover corridors</text>
+  <text x="64" y="274" class="s">Lunar size distribution, kept off</text>
+  <text x="64" y="289" class="s">Voronoi corridors and crater bowls</text>
+
+  <rect x="50" y="306" width="282" height="62" rx="9" class="box"/>
+  <text x="64" y="329" class="b">Ground-truth masks</text>
+  <text x="64" y="348" class="s">Crater ids, shadows, wheel tracks,</text>
+  <text x="64" y="363" class="s">rover shadow, object-mask ids</text>
+
+  <rect x="50" y="380" width="282" height="62" rx="9" class="box"/>
+  <text x="64" y="403" class="b">Sun</text>
+  <text x="64" y="422" class="s">Azimuth and elevation, with the</text>
+  <text x="64" y="437" class="s">shadows predicted on the DEM</text>
+
+  <line x1="191" y1="220" x2="191" y2="231" class="w" marker-end="url(#a)"/>
+  <line x1="191" y1="294" x2="191" y2="305" class="w" marker-end="url(#a)"/>
+  <line x1="191" y1="368" x2="191" y2="379" class="w" marker-end="url(#a)"/>
+
+  <rect x="50" y="470" width="282" height="72" rx="9" class="ai"/>
+  <text x="64" y="493" class="b">MCP server</text>
+  <text x="64" y="512" class="s">An AI agent builds terrains, rocks</text>
+  <text x="64" y="527" class="s">and the sun, and starts Play</text>
+
+  <rect x="50" y="562" width="282" height="88" rx="9" fill="#fbf6e6" stroke="#d9c58a"/>
+  <text x="64" y="585" class="b">Maps for the planner</text>
+  <text x="64" y="605" class="m">outputs/&lt;name&gt;/</text>
+  <text x="64" y="622" class="m">  &lt;name&gt;_elevationMap.csv</text>
+  <text x="64" y="639" class="m">  &lt;name&gt;_soilMap.csv</text>
+
+  <!-- ===== Column 2: Unreal ===== -->
+  <rect x="435" y="92" width="330" height="580" rx="14" fill="#e9f0f8" stroke="#8fb0d6" stroke-width="1.5"/>
+  <text x="455" y="122" class="h">2 · Unreal Engine 5.7</text>
+  <text x="455" y="141" class="m">MARE-Lunar-Simulator (this repo)</text>
+
+  <rect x="455" y="158" width="290" height="88" rx="9" class="box"/>
+  <text x="469" y="181" class="b">The level</text>
+  <text x="469" y="200" class="s">Landscape from the heightmap, rocks</text>
+  <text x="469" y="215" class="s">as instanced meshes, the sun, the</text>
+  <text x="469" y="230" class="s">ground-truth post-process mask</text>
+
+  <rect x="455" y="258" width="290" height="132" rx="9" class="box"/>
+  <text x="469" y="281" class="b">Sensor plugins</text>
+  <text x="469" y="302" class="s"><tspan font-weight="600">UnrealStereoCam</tspan> navcams, depth, mask</text>
+  <text x="469" y="320" class="s"><tspan font-weight="600">UnrealLidarCam</tspan> lidar scans</text>
+  <text x="469" y="338" class="s"><tspan font-weight="600">UnrealEventCam</tspan> DVS events (ESIM)</text>
+  <text x="469" y="356" class="s"><tspan font-weight="600">UnrealSPADCam</tspan> frames for the SPAD model</text>
+  <text x="469" y="374" class="s"><tspan font-weight="600">UnrealSimClock</tspan> simulation time</text>
+
+  <rect x="455" y="402" width="290" height="88" rx="9" class="box"/>
+  <text x="469" y="425" class="b">The rover</text>
+  <text x="469" y="444" class="s">Leo_Raph (4 wheels) or Yutu (6),</text>
+  <text x="469" y="459" class="s">physics wheels; TCP link for wheel</text>
+  <text x="469" y="474" class="s">commands and pose telemetry</text>
+
+  <rect x="455" y="502" width="290" height="148" rx="9" class="box"/>
+  <text x="469" y="525" class="b">Editor Python</text>
+  <text x="469" y="544" class="s">Remote Execution and TAPython,</text>
+  <text x="469" y="559" class="s">through which the studio builds</text>
+  <text x="469" y="574" class="s">the level; the studio's watcher</text>
+  <text x="469" y="589" class="s">(masks, wheel tracks in Play);</text>
+  <text x="469" y="604" class="s">the viewport cameras: follow,</text>
+  <text x="469" y="619" class="s">orbit and top-down</text>
+
+  <!-- ===== Column 3: GNC ===== -->
+  <rect x="840" y="92" width="330" height="580" rx="14" fill="#f8ece9" stroke="#d6a197" stroke-width="1.5"/>
+  <text x="860" y="122" class="h">3 · GNC stack</text>
+  <text x="860" y="141" class="m">GNC-Moon-Simulator · ROS 2 Jazzy · Docker</text>
+
+  <rect x="860" y="158" width="290" height="104" rx="9" class="box"/>
+  <text x="874" y="181" class="b">Perception</text>
+  <text x="874" y="200" class="s">Stereo depth (SGBM), lidar, IMU,</text>
+  <text x="874" y="215" class="s">event and SPAD cameras, object and</text>
+  <text x="874" y="230" class="s">shadow masks, local elevation map</text>
+  <text x="874" y="249" class="m">/clock from Unreal's time</text>
+
+  <rect x="860" y="274" width="290" height="88" rx="9" class="box"/>
+  <text x="874" y="297" class="b">Path planner</text>
+  <text x="874" y="316" class="s">Global route (fast marching) on the</text>
+  <text x="874" y="331" class="s">studio's maps, local DWA, lidar</text>
+  <text x="874" y="346" class="s">obstacle avoidance</text>
+
+  <rect x="860" y="402" width="290" height="88" rx="9" class="box"/>
+  <text x="874" y="425" class="b">Rover node</text>
+  <text x="874" y="444" class="s">/cmd_vel → wheel speeds,</text>
+  <text x="874" y="459" class="s">telemetry → /odom and TF</text>
+
+  <line x1="1005" y1="262" x2="1005" y2="273" class="w" marker-end="url(#a)"/>
+  <line x1="1005" y1="362" x2="1005" y2="401" class="w" marker-end="url(#a)"/>
+  <text x="1013" y="386" class="m">/cmd_vel</text>
+
+  <rect x="860" y="502" width="290" height="70" rx="9" class="box"/>
+  <text x="874" y="525" class="b">Mission control</text>
+  <text x="874" y="544" class="s">Web dashboard: goals, teleop, cameras,</text>
+  <text x="874" y="560" class="s">maps, nodes, rosbags <tspan class="m">:5000 / API :5001</tspan></text>
+
+  <rect x="860" y="584" width="290" height="66" rx="9" class="ai"/>
+  <text x="874" y="607" class="b">MCP server</text>
+  <text x="874" y="626" class="s">An AI agent sends goals, drives,</text>
+  <text x="874" y="641" class="s">reads cameras and records bags</text>
+
+  <!-- ===== Links ===== -->
+  <!-- Studio steps -> Unreal: a bracket over the four steps -->
+  <path d="M332,189 H346 V411 H332 M332,263 H346 M332,337 H346" class="w"/>
+  <path d="M346,300 C395,300 400,202 454,202" class="w" marker-end="url(#a)"/>
+  <text x="366" y="338" class="l">builds the</text>
+  <text x="366" y="353" class="l">level by</text>
+  <text x="366" y="368" class="l">Remote</text>
+  <text x="366" y="383" class="l">Execution</text>
+
+  <!-- Sensors -> perception -->
+  <path d="M745,300 C800,300 805,210 859,210" class="w" marker-end="url(#a)"/>
+  <text x="752" y="330" class="l">TCP 3004–</text>
+  <text x="752" y="345" class="l">3008</text>
+
+  <!-- Rover <-> rover node -->
+  <line x1="746" y1="446" x2="859" y2="446" class="w" marker-start="url(#a)" marker-end="url(#a)"/>
+  <text x="772" y="438" class="l">TCP 3003</text>
+  <text x="757" y="465" class="l">wheels / pose</text>
+
+  <!-- Dashboard -> viewport cameras -->
+  <line x1="859" y1="537" x2="746" y2="537" class="w" marker-end="url(#a)"/>
+  <text x="757" y="529" class="l">viewport mode</text>
+
+  <!-- Studio maps -> planner, around the outside -->
+  <path d="M191,650 V692 H1185 V318 H1151" class="g" marker-end="url(#ag)"/>
+  <text x="440" y="712" class="lg">elevation and soil maps, copied to the planner's maps/ (the global route is planned on the same terrain)</text>
+
+  <!-- Footer -->
+  <text x="40" y="748" class="s">Unreal runs on Windows; the containers run in WSL2 on the same machine. In every TCP link Unreal dials and the container listens.</text>
+  <text x="40" y="768" class="s">Everything is stamped with Unreal's simulation time, so the stack keeps up with the simulation at any speed.</text>
+</svg>
