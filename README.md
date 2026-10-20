@@ -1,5 +1,11 @@
 # MARE: Lunar Rover Simulator
 
+[![Video](https://img.shields.io/badge/Video-YouTube-FF0000?logo=youtube&logoColor=white)](https://youtu.be/EI4HgbMFbBE)
+[![Project page](https://img.shields.io/badge/Project-page-1f6feb)](https://raulcastar.me/mare/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Unreal Engine 5.7](https://img.shields.io/badge/Unreal%20Engine-5.7-313131?logo=unrealengine&logoColor=white)](https://www.unrealengine.com/)
+[![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-22314E?logo=ros&logoColor=white)](https://docs.ros.org/en/jazzy/)
+
 **MARE** (*Modular Autonomy and Rendering Environment*, after the lunar maria)
 is an open simulation suite for lunar rovers in Unreal Engine 5. It generates
 lunar terrain with craters, rocks and a low sun, renders it for the rover's
