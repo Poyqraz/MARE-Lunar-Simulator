@@ -7,7 +7,7 @@
 [![ROS 2 Jazzy](https://img.shields.io/badge/ROS%202-Jazzy-22314E?logo=ros&logoColor=white)](https://docs.ros.org/en/jazzy/)
 
 **MARE** (*Modular Autonomy and Rendering Environment*, after the lunar maria)
-is an open simulation suite for lunar rovers in Unreal Engine 5. It generates
+is an open-source lunar rover simulator built on Unreal Engine 5 and ROS 2. It generates
 lunar terrain with craters, rocks and a low sun, renders it for the rover's
 cameras and sensors with ground truth, and drives the rover autonomously with a
 ROS 2 GNC stack, watched from a web mission control.
@@ -57,6 +57,13 @@ sets ([video](docs/videos/flyover.mp4)):
 **Sensors.** Stereo depth, lidar, event and SPAD cameras on the rover:
 
 ![Stereo depth, lidar, event camera and SPAD camera](docs/images/sensors.webp)
+
+**Headlights.** The rovers carry dimmable headlights, switched from mission
+control or an AI agent. With the sun almost off, only what the beams reach is
+visible, as on a night drive or inside a permanently shadowed crater (left: orbit
+camera; right: the front navcam):
+
+![The Raph Rover lighting the dark terrain with its headlights, and its navcam view](docs/images/headlights.webp)
 
 **Ground truth.** The navcams and the rear camera come with pixel-exact masks
 of object classes and shadows, including the rover's own shadow and its wheel
