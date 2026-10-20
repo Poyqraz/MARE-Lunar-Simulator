@@ -1,51 +1,54 @@
-# UnrealSimClock — the simulation time, streamed to ROS as /clock
+# UnrealSimClock
 
-**The simulation time** is defined in `GncSimTime.h`, a small header of which
-every GNC sensor plugin (UnrealStereoCam, UnrealLidarCam, UnrealEventCam,
-UnrealSPADCam) and this plugin carry an **identical copy** in their `Private`
-folder, so no plugin depends on another: `Anchor + World->GetTimeSeconds()`, in
-nanoseconds since the Unix epoch. It follows Unreal's game time (stops when Play
-is paused, follows time dilation). The anchor is the wall clock minus the world
-time when the first plugin asks in a Play session, stored as a tag on the
-world's World Settings so all plugins share it; a new Play session takes a new,
-later anchor, so the clock does not run backwards. Outside Play it is the wall
-clock. Change the copies together (they are checked identical by `md5sum
-unreal/*/Source/*/Private/GncSimTime.h`).
+One simulation clock for Unreal sensor plugins, streamed to ROS as `/clock`.
+It follows Unreal's game time (pauses with Play, follows time dilation) and
+never runs backwards across Play sessions.
 
-**This plugin** only publishes that time. A world subsystem, so nothing to add
-to a Blueprint or level: in every Play session it sends it to
-`component_sim_clock` over TCP every world tick, one 24-byte
-  record each, which that node publishes on `/clock`. The plugin dials the node
-  when Play begins and redials every 2 s while it is not there; connecting and
-  sending never block the game thread (a record the socket cannot take yet is
-  finished on the next tick):
+Part of [MARE](https://github.com/raulcastar/MARE-Lunar-Simulator), an open-source lunar rover
+simulation suite. In its ROS 2 stack,
+[GNC-Moon-Simulator](https://github.com/raulcastar/GNC-Moon-Simulator), the `component_sim_clock` node publishes `/clock` (port 3008).
 
-```
-offset size  field
-0      4     magic 'SCLK'
-4      1     version = 1
-5      3     reserved
-8      8     sim time, ns since the Unix epoch (u64, little-endian)
-16     8     frame (u64): GFrameCounter
-```
+## Requirements
 
-Console variables (read when Play begins): `simclock.Host` (127.0.0.1),
-`simclock.Port` (3008), `simclock.MaxRateHz` (200: at most that many records a
-second; one per tick below it).
+Unreal Engine 5.7 on Windows (the version it is developed and tested with).
+Building from source also needs Visual Studio 2022 with the *Game development
+with C++* workload.
 
-**For Blueprints** (`UGncSimTimeLibrary`, category *GNC | Sim Time*): **Get Sim
-Time Ns String** (exact ns since the Unix epoch, as text: a JSON number cannot
-hold 19 digits) and **Get Sim Time Seconds**. The rover Blueprint puts the first
-in its telemetry as `"t_ns"`, so `component_rover_leo_raph` stamps odometry with
-the time Unreal measured the pose instead of its arrival.
+On the ROS side: ROS 2 Jazzy (Ubuntu 24.04), with the
+`component_sim_clock` node of GNC-Moon-Simulator receiving the stream. The plugin itself has no ROS
+dependency: any program that reads the [wire format](docs/sim-time.md) can use it.
 
-**Bytes for the rover link** (`UGncBytesLibrary`, category *GNC | Bytes*): **GNC
-Bytes To String** (UTF-8, or UTF-16 with a byte-order mark) and **GNC String To
-Bytes** (UTF-8). The rover Blueprint's TCP component receives and emits byte
-arrays: the first turns the bytes from `component_rover_leo_raph` into the JSON
-it parses, the second its telemetry JSON into bytes to emit. They replace the
-SocketIO plugin's CoreUtility nodes, so that plugin is not needed.
+## Install
 
-Install: copy this folder into `<Project>/Plugins/` with the other sensor
-plugins and build (the editor offers to, or `Build.bat UnrealEditor Win64
-Development -Project=<.uproject>` with the editor closed).
+- **Prebuilt (UE 5.7, Win64):** download `UnrealSimClock-<version>-UE5.7-Win64.zip`
+  from [Releases](https://github.com/raulcastar/UnrealSimClock/releases) and extract it
+  into `<YourProject>/Plugins/`.
+- **From source:** clone this repository into `<YourProject>/Plugins/UnrealSimClock`,
+  open the project and answer **Yes** to rebuild the module.
+
+Then check it is enabled under *Edit → Plugins → Project → Other*.
+
+## Use
+
+Nothing to add: it is a world subsystem. Press Play and it streams the time to
+`127.0.0.1:3008`.
+
+It also gives Blueprints **Get Sim Time Ns String** / **Get Sim Time Seconds**,
+and **GNC Bytes To String** / **GNC String To Bytes** for TCP links.
+
+## Dependencies
+
+None: only engine modules. No other plugin needs it to build or run (each
+carries its own copy of `GncSimTime.h`), but ROS nodes running on simulation
+time need its `/clock`, and GNC's rover Blueprint uses its Blueprint nodes.
+
+## Docs
+
+| | |
+|---|---|
+| [Simulation time](docs/sim-time.md) | The shared clock, the `/clock` stream, console variables, Blueprint nodes |
+| [Making a release](docs/release.md) | Building the prebuilt zip for GitHub releases |
+
+## License
+
+[MIT](LICENSE), © 2026 Raul Castilla Arquillo.

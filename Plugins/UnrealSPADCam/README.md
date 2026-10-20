@@ -1,85 +1,63 @@
-# UnrealSPADCam — a simulated single-photon (SPAD) camera front-end
+# UnrealSPADCam
 
-Renders an intensity image with each game frame and streams it to a ROS node
-over TCP, where the **spadSim** photon model turns it into single-photon binary
-frames. Same no-stall design as the sibling `UnrealEventCam` / `UnrealStereoCam`
-plugins: the SceneCapture renders on the render thread, the readback is
-asynchronous, and a worker thread converts to 8-bit grayscale and drains to the
-socket. The game thread never blocks.
+The Unreal side of a simulated single-photon (SPAD) camera: it renders the
+scene and streams grayscale frames to ROS over TCP, where the photon model runs.
 
-## Where the model lives
+![Camera image next to the SPAD frames](docs/images/spad.gif)
 
-This plugin is **only the front-end** — it delivers intensity frames. The SPAD
-sensor model (photon-flux estimation, Poisson photon arrivals, binary
-thresholding, digitisation) runs in the ROS component **`component_spad_camera`**,
-which ports **spadSim** by David Rodriguez-Martinez (MIT). That split keeps the
-physics in Python/numpy — exactly spadSim's implementation — and matches how the
-stereo pipeline works (plugin streams pixels, ROS does the processing).
+*The rover driving in MARE: the camera (left) and the SPAD
+frames after the photon model (right).*
 
-> Upstream model: https://github.com/drodriguezSRL/spadSim (MIT, © 2025 David
-> Rodriguez-Martinez). Related: *"Fast Vision in the Dark: A Case for
-> Single-Photon Imaging in Planetary Navigation"*, arXiv:2510.10597.
+Part of [MARE](https://github.com/raulcastar/MARE-Lunar-Simulator), an open-source lunar rover
+simulation suite. In its ROS 2 stack,
+[GNC-Moon-Simulator](https://github.com/raulcastar/GNC-Moon-Simulator), the `component_spad_camera` node turns the frames into single-photon binary
+frames with [spadSim](https://github.com/drodriguezSRL/spadSim) (port 3006).
 
-## What a SPAD camera is
+## Requirements
 
-A Single-Photon Avalanche Diode pixel fires when it detects **one photon**. In a
-very short exposure a SPAD produces a **binary** frame — 1 where a photon was
-detected, 0 elsewhere — governed by Poisson photon statistics. Summing many
-binary frames reconstructs a grayscale image, which is what makes SPADs strong in
-extreme low light (relevant to lunar permanently-shadowed regions). The ROS node
-does the photon sampling and the reconstruction; this plugin feeds it the scene.
+Unreal Engine 5.7 on Windows (the version it is developed and tested with).
+Building from source also needs Visual Studio 2022 with the *Game development
+with C++* workload.
 
-## Installing as a plugin
+On the ROS side: ROS 2 Jazzy (Ubuntu 24.04), with the
+`component_spad_camera` node of GNC-Moon-Simulator receiving the stream. The plugin itself has no ROS
+dependency: any program that reads the [wire format](docs/wire-format.md) can use it.
 
-This folder **is** the plugin — copy it whole.
+## Install
 
-1. **Prerequisite (one-time):** Visual Studio 2022 with the *Game development
-   with C++* workload.
-2. Close the Unreal editor. In your Unreal **project** folder (next to the
-   `.uproject`), create `Plugins/` if needed and copy this folder in:
+- **Prebuilt (UE 5.7, Win64):** download `UnrealSPADCam-<version>-UE5.7-Win64.zip`
+  from [Releases](https://github.com/raulcastar/UnrealSPADCam/releases) and extract it
+  into `<YourProject>/Plugins/`.
+- **From source:** clone this repository into `<YourProject>/Plugins/UnrealSPADCam`,
+  open the project and answer **Yes** to rebuild the module.
 
-   ```
-   <YourProject>/Plugins/UnrealSPADCam/
-   ├── UnrealSPADCam.uplugin
-   ├── LICENSE
-   └── Source/UnrealSPADCam/
-       ├── UnrealSPADCam.Build.cs
-       ├── Public/UnrealSPADCam.h
-       └── Private/{UnrealSPADCam.cpp, UnrealSPADCamModule.cpp}
-   ```
+Then check it is enabled under *Edit → Plugins → Project → Other*.
 
-3. Open the `.uproject`. Answer **Yes** to rebuild `UnrealSPADCam`.
-4. Confirm it under **Edit → Plugins → Project → Other → Unreal SPAD Cam**.
-5. Add a **SceneCaptureComponent2D** named **`SPADCam`** where the sensor should
-   sit. Give it a **TextureRenderTarget2D** (or leave it empty and one is
-   auto-created at `CaptureWidth`×`CaptureHeight`, default 256×256).
-6. Add the **UnrealSPADCam** component to any actor. If you used the name above
-   nothing needs configuring; otherwise set **CaptureName** to your component. At
-   Play it logs the capture it found and the address it streams to.
+## Use
 
-## Component parameters
+1. Add a **SceneCaptureComponent2D** named `SPADCam` where the sensor sits.
+2. Add the **UnrealSPADCam** component to the same actor.
+3. Press Play: frames go to `127.0.0.1:3006`.
 
-**SPADCam | Network**
-- `ServerIp` / `ServerPort` — where `component_spad_camera` listens (default
-  `127.0.0.1:3006`; only `127.0.0.1` crosses into WSL under mirrored networking).
-- `CamId` — id stamped in every packet.
+## Dependencies
 
-**SPADCam | Camera**
-- `CaptureName` — the SceneCapture2D to render from (dropdown).
-- `CaptureWidth` / `CaptureHeight` — render-target size if none is assigned.
-- `MaxSampleHz` — cap on how often frames are sampled and sent (0 = every
-  rendered frame), per simulated (game) second. The SPAD exposure / photon
-  parameters are set on the ROS side.
+None to build or run: only engine modules. It stamps its data with the shared
+simulation time (its own copy of `GncSimTime.h`); add
+[UnrealSimClock](https://github.com/raulcastar/UnrealSimClock) so ROS gets `/clock` on the same time base.
 
-## Wire format
+## Docs
 
-TCP, little-endian, one packet per sampled frame: a 24-byte header then the
-8-bit grayscale image (row-major, `width*height` bytes).
+| | |
+|---|---|
+| [Setup in detail](docs/setup.md) | Installing, the capture, the component |
+| [Parameters](docs/parameters.md) | Network and camera settings |
+| [How it works](docs/how-it-works.md) | SPAD cameras; where the model lives |
+| [Wire format](docs/wire-format.md) | The TCP packet layout |
+| [Making a release](docs/release.md) | Building the prebuilt zip for GitHub releases |
 
-```
-'SPD0' | ver u8 | cam_id u8 | width u16 | height u16
-       | t_ns u64 | payload u32 (= width*height) | pad u16
-```
+## License
 
-`component_spad_camera` reads this, runs the spadSim photon model per frame, and
-publishes the single-photon binary frames plus a digitised reconstruction.
+[MIT](LICENSE), © 2026 Raul Castilla Arquillo. The photon model it feeds (in
+GNC's `component_spad_camera`) is ported from
+[spadSim](https://github.com/drodriguezSRL/spadSim), MIT, © 2025 David
+Rodriguez-Martinez.

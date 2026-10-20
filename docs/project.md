@@ -24,6 +24,7 @@ same rover in mission control (see
 
 | | Leo_Raph | Yutu |
 |---|---|---|
+| Based on | Fictionlab's [Raph Rover](https://fictionlab.pl/raph-rover/) | "Yutu" by tashtego (Sketchfab, CC-BY-4.0) |
 | Blueprint | `Content/Blueprints/Leo_Raph` | `Content/Blueprints/Yutu_Rover` |
 | Meshes, materials | `Content/RoverAssets/Leo_Raph` | `Content/RoverAssets/Yutu` |
 | Wheels | 4 | 6 (rigid chassis) |

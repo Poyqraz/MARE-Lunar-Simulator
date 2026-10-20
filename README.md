@@ -6,13 +6,17 @@ lunar terrain with craters, rocks and a low sun, renders it for the rover's
 cameras and sensors with ground truth, and drives the rover autonomously with a
 ROS 2 GNC stack, watched from a web mission control.
 
+**Video overview:** [YouTube](https://youtu.be/EI4HgbMFbBE) · **Project page:** [raulcastar.me/mare](https://raulcastar.me/mare/)
+
 | Leo_Raph | Yutu |
 |---|---|
 | ![Leo_Raph driving itself to a goal past rocks](docs/images/raph_drive.webp) | ![Yutu driving itself to a goal](docs/images/yutu_drive.webp) |
 
 *Both rovers driving themselves to a goal past rocks with the same GNC stack,
 seen from Unreal's orbit camera (6x speed). Videos at 2x:
-[Leo_Raph](docs/videos/raph_drive.mp4), [Yutu](docs/videos/yutu_drive.mp4).*
+[Leo_Raph](docs/videos/raph_drive.mp4), [Yutu](docs/videos/yutu_drive.mp4).
+Leo_Raph is a model of Fictionlab's [Raph Rover](https://fictionlab.pl/raph-rover/); Yutu is adapted from a
+public model of the Chang'e 3 rover.*
 
 This repository is the Unreal project. It holds the levels, the rovers and the
 sensor plugins, and it is the centre of the suite:
