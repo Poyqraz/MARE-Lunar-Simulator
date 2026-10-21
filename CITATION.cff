@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+message: "If you use MARE in your research, please cite the paper below."
+title: "MARE: Lunar Rover Simulator"
+type: software
+license: MIT
+repository-code: "https://github.com/raulcastar/MARE-Lunar-Simulator"
+url: "https://raulcastar.me/mare/"
+authors:
+  - family-names: "Castilla-Arquillo"
+    given-names: "Raúl"
+  - family-names: "Olivares-Mendez"
+    given-names: "Miguel"
+preferred-citation:
+  type: article
+  title: "MARE: An Open-Source Lunar Rover Simulator with Shadow Ground Truth for Perception and Autonomy"
+  authors:
+    - family-names: "Castilla-Arquillo"
+      given-names: "Raúl"
+    - family-names: "Olivares-Mendez"
+      given-names: "Miguel"
+  year: 2026
+  journal: "arXiv preprint"
+  identifiers:
+    - type: other
+      value: "arXiv:2610.28465"
+  url: "https://arxiv.org/abs/2610.28465"

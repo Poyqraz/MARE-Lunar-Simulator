@@ -1,5 +1,6 @@
 # MARE: Lunar Rover Simulator
 
+[![arXiv](https://img.shields.io/badge/arXiv-2610.28465-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2610.28465)
 [![Video](https://img.shields.io/badge/Video-YouTube-FF0000?logo=youtube&logoColor=white)](https://youtu.be/EI4HgbMFbBE)
 [![Project page](https://img.shields.io/badge/Project-page-1f6feb)](https://raulcastar.me/mare/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -12,7 +13,7 @@ lunar terrain with craters, rocks and a low sun, renders it for the rover's
 cameras and sensors with ground truth, and drives the rover autonomously with a
 ROS 2 GNC stack, watched from a web mission control.
 
-**Video overview:** [YouTube](https://youtu.be/EI4HgbMFbBE) · **Project page:** [raulcastar.me/mare](https://raulcastar.me/mare/)
+**Paper:** [arXiv:2610.28465](https://arxiv.org/abs/2610.28465) · **Video overview:** [YouTube](https://youtu.be/EI4HgbMFbBE) · **Project page:** [raulcastar.me/mare](https://raulcastar.me/mare/)
 
 | Leo_Raph | Yutu |
 |---|---|
@@ -119,6 +120,22 @@ cameras and records bags. See each repository's README.
 | [Setup](docs/setup.md) | Cloning with LFS, TAPython, building the plugins, connecting the other repositories |
 | [The Unreal project](docs/project.md) | Levels, rovers, plugins, content layout, project settings, editor Python |
 | [Rovers](https://github.com/raulcastar/GNC-Moon-Simulator/blob/main/docs/rovers.md) | Leo_Raph and Yutu, switching rovers, physics tuning (GNC docs) |
+
+## Citation
+
+If you use MARE in your research, please cite the [paper](https://arxiv.org/abs/2610.28465):
+
+```bibtex
+@misc{castilla2026mare,
+  title         = {{MARE}: An Open-Source Lunar Rover Simulator with Shadow Ground Truth for Perception and Autonomy},
+  author        = {Castilla-Arquillo, Ra{\'u}l and Olivares-Mendez, Miguel},
+  year          = {2026},
+  eprint        = {2610.28465},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.RO},
+  url           = {https://arxiv.org/abs/2610.28465}
+}
+```
 
 ## License
 
