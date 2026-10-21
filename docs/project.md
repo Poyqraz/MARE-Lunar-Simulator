@@ -47,7 +47,7 @@ the model. `Content/Blueprints/WheelPhysics` is the wheels' physical material.
 | [UnrealSPADCam](https://github.com/raulcastar/UnrealSPADCam) | Intensity frames for the SPAD photon model |
 | [UnrealSimClock](https://github.com/raulcastar/UnrealSimClock) | Simulation time for every plugin, streamed to `/clock` |
 | [TCP-Unreal](https://github.com/getnamo/TCP-Unreal) | The rover Blueprint's TCP link (third party, MIT) |
-| [TAPython](https://github.com/cgerchenhp/UE_TAPython_Plugin_Release) | Editor Python tools used by Terrain Studio to build Landscapes (third party, prebuilt binaries; see [setup](setup.md#tapython)) |
+| [UnrealDEMLandscape](https://github.com/raulcastar/UnrealDEMLandscape) | Creates Landscapes from heightmaps in editor Python, for Terrain Studio (see [setup](setup.md#unrealdemlandscape)) |
 
 The sensor plugins here are copies of their repositories; changes are made
 there and copied in.

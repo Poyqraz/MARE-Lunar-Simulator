@@ -47,21 +47,17 @@ plugins' own descriptors: Python Editor Script Plugin, Editor Scripting
 Utilities, Modeling Tools, Json Blueprint Utilities, Procedural Mesh and
 Geometry Scripting.
 
-## TAPython
+## UnrealDEMLandscape
 
-Terrain Studio builds Landscapes through
-[TAPython](https://github.com/cgerchenhp/UE_TAPython_Plugin_Release) 1.3.1, a
-plugin distributed only as binaries. Its UE 5.7 Win64 build is in
-`Plugins/TAPython/Binaries/` (the only plugin binaries in the repository), and
-its configuration and Python folder in `TA/TAPython/`; it needs no setup.
+Unreal's Python API cannot create a Landscape, so Terrain Studio builds it
+through `Plugins/UnrealDEMLandscape`, a small editor plugin
+([UnrealDEMLandscape](https://github.com/raulcastar/UnrealDEMLandscape),
+`unreal.DEMLandscapeLibrary`). It creates the Landscape with its .r16 heightmap
+the way the editor's New Landscape tool does, and reads the heights back to
+check the import. It is built with the other plugins and needs no setup.
 
-The binaries match the engine build they were made for. If Unreal reports
-TAPython as built for a different engine version, download the release for
-your engine from TAPython's releases page and replace
-`Plugins/TAPython/Binaries/` with its `Binaries/`.
-
-Without TAPython the project still opens and simulates; only Terrain Studio's
-Landscape import needs it.
+Without it the project still opens and simulates; only Terrain Studio's
+Landscape creation needs it.
 
 ## Project settings worth checking
 

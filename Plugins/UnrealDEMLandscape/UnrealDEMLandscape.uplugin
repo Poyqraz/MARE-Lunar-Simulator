@@ -1,0 +1,23 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"EngineVersion": "5.7.0",
+	"FriendlyName": "UnrealDEMLandscape",
+	"Description": "Creates Landscapes from 16-bit heightmaps (DEMs) in editor Python, which Unreal's Python API cannot do, and reads their heights back.",
+	"Category": "Editor",
+	"CreatedBy": "Raul Castilla Arquillo",
+	"CreatedByURL": "https://github.com/raulcastar/UnrealDEMLandscape",
+	"DocsURL": "https://github.com/raulcastar/UnrealDEMLandscape#readme",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"Installed": false,
+	"EnabledByDefault": true,
+	"Modules": [
+		{
+			"Name": "UnrealDEMLandscape",
+			"Type": "Editor",
+			"LoadingPhase": "Default"
+		}
+	]
+}

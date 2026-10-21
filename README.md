@@ -117,7 +117,7 @@ cameras and records bags. See each repository's README.
 | | |
 |---|---|
 | [Pipeline](docs/pipeline.md) | The full workflow, from a terrain to an autonomous drive, and every link between the parts |
-| [Setup](docs/setup.md) | Cloning with LFS, TAPython, building the plugins, connecting the other repositories |
+| [Setup](docs/setup.md) | Cloning with LFS, building the plugins, connecting the other repositories |
 | [The Unreal project](docs/project.md) | Levels, rovers, plugins, content layout, project settings, editor Python |
 | [Rovers](https://github.com/raulcastar/GNC-Moon-Simulator/blob/main/docs/rovers.md) | Leo_Raph and Yutu, switching rovers, physics tuning (GNC docs) |
 
@@ -151,5 +151,4 @@ If you use MARE in your research, please cite the [paper](https://arxiv.org/abs/
 [MIT](LICENSE), © 2026 Raul Castilla Arquillo, except the third-party content
 listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md): the Poly Haven
 landscape textures and rocks (CC0), the Yutu model (CC-BY-4.0), TCP-Unreal
-(MIT), the ESIM event model (MIT), TAPython (its author's terms) and Unreal
-Engine (Epic's EULA).
+(MIT), the ESIM event model (MIT) and Unreal Engine (Epic's EULA).

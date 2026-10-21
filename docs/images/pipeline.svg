@@ -93,7 +93,7 @@
 
   <rect x="455" y="502" width="290" height="148" rx="9" class="box"/>
   <text x="469" y="525" class="b">Editor Python</text>
-  <text x="469" y="544" class="s">Remote Execution and TAPython,</text>
+  <text x="469" y="544" class="s">Remote Execution and DEMLandscape,</text>
   <text x="469" y="559" class="s">through which the studio builds</text>
   <text x="469" y="574" class="s">the level; the studio's watcher</text>
   <text x="469" y="589" class="s">(masks, wheel tracks in Play);</text>
