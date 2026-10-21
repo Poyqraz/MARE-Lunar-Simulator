@@ -93,12 +93,12 @@
 
   <rect x="455" y="502" width="290" height="148" rx="9" class="box"/>
   <text x="469" y="525" class="b">Editor Python</text>
-  <text x="469" y="544" class="s">Remote Execution and DEMLandscape,</text>
-  <text x="469" y="559" class="s">through which the studio builds</text>
-  <text x="469" y="574" class="s">the level; the studio's watcher</text>
-  <text x="469" y="589" class="s">(masks, wheel tracks in Play);</text>
-  <text x="469" y="604" class="s">the viewport cameras: follow,</text>
-  <text x="469" y="619" class="s">orbit and top-down</text>
+  <text x="469" y="544" class="s">Remote Execution and the</text>
+  <text x="469" y="559" class="s">UnrealDEMLandscape plugin, with</text>
+  <text x="469" y="574" class="s">which the studio builds the level;</text>
+  <text x="469" y="589" class="s">the studio's watcher (masks,</text>
+  <text x="469" y="604" class="s">wheel tracks in Play); the viewport</text>
+  <text x="469" y="619" class="s">cameras: follow, orbit and top-down</text>
 
   <!-- ===== Column 3: GNC ===== -->
   <rect x="840" y="92" width="330" height="580" rx="14" fill="#f8ece9" stroke="#d6a197" stroke-width="1.5"/>

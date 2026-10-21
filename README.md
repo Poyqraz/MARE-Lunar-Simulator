@@ -34,6 +34,7 @@ sensor plugins, and it is the centre of the suite:
 | [Unreal-Moon-Terrain-Generation](https://github.com/raulcastar/Unreal-Moon-Terrain-Generation) | Terrain Studio: terrain, craters, rocks, ground-truth masks and the sun, built in Unreal |
 | [GNC-Moon-Simulator](https://github.com/raulcastar/GNC-Moon-Simulator) | ROS 2 GNC stack in Docker: perception, path planning, rover control, mission control |
 | [UnrealStereoCam](https://github.com/raulcastar/UnrealStereoCam), [UnrealLidarCam](https://github.com/raulcastar/UnrealLidarCam), [UnrealEventCam](https://github.com/raulcastar/UnrealEventCam), [UnrealSPADCam](https://github.com/raulcastar/UnrealSPADCam), [UnrealSimClock](https://github.com/raulcastar/UnrealSimClock) | The sensor plugins, each usable in any Unreal project (copies in `Plugins/`) |
+| [UnrealDEMLandscape](https://github.com/raulcastar/UnrealDEMLandscape) | Editor plugin that creates the Landscape from Terrain Studio's heightmap, usable in any Unreal project (copy in `Plugins/`) |
 
 ## The pipeline
 
