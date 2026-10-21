@@ -121,6 +121,15 @@ cameras and records bags. See each repository's README.
 | [The Unreal project](docs/project.md) | Levels, rovers, plugins, content layout, project settings, editor Python |
 | [Rovers](https://github.com/raulcastar/GNC-Moon-Simulator/blob/main/docs/rovers.md) | Leo_Raph and Yutu, switching rovers, physics tuning (GNC docs) |
 
+## Roadmap
+
+- [ ] Ubuntu support, alongside Windows
+- [ ] MuJoCo physics for the rovers, through the [Unreal Robotics Lab](https://github.com/URLab-Sim/UnrealRoboticsLab) plugin
+- [ ] More rover models
+- [ ] Lunar lava tubes
+- [ ] Wheel steering, including Ackermann steering
+- [ ] Image defects caused by cosmic rays, simulated with ESA's [Pyxel](https://sci.esa.int/web/future-missions-department/-/60390-pyxel-a-software-framework-for-imaging-detector-simulation) detector framework
+
 ## Citation
 
 If you use MARE in your research, please cite the [paper](https://arxiv.org/abs/2610.28465):
