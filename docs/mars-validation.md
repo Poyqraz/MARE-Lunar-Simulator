@@ -1,7 +1,8 @@
 # Mars review and validation — 2026-10-28
 
-The reviewed increment targets a correct Jezero environment before user CAD
-or autonomy integration. The earlier local 32-test increment was reviewed and
+The reviewed increment targets a correct Jezero environment plus geometric
+navigation with the existing sensor protocols, before user CAD integration.
+The earlier local 32-test increment was reviewed and
 extended; it is not treated as proof of Unreal runtime behavior. A second
 scientific-fidelity review adds dense source checks and native collision gates;
 see mars-scientific-review.md and data/jezero-fidelity.json.
@@ -28,8 +29,8 @@ and absolute report paths when launching from a relative project folder.
 
 ```text
 python -m pytest tests -q
-80 passed
-python -m ruff check mars_rover tests Content/Python/mars_*.py tools/unreal_mars_smoke.py tools/mars_fidelity_figure.py
+112 passed
+python -m ruff check mars_rover tests Content/Python/mars_*.py tools/unreal_mars_smoke.py tools/mars_fidelity_figure.py tools/mars_navigation_benchmark.py
 All checks passed!
 ```
 
@@ -80,7 +81,9 @@ Therefore these have NOT been executed here:
 3. Dedicated `python -m mars_rover.unreal_check --editor ...` acceptance on Windows.
 4. The new native collision acceptance: 260 points, 520 simple/complex traces,
    full-resolution mip 0, terrain actor identity and 2 mm numerical tolerance.
-5. Rover stability/calibration, sensor/TF geometry and click-to-goal tests.
+5. Native rover stability/calibration, sensor mount/stream geometry and
+   click-to-goal driving tests. Their Python contracts have tests; the engine
+   behavior itself remains pending.
 
 The terminal launcher and editor-state contracts have unit tests; those are
 not a substitute for running the actual engine. Generated reports retain
@@ -90,6 +93,47 @@ validated. The interactive/terminal acceptance procedure is in the Mars guide.
 References and scientific limits are documented in mars-research.md. No
 soil sinkage, dust dynamics, thermal response, true sensor localization or
 user-specific CAD/controller behavior is claimed by passing Python tests.
+
+## ROS-free navigation review
+
+The 35 repositories in the public Mars star list plus nine related stars were
+inventoried; selected core source was read. See
+[the per-repository decisions](mars-starred-review.md) and
+[the implementation/acceptance plan](mars-navigation.md). External projects
+were not executed and none of their source/assets were vendored.
+
+TDD first failed for the missing planner/sensor/navigation modules, malformed
+organized LiDAR indices, missing explicit runtime plugins, and changed camera
+resolution/invalid stereo calibration, and sparse old poses incorrectly
+satisfying the settling window. Corrections passed the full suite.
+Coverage includes synthetic crater/pit avoidance, NaN/no-return handling,
+footprint clearance, diagonal corner cuts, exact blocked/out-of-map goals,
+real bundle loading, capture-time full attitude, pose bracketing, all five
+shared clocks, new-Play reset, settling, stale/absent sensors, stop-before-replan,
+and manual override through the legacy motor API.
+
+Two tests use real localhost TCP/HTTP sockets: LIDR/NAVF input reaches the motor
+command socket and loss of the camera connection causes zero wheel commands;
+the mission map and old `/stop` API connect to the navigation session. These
+are protocol/control tests with synthetic sensor/telemetry fixtures, not UE.
+The actual OpenCV SGBM recovers a known 8-pixel shifted textured plane at 2.4 m
+and rejects unsynchronized/unrectified pairs. It is not a real sensor benchmark.
+
+`tools/mars_navigation_benchmark.py` reproduces the frozen
+[four-route report](data/navigation-validation.json). All four routes stay
+inside the inflated traversable map; a no-slip planar tracker reaches within
+0.25 m and stops. The measured path lengths are about 76.8–84.8 m. The model
+uses exact pose and has no wheel contact, stereo, LiDAR, slip or native physics.
+CI runs this benchmark independently on both platforms. The route plot was
+visually inspected as a data plot; it is not an Unreal screenshot.
+
+The new editor helper exports actual placed sensor geometry before Play.
+Missing timestamps or changed intrinsics are rejected rather than silently
+substituted. A map/goal UI is wired to the Python service. Native flags remain
+false in exported config and offline reports. Partial missing/occluded returns
+do not certify a fully observed driving corridor, and the planner still relies
+on the known DEM prior. No claim of complete negative-obstacle detection or
+wheel-scale fidelity is made.
 
 New TDD coverage first failed for absent full-grid fidelity/collision tools,
 unvalidated dust scenario parameters, source XML byte preservation, and the

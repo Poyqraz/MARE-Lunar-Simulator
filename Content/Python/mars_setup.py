@@ -105,7 +105,7 @@ def load_bundle(manifest_path):
 
 def build(manifest_path=None, level_path="/Game/Mars/Jezero", *, rover_blueprint=None,
           spawn_cell=None, preview_material=True, material_path=None, mode="simulation",
-          scene_path=None, report_path=None):
+          scene_path=None, report_path=None, navigation_config_path=None):
     """Create a new Mars environment; optionally include a reference rover.
 
     mode='orbital_reference' uses the registered unlit grayscale survey image.
@@ -116,4 +116,5 @@ def build(manifest_path=None, level_path="/Game/Mars/Jezero", *, rover_blueprint
     return build_environment(manifest_path, level_path, load_bundle=load_bundle, pending=_PENDING,
                              rover_blueprint=rover_blueprint, spawn_cell=spawn_cell,
                              preview_material=preview_material, material_path=material_path,
-                             mode=mode, scene_path=scene_path, report_path=report_path)
+                             mode=mode, scene_path=scene_path, report_path=report_path,
+                             navigation_config_path=navigation_config_path)

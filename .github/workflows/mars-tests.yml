@@ -24,4 +24,5 @@ jobs:
           cache-dependency-path: 'requirements-mars*.txt'
       - run: python -m pip install -r requirements-mars-dev.txt
       - run: python -m pytest tests -q
-      - run: python -m ruff check mars_rover tests Content/Python/mars_setup.py Content/Python/mars_scene.py Content/Python/mars_materials.py Content/Python/mars_collision.py tools/unreal_mars_smoke.py tools/mars_fidelity_figure.py
+      - run: python tools/mars_navigation_benchmark.py --output generated/navigation-validation.json
+      - run: python -m ruff check mars_rover tests Content/Python/mars_setup.py Content/Python/mars_scene.py Content/Python/mars_materials.py Content/Python/mars_collision.py Content/Python/mars_sensor_setup.py tools/unreal_mars_smoke.py tools/mars_fidelity_figure.py tools/mars_navigation_benchmark.py

@@ -114,13 +114,18 @@ def _lighting(unreal, actors, manifest, scene, mode):
 
 def build_environment(manifest_path, level_path, *, load_bundle, pending, rover_blueprint=None,
                       spawn_cell=None, preview_material=True, material_path=None, mode="simulation",
-                      scene_path=None, report_path=None):
+                      scene_path=None, report_path=None, navigation_config_path=None):
     import unreal
 
     if pending:
         raise RuntimeError("A Mars import is pending; finish or cancel it before another build")
     if mode not in ("simulation", "orbital_reference"):
         raise ValueError("mode is simulation or orbital_reference")
+    if navigation_config_path:
+        if mode != "simulation" or not rover_blueprint:
+            raise ValueError("Navigation requires simulation mode and a rover_blueprint")
+        if Path(navigation_config_path).exists():
+            raise FileExistsError("Choose a new navigation_config_path")
     if manifest_path is None:
         manifest_path = Path(unreal.Paths.convert_relative_path_to_full(
             unreal.Paths.project_content_dir())) / "Mars/Jezero/manifest.json"
@@ -200,6 +205,10 @@ def build_environment(manifest_path, level_path, *, load_bundle, pending, rover_
         if isinstance(rover, unreal.Pawn):
             rover.set_editor_property("auto_possess_player", unreal.AutoReceiveInput.PLAYER0)
     _lighting(unreal, actors, manifest, scene, mode)
+    navigation_config = None
+    if navigation_config_path:
+        from mars_sensor_setup import configure_and_export
+        navigation_config = configure_and_export(unreal, rover, manifest_path, navigation_config_path)
     camera = actors.spawn_actor_from_class(unreal.CameraActor, unreal.Vector(-col * r_cm, row * r_cm, z_cm + 1500))
     camera.set_actor_label("RoverOrbitCamera" if rover else "MarsSurveyCamera")
     camera.set_editor_property("tags", ["RoverOrbitCamera"] if rover else ["MarsSurveyCamera"])
@@ -212,7 +221,8 @@ def build_environment(manifest_path, level_path, *, load_bundle, pending, rover_
               "editor_script_executed": True, "gpu_render_verified": False, "visual_qa_passed": False,
               "photometry_validated": False, "wheel_scale_obstacles_validated": False,
               "atmosphere_scenario": atmosphere_parameters(scene) if mode == "simulation" else None,
-              "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest()}
+              "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+              "navigation_sensor_config": navigation_config}
     unreal.log_warning("Mars: measured terrain; rendering presets are illustrative. Orbital reference is "
                        "unlit grayscale, not albedo/true colour. Soil and vehicle physics remain unvalidated.")
     _save_after_import(unreal, world, landscape, expected, result, pending, report_path, manifest)

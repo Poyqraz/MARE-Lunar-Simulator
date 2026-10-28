@@ -39,3 +39,4 @@ Content/Mars/Jezero/*.r16 -diff -merge -text
 # Official FGDC XML snapshots retain provider CRLF and original trailing spaces.
 Content/Mars/Jezero/source_*.xml -text -whitespace
 docs/images/jezero-fidelity.png -filter -diff -merge -text
+docs/images/jezero-navigation.png -filter -diff -merge -text

@@ -47,3 +47,22 @@ The exact original USGS FGDC metadata snapshots are included as
 `source_dem.xml` and `source_ortho.xml`. The review figure
 `docs/images/jezero-fidelity.png` plots these derived USGS/HiRISE data;
 it is not an Unreal render or a newly acquired Mars image.
+
+`docs/images/jezero-navigation.png` is another derived USGS/HiRISE plot, with
+offline geometric routes and a blocked mask. It is not an Unreal render or
+an actual rover traverse. The same source attribution above applies.
+
+## Navigation method references and optional dependency
+
+The starred repository review in `docs/mars-starred-review.md` and its JSON
+inventory records method references and license metadata. No source code,
+models, weights, calibration files or assets from those starred projects were
+copied into this fork. Standard A*, rigid transforms, terrain tests and route
+tracking were implemented independently here.
+
+Optional stereo mode calls [OpenCV](https://opencv.org/) through the pinned
+`opencv-python-headless` package; OpenCV 4.5+ uses the
+[Apache 2.0 license](https://opencv.org/license/). The wheel is installed as
+a dependency, not vendored in this repository; its included third-party
+notices remain applicable. Stereo method documentation:
+[StereoSGBM](https://docs.opencv.org/4.x/d2/d85/classcv_1_1StereoSGBM.html).

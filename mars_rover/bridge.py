@@ -1,9 +1,10 @@
 """Local Python HTTP -> MARE TCP bridge, replacing the GNC rover node.
 
 Start this BEFORE pressing Play. Do not run component_rover_leo_raph at the
-same time: it owns the same TCP endpoint. Camera/lidar decoders are still in
-GNC; this bridge only transports motor commands and raw pose telemetry.
+same time: it owns the same TCP endpoint. This bridge transports motor commands
+and raw pose telemetry. The optional nav_service adds camera/lidar decoders.
 """
+
 import argparse
 import codecs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -23,6 +24,7 @@ def _bad_constant(value):
 
 class JsonObjectStream:
     """Unreal sends concatenated JSON objects, sometimes without newlines."""
+
     def __init__(self):
         self.buffer = ""
         self.utf8 = codecs.getincrementaldecoder("utf-8")()
@@ -50,11 +52,13 @@ class JsonObjectStream:
 
 
 class BridgeServer:
-    def __init__(self, calibration, *, tcp_port=3003, http_port=8765, timeout_s=0.3):
+    def __init__(self, calibration, *, tcp_port=3003, http_port=8765, timeout_s=0.3, on_external_command=None):
         self.state = CommandState(calibration, timeout_s)
         self.telemetry = None
         self.telemetry_received_at = None
         self.last_error = None
+        self.connection_id = 0
+        self.on_external_command = on_external_command
         self.ending = threading.Event()
         self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -104,6 +108,8 @@ class BridgeServer:
                     data = json.loads(self.rfile.read(length), parse_constant=_bad_constant)
                     if not isinstance(data, dict):
                         raise ValueError("Body must be a JSON object")
+                    if self.path in ("/wheels", "/twist", "/stop") and bridge.on_external_command:
+                        bridge.on_external_command()
                     if self.path == "/wheels":
                         bridge.state.submit_wheels(data)
                     elif self.path == "/twist":
@@ -134,17 +140,25 @@ class BridgeServer:
             if telemetry and all(k in telemetry for k in ("x", "y", "z", "yaw")):
                 try:
                     heading = math.radians(180 - number(telemetry["yaw"]))
-                    pose = {"x": -number(telemetry["x"]) / 100,
-                            "y": number(telemetry["y"]) / 100,
-                            "z": number(telemetry["z"]) / 100,
-                            "heading_rad": (heading + math.pi) % (2 * math.pi) - math.pi}
+                    pose = {
+                        "x": -number(telemetry["x"]) / 100,
+                        "y": number(telemetry["y"]) / 100,
+                        "z": number(telemetry["z"]) / 100,
+                        "heading_rad": (heading + math.pi) % (2 * math.pi) - math.pi,
+                    }
                 except ValueError:
                     pass
-            return {"connected": self.state.connected, "wire_command": self.state.sample(),
-                    "telemetry_unreal": telemetry, "pose_local_m": pose,
-                    "telemetry_age_s": None if self.telemetry_received_at is None else
-                    time.monotonic() - self.telemetry_received_at,
-                    "last_error": self.last_error}
+            return {
+                "connected": self.state.connected,
+                "connection_id": self.connection_id,
+                "wire_command": self.state.sample(),
+                "telemetry_unreal": telemetry,
+                "pose_local_m": pose,
+                "telemetry_age_s": None
+                if self.telemetry_received_at is None
+                else time.monotonic() - self.telemetry_received_at,
+                "last_error": self.last_error,
+            }
 
     def start(self):
         if self.threads:
@@ -169,6 +183,7 @@ class BridgeServer:
                     self.telemetry = None
                     self.telemetry_received_at = None
                     self.last_error = None
+                    self.connection_id += 1
                     self.state.connect()
                 try:
                     next_send = time.monotonic()
@@ -228,8 +243,7 @@ def main():
     parser.add_argument("--max-speed", type=float, default=0.5, help="maximum tyre speed in m/s")
     args = parser.parse_args()
     calibration = Calibration(args.track, args.wheel_scale, args.max_speed)
-    with BridgeServer(calibration, tcp_port=args.tcp_port, http_port=args.http_port,
-                      timeout_s=args.timeout) as bridge:
+    with BridgeServer(calibration, tcp_port=args.tcp_port, http_port=args.http_port, timeout_s=args.timeout) as bridge:
         print(f"Waiting for Unreal on 127.0.0.1:{bridge.tcp_port}; API http://127.0.0.1:{bridge.http_port}", flush=True)
         print("Calibration is for upstream Leo_Raph; remeasure for your CAD rover/Mars gravity.", flush=True)
         try:

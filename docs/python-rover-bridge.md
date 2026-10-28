@@ -1,6 +1,10 @@
 # Python rover kontrolu (istege bagli)
 
-Mevcut hedef Mars ortamini kurmaktir; bu kopru zorunlu degildir.
+Mars ortamı rover olmadan da kurulabilir; bu motor köprüsü isteğe bağlıdır.
+Haritadan hedef seçimi ve mevcut TCP LiDAR/derinlikle kapalı çevrim için
+[ROS'suz navigasyon servisini](mars-navigation.md) kullanın. Servis bu motor
+köprüsünü içerir; ikisini aynı anda başlatmayın. Aşağıdaki bağımsız motor
+akışı hâlâ kendi Python kontrol kodunu bağlamak için kullanılabilir.
 Ana kurulum icin [Mars rehberi](mars-jezero.md) kullanilir.
 Referans rover istenirse Unreal Python konsolunda ayri bir yeni seviyede:
 
@@ -37,7 +41,8 @@ docker compose stop component_rover_leo_raph component_path_planner
 Ardından köprüyü başlatın ve Play'i yeniden başlatın. Bu mod GNC'nin odometri
 ve TF yayınlayan rover düğümünün yerini tutmaz; sadece motor komutları ile ham
 poz telemetrisini taşır. Kamera/LiDAR ROS topic'leriyle çalışılacaksa ilgili GNC
-sensör düğümleri ve uygun adaptör ayrıca gereklidir.
+sensör düğümleri ve uygun adaptör ayrıca gereklidir. Yeni navigasyon servisi
+ise kamera/LiDAR TCP paketlerini ROS kullanmadan doğrudan okur.
 
 Kendi Python kontrol döngünüzde:
 

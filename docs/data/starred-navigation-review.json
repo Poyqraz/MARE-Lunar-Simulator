@@ -1,0 +1,1058 @@
+{
+  "schema_version": 1,
+  "review_date_utc": "2026-10-28",
+  "account": "Poyqraz",
+  "public_star_count_at_review": 508,
+  "public_mars_list_urls": [
+    "https://github.com/stars/Poyqraz/lists/mars?page=1",
+    "https://github.com/stars/Poyqraz/lists/mars?page=2"
+  ],
+  "public_mars_list_members": 35,
+  "repositories_inventoried": 44,
+  "separate_public_ika_list_observed": false,
+  "method": "Public list membership plus recursive trees/READMEs and selected core-source review; not an audit of every source file or runtime test of all repositories.",
+  "license_note": "GitHub API metadata is an inventory hint, not asset relicensing. No detected license means no reuse permission inferred. No external starred source/assets vendored.",
+  "native_unreal_executed": false,
+  "repositories": [
+    {
+      "repository": "stiles/mars-perseverance-waypoints",
+      "url": "https://github.com/stiles/mars-perseverance-waypoints",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "873464250e99b377f5536595151e7c9e21194e70",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 4221,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "fda18ad6aa023203e71d718ec89284415c830aa7",
+          "size": 5389
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "NASA rover waypoint/GeoJSON history",
+      "integration_decision": "Historical mission context only; README says collection stopped in June 2025. No terrain heights or local traversability.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "rishab-sharma/Cross-a-Crater",
+      "url": "https://github.com/rishab-sharma/Cross-a-Crater",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "19fc36a74d05eedc548c9a91107d3ecbbb9a321f",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 83,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "139086ac80b8003637cef4d9bbbe379c955661b0",
+          "size": 2037
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "e-Yantra image-guided arena and bridge/cavity task",
+      "integration_decision": "Competition abstraction; overhead image maze is not a measured 3D Mars surface. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "rubenandrebarreiro/mars-rover",
+      "url": "https://github.com/rubenandrebarreiro/mars-rover",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "bf0d274072835e8de96fc5a36e6b07f2e91a1379",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 1,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "647a7fa159631b916e03ad1020e0aadf00245f50",
+          "size": 2047
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "Search/genetic-algorithm project description",
+      "integration_decision": "Reviewed tree contains only README; described Java implementation is absent. No runnable planner to integrate.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "Estiakk/Martin-Habitat-Pathfinder",
+      "url": "https://github.com/Estiakk/Martin-Habitat-Pathfinder",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "6187e2e86b706088b9ab449c33da154c9ddfd49c",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 64,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "60098973e1609f6abe5647fc6dec9eac5bc5da3f",
+          "size": 2485
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "Habitat/environment decision support, RL/LLM prototypes",
+      "integration_decision": "Habitat suitability is not rover-scale collision navigation; avoid treating generated environment scores as measured terrain. Defer.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "gowrijsuria/MarsPathfinder",
+      "url": "https://github.com/gowrijsuria/MarsPathfinder",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "f2897b5a826215d88b2990035a5e9fd62df70c60",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 33,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "49816533a45934dbc8131a321fc7331e6f900d21",
+          "size": 4482
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "Web route-planning application",
+      "integration_decision": "UI/route abstraction; no demonstrated measured rover-scale terrain/sensor contract. No source import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "nawailkhan/Mars-Rover-Path-Planner",
+      "url": "https://github.com/nawailkhan/Mars-Rover-Path-Planner",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "9c1f5dea4e6af7aa94a576a120a9d1d64e4c2383",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 35,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "d09ef3bca76f79e8710b8640553431d110160cd5",
+          "size": 5702
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "dem_loader.py",
+        "cost_grid.py",
+        "astar.py"
+      ],
+      "license_api_spdx": null,
+      "scope": "MOLA DEM terrain-cost A* and other search algorithms",
+      "integration_decision": "Adopt terrain cost as an independently implemented idea. Reject hardcoded 463 m spacing, NaN-to-mean and block averaging for local hazards.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "jblevins32/MPPI",
+      "url": "https://github.com/jblevins32/MPPI",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "d9ada706326b5d6c7e542909b065f913da9ffb58",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 16,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "8d65507138637db7df37e7c0ed286b9b826a44b6",
+          "size": 2839
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "src/mppi.py"
+      ],
+      "license_api_spdx": null,
+      "scope": "Sampling/model predictive path integral control",
+      "integration_decision": "Model-dependent rollouts are promising after steering/slip calibration. No license detected; no code copied. Defer.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "ethz-asl/scouting-ipp",
+      "url": "https://github.com/ethz-asl/scouting-ipp",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "d897be59df277f55782fda1348528c8cc328194e",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 186,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "3e0adf867c245142b1dc3d1f0ac2f08439423c82",
+          "size": 3325
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "advanced_planner_modules/src/map/map_planexp.cpp"
+      ],
+      "license_api_spdx": "MIT",
+      "scope": "Cooperative informative planning for scout and rover, ROS/C++",
+      "integration_decision": "Adopt known/unknown observation distinction as an independent method. Full ROS1/scout stack is outside the current Python-only stage.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "ChasingTheDream369/Location-finder-and-TortOS-Upgrade-for-H.A.R.E-Mars-Rover",
+      "url": "https://github.com/ChasingTheDream369/Location-finder-and-TortOS-Upgrade-for-H.A.R.E-Mars-Rover",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "634161bbba46166a8e2d8a0967e6b43cde718f5c",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 2,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "797d47cd167c0d7e7e94cf4fbac125d1ff4a1b6d",
+          "size": 2906
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "HARE location/storage design narrative",
+      "integration_decision": "Two-file tree mostly documentation; no validated DEM/sensor/planning pipeline to integrate.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "edumigueis/Mars-Map-Router",
+      "url": "https://github.com/edumigueis/Mars-Map-Router",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "bff90ac14db91f0ae604b5ca498c9c04f21f9e0a",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 31,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "063e46105aab439c81a74f32eee643dcfb720ef4",
+          "size": 1317
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "GPL-3.0",
+      "scope": "Shortest path between named cities",
+      "integration_decision": "Graph routing is not local 3D hazard evaluation. GPL source not imported.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "SudeepthaG/Optimal-Path-Finder-for-Mars-Rover",
+      "url": "https://github.com/SudeepthaG/Optimal-Path-Finder-for-Mars-Rover",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "167d22b0a50837719746d838e9afd1d50619d494",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 2,
+      "root_readme_blobs": [
+        {
+          "path": "readMe",
+          "sha": "15a4f1e82d86a69a265fbb8b19fb78683ee4be36",
+          "size": 888
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "BFS/UCS/A* on height-grid exercise",
+      "integration_decision": "Retain standard search concept only; independent metric A*, hard constraints and exact-goal validation implemented here. No source copied.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "sivasini/PathFinder",
+      "url": "https://github.com/sivasini/PathFinder",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "b8260d3e330fc3d4a328aa1405a5bf7321b13916",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 25,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "a1d3893eac02764d2dee273900c99b25a7a8a176",
+          "size": 176
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "Obstacle matrix and search comparison",
+      "integration_decision": "Useful algorithm teaching reference; binary grids lack measured Mars geometry and sensor timing. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "aditya-an1l/mars-rover-path-finder",
+      "url": "https://github.com/aditya-an1l/mars-rover-path-finder",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "151df11ecb2680fa893f5e30b48d3c0860a9a9a7",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 14,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "a10c16199b03fd379920e45673bbc04080ad58f4",
+          "size": 5244
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "rover_control_sim_astar.py"
+      ],
+      "license_api_spdx": "MIT",
+      "scope": "Motion-primitive A* and arc tracker, Pygame",
+      "integration_decision": "Independently implement short-command arc/corridor checks. Its procedural bumps/rocks are not imported as real Mars terrain.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "likhitan1-design/marspath-ai",
+      "url": "https://github.com/likhitan1-design/marspath-ai",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "8e53b927ae63177e1907417d58a2e7f60060ef9d",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 10,
+      "root_readme_blobs": [],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "Mars route web prototype",
+      "integration_decision": "Not a demonstrated UE geometry/sensor adapter. No code/data import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "aashiverma/PhoenixMarsQuesters",
+      "url": "https://github.com/aashiverma/PhoenixMarsQuesters",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "294e730675426359a1ab14982f25a334fe905568",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 30,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "078ae2d68ed5e08907c93639185139fadc0396a5",
+          "size": 9873
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "Mars colonisation path-finder web application",
+      "integration_decision": "Web route abstraction; no measured local height/collision contract. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "italiana83/Mars",
+      "url": "https://github.com/italiana83/Mars",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "8bca8062c35cb000792a61980912f4a7dd8ddc55",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 41,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "fbf9d29b9448bac0243113016f58d4e2d6b935b9",
+          "size": 6988
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "C#/OpenTK/GDAL MOLA/MEGDR globe-height viewer",
+      "integration_decision": "Metadata and byte-order discipline are relevant. Global 128 px/degree MOLA is approximately 463 m sampling, unsuitable for wheel-scale obstacles. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "sadia-zannat/ares-pathfinder",
+      "url": "https://github.com/sadia-zannat/ares-pathfinder",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "a90a50ad0bf5e93f214a5f3249c9300f0d4312bf",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 148,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "68794ab803ed758a9416ab9e576322bce5290127",
+          "size": 7434
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "services/api/planner.py",
+        "docs/SCIENTIFIC_METHOD_V3.md",
+        "docs/ASSET_AND_SOURCE_LICENSES.md"
+      ],
+      "license_api_spdx": "NOASSERTION",
+      "scope": "NASA/PDS-derived Jezero mission/Marswalk prototype",
+      "integration_decision": "Source provenance and directed-cost concepts are relevant; inspected terrain is 12 m, not wheel-scale. Complex asset licensing and native/prototype distinction retained. No source/assets imported.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "AnderssonProgramming/cnn-architectural-aws-ai",
+      "url": "https://github.com/AnderssonProgramming/cnn-architectural-aws-ai",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "f8649473583fc36e35238b5cf53a89cff6a9c68e",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 6761,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "efb638a178a30dc926b589f11fd475c36c002ba2",
+          "size": 14391
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "Mars image-classification/CNN experiments",
+      "integration_decision": "Image class is not elevation or clearance. Defer perception research until labeled rover imagery/calibration are available.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "AlejoMalia/NOArCO",
+      "url": "https://github.com/AlejoMalia/NOArCO",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "310b38b4100438260b94d6b478e6efb4f932a0fd",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 126,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "d7568121f61141482150aa0bb9e2bed423dc272c",
+          "size": 37326
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "NOASSERTION",
+      "scope": "Planetary engineering feasibility and inventories",
+      "integration_decision": "System-scale forcing/power/throughput screening, not local rover navigation. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "Samuelson777/Space-Scientific-Technological-Human-and-Governance-Dimensions-of-Contemporary-Space-Research",
+      "url": "https://github.com/Samuelson777/Space-Scientific-Technological-Human-and-Governance-Dimensions-of-Contemporary-Space-Research",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "7213837561b0a2a79c91982649430c8ef1980edd",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 3,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "5fef1c7c02a3f6c00a2e03804e0f10ace6421f1f",
+          "size": 18368
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "Multidisciplinary space research document",
+      "integration_decision": "Context only, no local terrain/sensor/planner implementation. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "ryan320-cyber/mars-mission-intelligence",
+      "url": "https://github.com/ryan320-cyber/mars-mission-intelligence",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "11bdc8e703511809f5423f62971da5d508a8c129",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 83,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "0a410aa4b9ad19a641dfbf722655be78f4965bab",
+          "size": 14495
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "NASA-data mapping/analysis/AI platform",
+      "integration_decision": "Potential mission context; does not establish rover-scale collision geometry or native UE driving. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "loggger101/Mars_Terrestrial_GlobalMosaic_GIS-Data",
+      "url": "https://github.com/loggger101/Mars_Terrestrial_GlobalMosaic_GIS-Data",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "e479378da1c6d0e6c9ca3d2d44ad2f9d8ddef02b",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 1371,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "78a50d7cf7fb81656e4837e5d70fce2211fa7d6c",
+          "size": 36093
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "ArcGIS global mosaics, THEMIS/Viking/HRSC-MOLA",
+      "integration_decision": "Geological/global context only; resolution and registration must be respected. Not the local navigation surface.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "MJFradi/mars-landing-site-suitability",
+      "url": "https://github.com/MJFradi/mars-landing-site-suitability",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "e62da180dfdcd241e980d74eeb83067856c97b5f",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 58,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "ed84e0b0af0a50fe634dfa28c1aef53a38341df9",
+          "size": 7202
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "AHP/weighted-overlay landing-site GIS",
+      "integration_decision": "Landing-site suitability is distinct from footprint/step clearance. General hard/soft criteria concept only; no scores imported.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "Rishit-katiyar/mars-river",
+      "url": "https://github.com/Rishit-katiyar/mars-river",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "2d701f5b4016c820a45ab8438418789ece7e4e1c",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 6,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "af9326ceec02edbc3062ebd4d0ff7df1cf101bd7",
+          "size": 5523
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "hydrographic_analysis.py"
+      ],
+      "license_api_spdx": "GPL-3.0",
+      "scope": "Terrain hydrographic/river analysis",
+      "integration_decision": "Hydrology and random starting points are not rover collision planning. No claim that this source fills pits; no algorithm/data copied.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "SimranPenyuli/MARSNOVA",
+      "url": "https://github.com/SimranPenyuli/MARSNOVA",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "76c1a6168075ee48c7068924aba7f6b6051f2596",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 1,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "e2b6e25d8735c852a286576f8fe940e2b9d350c3",
+          "size": 2691
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "Mars GIS/ML suitability proposal",
+      "integration_decision": "Reviewed tree contains only README; no executable model/pipeline to integrate.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "EarthViewer/mars",
+      "url": "https://github.com/EarthViewer/mars",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "300d70ae72fa800b51bdf089a908172cb35b4e63",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 27,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "4c2e0c88d3f8b74441091b3b300b773a7828eac9",
+          "size": 1579
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "Planetary imagery/terrain viewer",
+      "integration_decision": "Useful broad-context visualization; no verified wheel-scale DEM/native collision/sensor path. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "Hyradus/MARSIS-xDR-READER",
+      "url": "https://github.com/Hyradus/MARSIS-xDR-READER",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "419b0390d5b7ce7024b87c8e0fe1f1dda7e217de",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 48,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "643e14da4f50c99a417ca9d397ff6217b74b583d",
+          "size": 5500
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "GPL-3.0",
+      "scope": "MARSIS radar formats and GIS/array conversion",
+      "integration_decision": "Subsurface radar is not the surface microtopography required for rover collision. GPL source not imported.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "NASA-AMMOS/MMGIS",
+      "url": "https://github.com/NASA-AMMOS/MMGIS",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "development",
+      "reviewed_tree_sha": "bf006824344a3c001fc0b2c20c966f1dfc3f131e",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 3840,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "b66b941066e842d3d9645b834de15b3d85a9be55",
+          "size": 13437
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "Apache-2.0",
+      "scope": "Planetary GIS and mission-operation mapping",
+      "integration_decision": "Adopt map/goal/provenance separation in our own small UI. Viewshed is line-of-sight analysis, not a rover path planner. No MMGIS code/assets imported.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "opengeos/RustGIS",
+      "url": "https://github.com/opengeos/RustGIS",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "39e7a66ef14d50b9dbd2f0a06431d33088ffccd5",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 784,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "859459db71e611b47c522b7cfe7b0647953664f3",
+          "size": 22354
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "crates/map/src/planets.rs"
+      ],
+      "license_api_spdx": "Apache-2.0",
+      "scope": "GIS viewer with planetary basemap sources",
+      "integration_decision": "planets.rs supplies Web Mercator planetary raster basemaps; not a fine DEM. Do not use Earth tile metres as Mars local distances.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "kimhoyun-robotair/MarsLab",
+      "url": "https://github.com/kimhoyun-robotair/MarsLab",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "a406ca245bfbdf0faaff262a3c63d76110237e3d",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 288,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "3a3ff45e046606d37f527f57ca661be66791606c",
+          "size": 21844
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "marslab/ros2_bridge/depth_publisher.py",
+        "marslab/sensors/lidar_runtime.py"
+      ],
+      "license_api_spdx": null,
+      "scope": "Isaac Sim Mars scenes and sensor/optional ROS2 bridge",
+      "integration_decision": "Adopt capture stamp, organized-point and applied-setting verification as independent adapter practices. Scene-generation tools absent and engine differs; no source/assets imported.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "ViraatC22/extraterrestrial-autonomy",
+      "url": "https://github.com/ViraatC22/extraterrestrial-autonomy",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "34da9a0527355397ecfd5c12dc2eaaa9f6af7545",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 368,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "579eb9b3d285af282aff5da89157f5ec0d54df32",
+          "size": 7690
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "src/exonaut/planners/risk_aware.py",
+        "src/exonaut/environments/terrain_legacy.py"
+      ],
+      "license_api_spdx": "MIT",
+      "scope": "EXONAUT adaptive risk planning and synthetic environments",
+      "integration_decision": "Retain distinction between terrain prior and evidence. Slip/energy/Bayesian/RL models need calibrated data and are deferred. No learned policy or procedural terrain imported.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "J-Varela/lunar-pathfinder",
+      "url": "https://github.com/J-Varela/lunar-pathfinder",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "deea7c99339d4741f69a0233c948481874eb6f5d",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 40,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "bed0a302318da6a44805ac08c870d12e1f67d931",
+          "size": 1468
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "src/lunar_pathfinder/routing.py",
+        "src/lunar_pathfinder/traversability.py",
+        "docs/decisions/0002-provisional-slope-thresholds.md"
+      ],
+      "license_api_spdx": null,
+      "scope": "Real-data lunar terrain classes and risk-aware A*",
+      "integration_decision": "Adopt hard-constraint versus cost distinction independently. Its 8/15/25 degree classes are explicitly provisional and not rover-certified Mars limits. No code copied.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "spaceuma/baseprod",
+      "url": "https://github.com/spaceuma/baseprod",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "304ee43bbbad92fd2e17a357d204e9b74f7d41e8",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 44,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "ccec1547eab633517be9f8e109a174035b45cc9a",
+          "size": 5405
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "Earth field dataset for Mars-analogue rover sensing",
+      "integration_decision": "Useful later calibration/timestamp validation dataset, explicitly Earth analogue rather than measured Mars. No assets imported.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "kalesha681/ARES-Autonomous-Surveyor",
+      "url": "https://github.com/kalesha681/ARES-Autonomous-Surveyor",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "28fec961467bd3ceb9ccea762cdd087c0b758118",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 79,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "592024d844208bb95d56b2525a66c91be1688314",
+          "size": 9966
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "UAV survey, boustrophedon coverage and visual landmarks",
+      "integration_decision": "Aerial coverage is distinct from skid-steer rover footprint/collision planning. Defer coverage features.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "raulcastar/MARE-Lunar-Simulator",
+      "url": "https://github.com/raulcastar/MARE-Lunar-Simulator",
+      "in_public_mars_list": true,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "4679ce54acbd80ba1b6f81a554cc8abf958e5cce",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 287,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "ad32e23676592c0f3898ec278c8ce9fa1759f3b2",
+          "size": 9658
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "Current Unreal project, TCP rover and sensor plugins",
+      "integration_decision": "Direct integration uses existing LIDR/NAVF plugins, measured DEM import and motor protocol; runtime plugins made explicit and shared clock/wire contract reviewed.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "ShisatoYano/AutonomousVehicleControlBeginnersGuide",
+      "url": "https://github.com/ShisatoYano/AutonomousVehicleControlBeginnersGuide",
+      "in_public_mars_list": false,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "acc8ce59b9927c38e0844ca5cda142e1210c8b2a",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 309,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "ada1a7fdfe9b9d025833614830e86c4045d16726",
+          "size": 7049
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "Modular vehicle-control/planning examples",
+      "integration_decision": "Algorithm reference for separated planning/tracking responsibilities; independent implementation, no source copied.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "ethz-asl/mav_active_3d_planning",
+      "url": "https://github.com/ethz-asl/mav_active_3d_planning",
+      "in_public_mars_list": false,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "11634e8325480ce5da36a78b23b917347c973613",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 202,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "2d2d7cc318216cab1f74313ec80769c07bdfaf7b",
+          "size": 10080
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "BSD-3-Clause",
+      "scope": "ROS-based active 3D UAV planning",
+      "integration_decision": "Informative exploration may later complement a rover; different vehicle/stack, not imported.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "bwalsh0/Stereo-Camera-Path-Planning",
+      "url": "https://github.com/bwalsh0/Stereo-Camera-Path-Planning",
+      "in_public_mars_list": false,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "b742098246f209024999d660cea9def29cd16cc4",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 14,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "700ba6e931597c93cbaeb5ca5846ce7149a8e8f4",
+          "size": 1624
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "calibration.py",
+        "stereo_main.py"
+      ],
+      "license_api_spdx": "MIT",
+      "scope": "Calibrated stereo/SGBM, obstacle map and planning",
+      "integration_decision": "Independently implement paired capture, SGBM metre depth and transform into the map. No external calibration or source copied.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "JeanetteMueller/OpenPerseverance",
+      "url": "https://github.com/JeanetteMueller/OpenPerseverance",
+      "in_public_mars_list": false,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "3832a567e24b995c143f8d2e4ef350646a76207c",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 242,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "d2a705d84ef22382c61636ba443d9f3a52678007",
+          "size": 2628
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "CC0-1.0",
+      "scope": "Open rover project",
+      "integration_decision": "Potential future vehicle/model reference; user CAD/kinematics are separate and no model imported.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "kevinbalicot/html5-mars-project",
+      "url": "https://github.com/kevinbalicot/html5-mars-project",
+      "in_public_mars_list": false,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "4f8bc346dc99722b84fba8f03968326952cdb753",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 39,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "eb7fe27f94e37ff5bc735089e6ae4b31437b0199",
+          "size": 5353
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "HTML5 Mars visualization",
+      "integration_decision": "Presentation context, not native 3D rover clearance. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "mars-sim/mars-sim",
+      "url": "https://github.com/mars-sim/mars-sim",
+      "in_public_mars_list": false,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "e04061a3e4faa564954811561aa732e4f443103e",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 2889,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "c1011c46863cbfcb66ab2be07c004afc8a87348a",
+          "size": 19606
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "GPL-3.0",
+      "scope": "Mars settlement/system simulation",
+      "integration_decision": "Human/settlement simulation is outside the local geometric driving task. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "FredJ21/MarsRover2020",
+      "url": "https://github.com/FredJ21/MarsRover2020",
+      "in_public_mars_list": false,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "15138d188bc4afc0ce6e36665b693f0901d13c05",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 1634,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "64703d68e90fdccd99e6aa0df63bd1c1dffd0f7f",
+          "size": 538
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": "MIT",
+      "scope": "Alternative Mars rover simulator",
+      "integration_decision": "Different project/engine and runtime contract; no direct drop-in navigation integration demonstrated. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "selamet/maze-solver-teknofest",
+      "url": "https://github.com/selamet/maze-solver-teknofest",
+      "in_public_mars_list": false,
+      "default_branch_at_review": "master",
+      "reviewed_tree_sha": "1bdbab9768b5c0d0c3a4d55034860f10f982f9e1",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 4,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "02ff4ffa418937a6936e83b27cec9546df240ef8",
+          "size": 1246
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [
+        "anlamlastirma.py",
+        "maze_solver2.py"
+      ],
+      "license_api_spdx": null,
+      "scope": "İHA/İKA competition image/maze solving",
+      "integration_decision": "2D image arena, not measured Mars DEM. No public separate İKA list was visible; this relevant star was reviewed individually. No source copied.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    },
+    {
+      "repository": "sieuwe1/Autonomous-Ai-drone-scripts",
+      "url": "https://github.com/sieuwe1/Autonomous-Ai-drone-scripts",
+      "in_public_mars_list": false,
+      "default_branch_at_review": "main",
+      "reviewed_tree_sha": "01765567d81fcc88a54bda8a2630cd363e64a2c2",
+      "tree_is_commit_sha": false,
+      "tree_truncated": false,
+      "file_count": 42,
+      "root_readme_blobs": [
+        {
+          "path": "README.md",
+          "sha": "209bab97039d80871db9d1d2c1db8a5a59b6ab22",
+          "size": 5268
+        }
+      ],
+      "selected_code_or_method_paths_reviewed": [],
+      "license_api_spdx": null,
+      "scope": "Autonomous drone scripts",
+      "integration_decision": "Different vehicle and sensing assumptions; no demonstrated measured Mars rover integration. No import.",
+      "external_code_copied": false,
+      "external_runtime_executed": false
+    }
+  ]
+}

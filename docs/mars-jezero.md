@@ -64,6 +64,9 @@ Varsayılan olarak rover yerleştirilmez. Editor viewport'unda araziyi inceleyin
 Play'de Unreal'ın serbest kamera/pawn davranışı seçili GameMode'a bağlıdır.
 İsteğe bağlı referans rover ve Python motor köprüsü ayrı
 [rover rehberinde](python-rover-bridge.md) anlatılır.
+Hedef seçimi, ROS'suz planlayıcı ve mevcut LiDAR/derinlik akışları için
+[navigasyon rehberini](mars-navigation.md) kullanın. Bu akış yeni seviyede
+gerçek sensör montajını dışa aktarır; native sürüş kabulü ayrıca gerekir.
 
 ## Terminal kontrolleri
 

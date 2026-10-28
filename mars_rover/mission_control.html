@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="tr"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Jezero görev kontrolü</title>
+<style>
+body{margin:0;background:#111b22;color:#eaf1f5;font:16px system-ui,sans-serif}main{max-width:1100px;margin:auto;padding:28px}
+h1{font-size:26px;margin:0 0 8px}p{color:#afc0ca;line-height:1.5}.layout{display:flex;gap:24px;flex-wrap:wrap}
+canvas{width:min(100%,680px);height:auto;background:#293b46;cursor:crosshair;border:1px solid #536774}
+aside{flex:1;min-width:240px}button{font:inherit;padding:12px 18px;margin:6px 8px 12px 0;border:0;border-radius:5px;cursor:pointer}
+#go{background:#7fe4b3;color:#10241b}#stop{background:#efac9d;color:#351812}pre{white-space:pre-wrap;overflow-wrap:anywhere;color:#c7d8e1;font-size:13px}
+label{display:block;margin:16px 0}small{color:#a9bac6}a{color:#7fe4b3}
+</style>
+<main><h1>Jezero görev kontrolü</h1>
+<p>Haritadan hedef seçin. Koordinatlar yerel doğu/kuzey yönünde metredir. Kırmızı alanlar planlayıcının engel payı eklediği bölgelerdir.</p>
+<div class="layout"><canvas id="map" width="680" height="680" aria-label="Mars arazisi ve görev rotası"></canvas>
+<aside><label id="target">Hedef seçilmedi</label><button id="go" disabled>Hedefe git</button><button id="stop">Durdur</button>
+<p id="message" role="status">Simülatör durumu okunuyor…</p><pre id="status"></pre>
+<small>Gri görüntü gerçek HiRISE referansıdır. Bu ekran Unreal kamera görüntüsü değildir. Pozisyon simülatör telemetrisinden gelir; SLAM konumu değildir.</small>
+</aside></div></main>
+<script>
+const canvas=document.querySelector('#map'),ctx=canvas.getContext('2d');
+const label=document.querySelector('#target'),message=document.querySelector('#message');
+let terrain=null,selected=null,current=null,revision=-1,layer=null;
+const image=new Image();image.onload=draw;image.src='/terrain.png';
+const toPixel=p=>[p[0]/terrain.extent_m[0]*canvas.width,(1-p[1]/terrain.extent_m[1])*canvas.height];
+async function request(path,body){const response=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const value=await response.json();if(!response.ok)throw Error(value.error);return value;}
+function draw(){if(!terrain)return;ctx.clearRect(0,0,canvas.width,canvas.height);if(image.complete&&image.naturalWidth)ctx.drawImage(image,0,0,canvas.width,canvas.height);if(layer)ctx.drawImage(layer,0,0,canvas.width,canvas.height);
+ctx.lineWidth=3;ctx.strokeStyle='#71ffd0';if(current?.route?.length){ctx.beginPath();current.route.forEach((p,i)=>{const[x,y]=toPixel(p);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();}
+for(const[p,color]of [[selected,'#ffd674'],[current?.pose_local_m,'#65d6ff']]){if(p){const[x,y]=toPixel(p);ctx.fillStyle=color;ctx.beginPath();ctx.arc(x,y,7,0,2*Math.PI);ctx.fill();}}
+ctx.fillStyle='white';ctx.font='15px system-ui';ctx.fillText('Kuzey ↑',12,24);ctx.fillText('Doğu →',canvas.width-90,canvas.height-12);}
+async function loadMap(){const r=await fetch('/map');if(!r.ok)throw Error('Harita okunamadı');terrain=await r.json();layer=document.createElement('canvas');layer.width=terrain.width;layer.height=terrain.height;const lctx=layer.getContext('2d'),pixels=lctx.createImageData(layer.width,layer.height);
+terrain.blocked.forEach((v,i)=>{if(v){const row=Math.floor(i/layer.width),col=i%layer.width,j=((layer.height-1-row)*layer.width+col)*4;pixels.data[j]=250;pixels.data[j+1]=80;pixels.data[j+2]=65;pixels.data[j+3]=115;}});lctx.putImageData(pixels,0,0);revision=terrain.revision;draw();}
+canvas.addEventListener('click',event=>{if(!terrain)return;const r=canvas.getBoundingClientRect();selected=[(event.clientX-r.left)/r.width*terrain.extent_m[0],(1-(event.clientY-r.top)/r.height)*terrain.extent_m[1]];label.textContent=`Hedef: doğu ${selected[0].toFixed(2)} m · kuzey ${selected[1].toFixed(2)} m`;document.querySelector('#go').disabled=false;draw();});
+document.querySelector('#go').onclick=async()=>{if(selected)try{await request('/goal',{x:selected[0],y:selected[1]});message.textContent='Hedef alındı; poz ve sensör koşulları denetleniyor.';}catch(e){message.textContent=e.message;}};
+document.querySelector('#stop').onclick=async()=>{try{await request('/stop',{});message.textContent='Görev durduruldu.';}catch(e){message.textContent=e.message;}};
+async function poll(){try{const r=await fetch('/status');if(!r.ok)throw Error('Durum okunamadı');current=await r.json();document.querySelector('#status').textContent=JSON.stringify({durum:current.state,derinlik:current.depth_source,hedef:current.goal,poz:current.pose_local_m,yeniden_planlama:current.replans,hata:current.error},null,2);if(current.map_revision!==revision)await loadMap();draw();}catch(e){message.textContent=e.message;}setTimeout(poll,500);}
+loadMap().then(poll).catch(e=>message.textContent=e.message);
+</script></html>
