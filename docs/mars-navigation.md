@@ -213,3 +213,8 @@ Yöntem kaynakları: [NASA/JPL AutoNav yükseklik haritası ve sürüş yayları
 [HiRISE DTM çözünürlük ve artifact açıklaması](https://www.uahirise.org/dtm/about.php),
 [OpenCV StereoSGBM](https://docs.opencv.org/4.x/d2/d85/classcv_1_1StereoSGBM.html).
 Bu belgeler kendi simülasyonumuz için başarı veya uçuş yeterlilik belgesi değildir.
+
+Uydu ve rover görünümü arasında geçiş, ortak görev izi, ekran üzerinden hedef
+seçimi ve canlı parametre paneli için [yeni geliştirme planı](mars-dual-view-plan.md)
+hazırlandı. Bunlar planlanan ek özelliklerdir; mevcut 2B arayüzde uygulanmış
+oldukları iddia edilmez.
