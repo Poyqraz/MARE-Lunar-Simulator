@@ -1,5 +1,8 @@
 # Jezero Krateri'ni Unreal Engine 5.7'de oluşturma
 
+Windows'a ilk kurulum, gereken uygulamalar ve gerçek GPU/sensör/rover kabul
+sırası için [tam test rehberini](mars-windows-full-test.md) kullanın.
+
 Bu fork'un mevcut odağı **doğru ölçekli Mars ortamıdır**. Kendi rover modeliniz
 veya kontrol kodunuz gerekmez. Başlangıç verisi gerçek Jezero topografyasından
 252 × 252 m'lik yerel bir kesit ve aynı bölgeden kaydedilmiş gri tonlu
