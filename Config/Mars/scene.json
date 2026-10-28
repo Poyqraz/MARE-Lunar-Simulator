@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "purpose": "Illustrative Mars rendering preset; not calibrated radiometry, albedo or measured dust optical properties",
+  "sun_azimuth_deg": 135.0,
+  "sun_elevation_deg": 35.0,
+  "sun_illuminance_lux": 30000.0,
+  "fixed_exposure_ev100": 13.0,
+  "reference_exposure_ev100": 0.0,
+  "ground_radius_km_fallback": 3396.19,
+  "atmosphere_height_km": 80.0,
+  "scale_height_km": 11.0,
+  "rayleigh_scattering_per_km": [0.000087, 0.000203, 0.000497],
+  "mie_scattering_per_km": [0.035, 0.030, 0.025],
+  "mie_absorption_per_km": [0.001, 0.008, 0.020],
+  "mie_anisotropy": 0.7,
+  "terrain_color_a_linear": [0.18, 0.075, 0.035],
+  "terrain_color_b_linear": [0.28, 0.14, 0.075],
+  "terrain_roughness": 0.95,
+  "sources": [
+    "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
+    "https://science.nasa.gov/mars/facts/",
+    "https://dev.epicgames.com/documentation/en-us/unreal-engine/sky-atmosphere-component-properties-in-unreal-engine?application_version=5.7"
+  ],
+  "provenance": "Radius uses DEM reference body when available; 11 km is NASA's nominal atmospheric scale height. Lighting, RGB scattering, dust distribution, colour, roughness, exposure and sun pose are rendering choices, not site measurements. No Earth ozone layer, extra fog, synthetic collision rocks or fabricated topography is added."
+}

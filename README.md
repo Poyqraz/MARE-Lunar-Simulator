@@ -1,5 +1,13 @@
 # MARE: Lunar Rover Simulator
 
+> **Mars/Jezero in this fork:** a locally reprojected 252 × 252 m measured
+> terrain, registered HiRISE orbital reference, and rover-optional Unreal scene setup.
+> Start with the [Mars guide (Türkçe)](docs/mars-jezero.md), [research decisions](docs/mars-research.md)
+> and [review/test limits](docs/mars-validation.md). Dynamic simulation shading and unlit
+> grayscale orbital reference are separate modes. Python tests run in CI;
+> actual GPU appearance and vehicle calibration still require Windows UE 5.7.
+> The original lunar simulator is documented below.
+
 [![arXiv](https://img.shields.io/badge/arXiv-2610.28465-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2610.28465)
 [![Video](https://img.shields.io/badge/Video-YouTube-FF0000?logo=youtube&logoColor=white)](https://youtu.be/EI4HgbMFbBE)
 [![Project page](https://img.shields.io/badge/Project-page-1f6feb)](https://raulcastar.me/mare/)

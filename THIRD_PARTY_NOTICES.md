@@ -26,3 +26,19 @@ Required attribution for the Yutu model (CC-BY-4.0):
 
 The Poly Haven assets are CC0 and need no attribution; they are credited here
 as a courtesy.
+
+## Jezero starter terrain added in this fork
+
+`Content/Mars/Jezero/` contains a locally reprojected 253 × 253 grid from the USGS
+Mars 2020 HiRISE DTM **Jezero_C**, published 2020-07-24. Originators listed in
+the source metadata: Robin Fergason, Donna Galuszka, Trent Hare, David Mayer,
+Bonnie Redding and Ethan Smith. HiRISE instrument: NASA/JPL/University of Arizona.
+
+The [source metadata](https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/HiRISE/DTM_MOLAtopography_DeltaGeoid_Jezero_C_Edited_affine_1m_Eqc_latTs0_lon0.xml)
+lists access and use constraints as **None**. Source data are credited here;
+they are not relicensed as original MIT software. The bundled manifest records
+the original URL, CRS, pixel window, scale, offset, transformations and output
+checksums. A registered grayscale orbital reference from the paired
+ESP_045994_1985 image is also included; it is not RGB true colour or albedo.
+Full source and transformation notes are in
+[DATA_SOURCES.md](Content/Mars/Jezero/DATA_SOURCES.md).
