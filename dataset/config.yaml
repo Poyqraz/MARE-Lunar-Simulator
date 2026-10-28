@@ -1,0 +1,64 @@
+# MARE dataset generator. Every random choice (map parameters, rock fields,
+# spawn points, goals, sun positions) derives from `seed`, so the same file
+# reproduces the same maps and the same driving plan.
+
+seed: 2026
+output_dir: output                 # relative to this folder, or absolute
+target_samples: 5000               # recording stops once this many samples are extracted
+
+paths:
+  terrain_studio: ../../Unreal-Moon-Terrain-Generation   # relative to this folder, or absolute
+  rock_models: null                # null: <terrain_studio>/input_rocks
+
+unreal:
+  level: /Game/Dataset/Dataset_Raph   # dedicated level, a copy of Lunar_Terrain_Raph (see README)
+  rover_actor: Leo_Raph
+  spawn_height_m: 0.6              # the rover is dropped this far above the ground
+  landing_timeout_s: 60            # wait for the rover to settle after Play
+  rock_collision: false            # false: the rover drives through rocks (they stay rendered and labelled)
+
+gnc:
+  api: http://127.0.0.1:5001/api
+  dashboard_container: gnc-moon-simulator-mission_control_dashboard-1
+  planner_container: gnc-moon-simulator-component_path_planner-1
+  planner_node: lc_component_path_planner
+  obstacle_avoidance: false        # false: no lidar obstacles, so no re-planning around rocks
+  node_params:                     # set on the GNC nodes (then restarted) before recording
+    lc_component_event_camera:     # event frames at 10 Hz, above the navcams' rate
+      publish_rate_hz: 10.0
+      accumulation_window_s: 0.25
+    lc_component_spad_camera:      # SPAD images at 10 Hz
+      publish_rate_hz: 10.0
+
+maps:
+  count: 8
+  size_m: 500                      # square maps, 1 m per DEM cell
+  terrain_preset: settings         # Terrain Studio config/<preset>.yaml
+  vary:                            # per map, drawn uniformly from these ranges
+    CRATER_DENSITY: [0.0003, 0.0008]
+    CRATER_MAX_RADIUS_PCT: [0.06, 0.15]
+    MACRO_ELEVATION_MIN: [5.0, 15.0]
+    MACRO_ELEVATION_MAX: [20.0, 50.0]
+  rock_presets: [lunar_mare, lunar_highlands, blocky_ejecta]
+
+episodes:
+  per_map: 8
+  order: interleaved               # interleaved: round-robin over the maps; by_map: all of a map's episodes first
+  goals: 3                         # goals driven in sequence per episode
+  goal_distance_m: [12, 35]        # distance between consecutive goals
+  edge_margin_m: 40                # spawns and goals stay this far from the map edges
+  max_slope_deg: 8                 # spawns and goals on gentler ground only
+  goal_timeout_s: 300              # wall-clock limit per goal
+  max_record_s: 1200               # hard limit on each recording (wall clock)
+  sun_elevation_deg: [3, 35]
+  sun_azimuth_deg: [0, 360]
+
+frames:
+  min_spacing_m: 0.3               # keep a frame once the rover moved this far ...
+  max_gap_s: 2.0                   # ... or this much simulation time passed
+  pair_tolerance_s: 0.1            # event, SPAD and odometry matched to a camera frame within this
+  keep_bags: no_images             # bags/<episode>/: no_images = every topic but the images (a few MB),
+                                   # true = the full bag (~0.6 GB per minute), false = none
+  depth_npy: true                  # also save depth as float32 metres (depth_m/*.npy)
+  lidar_tolerance_s: 0.5           # lidar scan (1 Hz) paired with a frame within this; projected with the motion between
+  previews: true                   # preview/: colour copies of depth, lidar depth, object and shadow masks for viewing

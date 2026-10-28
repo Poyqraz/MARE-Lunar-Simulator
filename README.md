@@ -15,6 +15,8 @@ ROS 2 GNC stack, watched from a web mission control.
 
 **Paper:** [arXiv:2610.28465](https://arxiv.org/abs/2610.28465) · **Video overview:** [YouTube](https://youtu.be/EI4HgbMFbBE) · **Project page:** [raulcastar.me/mare](https://raulcastar.me/mare/)
 
+**Dataset:** [MARE Lunar Rover Dataset](https://huggingface.co/datasets/raulcastar/mare-lunar-rover-dataset) (5,040 frames, CC BY 4.0) · **Baselines:** [trained models](https://huggingface.co/raulcastar/mare-lunar-baselines) · [code](https://github.com/raulcastar/MARE-Dataset-Baselines)
+
 | Leo_Raph | Yutu |
 |---|---|
 | ![Leo_Raph driving itself to a goal past rocks](docs/images/raph_drive.webp) | ![Yutu driving itself to a goal](docs/images/yutu_drive.webp) |
@@ -35,6 +37,7 @@ sensor plugins, and it is the centre of the suite:
 | [GNC-Moon-Simulator](https://github.com/raulcastar/GNC-Moon-Simulator) | ROS 2 GNC stack in Docker: perception, path planning, rover control, mission control |
 | [UnrealStereoCam](https://github.com/raulcastar/UnrealStereoCam), [UnrealLidarCam](https://github.com/raulcastar/UnrealLidarCam), [UnrealEventCam](https://github.com/raulcastar/UnrealEventCam), [UnrealSPADCam](https://github.com/raulcastar/UnrealSPADCam), [UnrealSimClock](https://github.com/raulcastar/UnrealSimClock) | The sensor plugins, each usable in any Unreal project (copies in `Plugins/`) |
 | [UnrealDEMLandscape](https://github.com/raulcastar/UnrealDEMLandscape) | Editor plugin that creates the Landscape from Terrain Studio's heightmap, usable in any Unreal project (copy in `Plugins/`) |
+| [MARE-Dataset-Baselines](https://github.com/raulcastar/MARE-Dataset-Baselines) | Segmentation and depth baselines trained on the [dataset](https://huggingface.co/datasets/raulcastar/mare-lunar-rover-dataset) recorded with MARE; the generator that recorded it is in [`dataset/`](dataset) (optional) |
 
 ## The pipeline
 

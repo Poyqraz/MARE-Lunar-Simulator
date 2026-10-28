@@ -141,6 +141,13 @@ public:
 	UPROPERTY(EditAnywhere, Category = "StereoCam|Cameras")
 	bool bStreamCenterDepth = true;
 
+	// Also stream the central camera without glare: a colour capture created at
+	// BeginPlay with the central camera's pose, FOV, size and post-process
+	// settings, but no bloom and no lens flares, sent on NoGlareCamId. Same
+	// frame id as the other cameras. Costs one more scene render per frame.
+	UPROPERTY(EditAnywhere, Category = "StereoCam|Cameras")
+	bool bStreamCenterNoGlare = false;
+
 	// Options for the dropdowns above.
 	UFUNCTION()
 	TArray<FString> GetSceneCaptureNames() const;
@@ -198,6 +205,11 @@ public:
 	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "StereoCam|Cameras")
 	int32 DepthCamId = 4;
 
+	// The glare-free central camera (bStreamCenterNoGlare); an extra_cameras
+	// entry in that file publishes it.
+	UPROPERTY(EditAnywhere, AdvancedDisplay, Category = "StereoCam|Cameras")
+	int32 NoGlareCamId = 5;
+
 	virtual void BeginPlay() override;
 	virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 	virtual void TickComponent(float DeltaTime, ELevelTick TickType,
@@ -212,6 +224,9 @@ private:
 
 	// Creates the centre camera's depth capture (bStreamCenterDepth).
 	void AddCenterDepthCapture();
+
+	// Creates the centre camera's glare-free twin (bStreamCenterNoGlare).
+	void AddCenterNoGlareCapture();
 
 	// Posts one render command per send: it moves finished readbacks to Ready,
 	// then starts this send's readbacks. The game thread never locks, waits on

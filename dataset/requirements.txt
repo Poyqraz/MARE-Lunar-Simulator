@@ -1,0 +1,7 @@
+# MARE dataset generator (plus Terrain Studio's own requirements.txt)
+numpy
+scipy
+pyyaml
+pillow
+mcap
+mcap-ros2-support

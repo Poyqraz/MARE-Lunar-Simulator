@@ -1,0 +1,88 @@
+# MARE dataset v2: config.yaml (v1) plus the rear camera with its labels, a
+# glare-free copy of the central image, and maps and routes with more craters
+# and rocks in view. Every random choice derives from `seed`, as in v1.
+#
+#   python generate.py all --config config_v2.yaml --output <folder>
+
+seed: 2027
+output_dir: output_v2              # relative to this folder, or absolute
+target_samples: 5000               # recording stops once this many samples are extracted
+
+paths:
+  terrain_studio: ../../Unreal-Moon-Terrain-Generation   # relative to this folder, or absolute
+  rock_models: null                # null: <terrain_studio>/input_rocks
+
+unreal:
+  level: /Game/Dataset/Dataset_Raph   # dedicated level, a copy of Lunar_Terrain_Raph (see README)
+  rover_actor: Leo_Raph
+  spawn_height_m: 0.6              # the rover is dropped this far above the ground
+  landing_timeout_s: 60            # wait for the rover to settle after Play
+  rock_collision: false            # false: the rover drives through rocks (they stay rendered and labelled)
+  console_variables:               # rendering for cameras that render a few times a simulated second (set before Play)
+    r.Shadow.Virtual.SMRT.RayCountDirectional: 0          # sharp sun shadows, without the dither noise of soft ones
+    r.AntiAliasingMethod: 1                               # FXAA: temporal AA smears between renders this far apart
+    r.Shadow.Virtual.ResolutionLodBiasDirectional: -2.5   # finer shadow map: no comb-shaped, inflated shadows at low sun
+    r.Shadow.Virtual.MaxPhysicalPages: 8192               # room for it, so distant shadows are not dropped
+  streamer:                        # UnrealStereoCam options on the rover's navcam streamer (set in the editor)
+    bStreamCenterNoGlare: true     # the central image without bloom or lens flares, on cam id 5
+
+gnc:
+  api: http://127.0.0.1:5001/api
+  dashboard_container: gnc-moon-simulator-mission_control_dashboard-1
+  planner_container: gnc-moon-simulator-component_path_planner-1
+  planner_node: lc_component_path_planner
+  obstacle_avoidance: false        # false: no lidar obstacles, so no re-planning around rocks
+  node_params:                     # set on the GNC nodes (then restarted) before recording
+    lc_component_event_camera:     # event frames at 10 Hz, above the navcams' rate
+      publish_rate_hz: 10.0
+      accumulation_window_s: 0.25
+    lc_component_spad_camera:      # SPAD images at 10 Hz
+      publish_rate_hz: 10.0
+    lc_component_stereo_depth:     # the rear camera with its masks, and the glare-free central camera
+      extra_cameras: ["10:rear_cam:90:13", "5:navcam/central_noglare"]
+      extra_cameras_hz: 10.0       # above the navcams' rate, so every frame is published
+  extra_topics:                    # recorded besides dataset_gnc.TOPICS
+    - /navcam/central_noglare/image_color
+    - /rear_cam/image_color
+    - /rear_cam/camera_info
+    - /rear_cam/object_mask
+    - /rear_cam/object_mask_classes
+    - /rear_cam/shadow_label
+
+maps:
+  count: 8
+  size_m: 500                      # square maps, 1 m per DEM cell
+  terrain_preset: settings         # Terrain Studio config/<preset>.yaml
+  vary:                            # per map, drawn uniformly from these ranges
+    CRATER_DENSITY: [0.0012, 0.0025]       # v1: 0.0003-0.0008; more craters ...
+    CRATER_MAX_RADIUS_PCT: [0.03, 0.08]    # ... and smaller ones (v1: 0.06-0.15), so more fit in a view
+    MACRO_ELEVATION_MIN: [5.0, 15.0]
+    MACRO_ELEVATION_MAX: [20.0, 50.0]
+  rock_presets: [lunar_highlands, blocky_ejecta]
+  rock_vary:                       # per map, over the rock preset
+    ROCK_COVERAGE: [0.02, 0.05]    # v1 presets: 0.006-0.04
+
+episodes:
+  per_map: 8
+  order: interleaved               # interleaved: round-robin over the maps; by_map: all of a map's episodes first
+  goals: 3                         # goals driven in sequence per episode
+  goal_distance_m: [10, 30]        # distance between consecutive goals
+  feature_bias: 1.5                # spawns and goals near rocks and craters more often: weight exp(bias * z-score)
+                                   # of the point's rocks and craters (0 = uniform, as v1)
+  feature_radius_m: 10             # how far around a point its rocks and craters count
+  edge_margin_m: 40                # spawns and goals stay this far from the map edges
+  max_slope_deg: 8                 # spawns and goals on gentler ground only
+  goal_timeout_s: 300              # wall-clock limit per goal
+  max_record_s: 1200               # hard limit on each recording (wall clock)
+  sun_elevation_deg: [3, 35]
+  sun_azimuth_deg: [0, 360]
+
+frames:
+  min_spacing_m: 0.3               # keep a frame once the rover moved this far ...
+  max_gap_s: 2.0                   # ... or this much simulation time passed
+  pair_tolerance_s: 0.1            # event, SPAD, rear camera and odometry matched to a frame within this
+  keep_bags: no_images             # bags/<episode>/: no_images = every topic but the images (a few MB),
+                                   # true = the full bag (~0.6 GB per minute), false = none
+  depth_npy: true                  # also save depth as float32 metres (depth_m/*.npy)
+  lidar_tolerance_s: 0.5           # lidar scan (1 Hz) paired with a frame within this; projected with the motion between
+  previews: true                   # preview/: colour copies of depth, lidar depth, object and shadow masks for viewing

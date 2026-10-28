@@ -49,6 +49,10 @@ void UUnrealStereoCam::BeginPlay()
 	{
 		AddCenterDepthCapture();
 	}
+	if (bStreamCenterNoGlare)
+	{
+		AddCenterNoGlareCapture();
+	}
 
 	Stream = MakeShared<FStereoCamStreamState, ESPMode::ThreadSafe>();
 
@@ -338,6 +342,65 @@ void UUnrealStereoCam::AddCenterDepthCapture()
 	UE_LOG(LogTemp, Log,
 	       TEXT("UnrealStereoCam: ground-truth depth of '%s' -> cam id %d (%dx%d, R32F cm)."),
 	       *Source->GetName(), DepthCamId, RT->SizeX, RT->SizeY);
+}
+
+void UUnrealStereoCam::AddCenterNoGlareCapture()
+{
+	const FStereoCamResolved* Center = Active.FindByPredicate(
+		[this](const FStereoCamResolved& R) { return R.CamId == CenterCamId && R.Capture; });
+	if (!Center || !Center->Capture->TextureTarget)
+	{
+		UE_LOG(LogTemp, Warning,
+		       TEXT("UnrealStereoCam: no centre capture, so no glare-free image."));
+		return;
+	}
+	USceneCaptureComponent2D* Source = Center->Capture;
+	USceneCaptureComponent2D* Clean = NewObject<USceneCaptureComponent2D>(
+		GetOwner(), MakeUniqueObjectName(GetOwner(), USceneCaptureComponent2D::StaticClass(),
+		                                 TEXT("StereoCamCenterNoGlare")));
+	Clean->RegisterComponent();
+	Clean->AttachToComponent(Source, FAttachmentTransformRules::SnapToTargetNotIncludingScale);
+
+	// The centre camera's view and look (its exposure settings included) ...
+	Clean->ProjectionType = Source->ProjectionType;
+	Clean->FOVAngle = Source->FOVAngle;
+	Clean->OrthoWidth = Source->OrthoWidth;
+	Clean->PrimitiveRenderMode = Source->PrimitiveRenderMode;
+	Clean->HiddenActors = Source->HiddenActors;
+	Clean->ShowOnlyActors = Source->ShowOnlyActors;
+	Clean->ShowFlags = Source->ShowFlags;
+	Clean->PostProcessSettings = Source->PostProcessSettings;
+	Clean->PostProcessBlendWeight = Source->PostProcessBlendWeight;
+
+	// ... without the glare: no bloom (the halo around bright spots) and no
+	// lens flares (the ghosts along the line through the sun).
+	Clean->ShowFlags.SetBloom(false);
+	Clean->ShowFlags.SetLensFlares(false);
+	FPostProcessSettings& PP = Clean->PostProcessSettings;
+	PP.bOverride_BloomIntensity = true;
+	PP.BloomIntensity = 0.0f;
+	PP.bOverride_LensFlareIntensity = true;
+	PP.LensFlareIntensity = 0.0f;
+	Clean->PostProcessBlendWeight = 1.0f;
+
+	UTextureRenderTarget2D* RT = NewObject<UTextureRenderTarget2D>(Clean);
+	RT->RenderTargetFormat = RTF_RGBA8;
+	RT->ClearColor = FLinearColor::Black;
+	RT->InitAutoFormat(Source->TextureTarget->SizeX, Source->TextureTarget->SizeY);
+	RT->UpdateResourceImmediate(true);
+	Clean->TextureTarget = RT;
+	Clean->CaptureSource = SCS_FinalColorLDR;
+	Clean->bCaptureEveryFrame = !bCaptureOnDemand;
+	Clean->bAlwaysPersistRenderingState = true;
+	Clean->bCaptureOnMovement = false;
+
+	FStereoCamResolved Entry;
+	Entry.Capture = Clean;
+	Entry.CamId = NoGlareCamId;
+	Active.Add(Entry);
+	UE_LOG(LogTemp, Log,
+	       TEXT("UnrealStereoCam: glare-free copy of '%s' -> cam id %d (%dx%d)."),
+	       *Source->GetName(), NoGlareCamId, RT->SizeX, RT->SizeY);
 }
 
 bool UUnrealStereoCam::TryConnect()

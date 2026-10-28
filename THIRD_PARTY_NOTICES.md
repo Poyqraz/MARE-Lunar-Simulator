@@ -14,6 +14,7 @@ terrain, rock and ground-truth tools are
 | `Content/RoverAssets/Yutu` (Yutu rover model) | "Yutu" by [tashtego](https://sketchfab.com/tashtego) on [Sketchfab](https://sketchfab.com/3d-models/yutu-d9564c9a60c14b85a880cc0bfcf1a6b5) | [CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/), credited in `Content/RoverAssets/Yutu/CREDITS.txt` and `license.txt` |
 | `Plugins/TCP-Unreal` | [TCP-Unreal](https://github.com/getnamo/TCP-Unreal) by Jan Kaniewski (getnamo) | MIT, see `Plugins/TCP-Unreal/LICENSE` |
 | `Plugins/UnrealEventCam`: the event model (`EventSimulator.h/.cpp`) | port of ESIM ([rpg_esim](https://github.com/uzh-rpg/rpg_esim)), Robotics and Perception Group, University of Zurich | MIT, see `Plugins/UnrealEventCam/LICENSE` |
+| `Plugins/UnrealSPADCam`: the frames it streams feed a SPAD photon model ported from [spadSim](https://github.com/drodriguezSRL/spadSim) by David Rodriguez-Martinez; the port itself lives in [GNC-Moon-Simulator](https://github.com/raulcastar/GNC-Moon-Simulator) (`component_spad_camera`) | [spadSim](https://github.com/drodriguezSRL/spadSim) | MIT, © 2025 David Rodriguez-Martinez, see `Plugins/UnrealSPADCam/LICENSE` |
 | Unreal Engine and its engine content | Epic Games | [Unreal Engine EULA](https://www.unrealengine.com/eula) |
 
 Required attribution for the Yutu model (CC-BY-4.0):

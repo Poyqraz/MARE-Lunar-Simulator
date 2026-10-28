@@ -16,6 +16,18 @@ metres, +Inf for the sky) and `.../visualization`, with the same stamp and frame
 as `image_color` and `image_depth`, so the stereo depth can be checked against
 it pixel for pixel.
 
+## Glare-free central image (off by default)
+
+With **Stream Center No Glare** (`bStreamCenterNoGlare`), the component also
+streams the central camera without glare: at Play it adds a colour capture
+attached to the centre capture, with its projection, FOV, resolution, show flags
+and post-process settings (exposure included), but with bloom and lens flares
+off. Same frame id and stamp as the other cameras, sent on **NoGlareCamId**
+(default 5, under *Advanced*). Publish it with an `extra_cameras` entry such as
+`"5:navcam/central_noglare"` -> `navcam/central_noglare/image_color`. It costs
+one more scene render per frame, which is why it is off by default; useful for
+training data with and without the camera's glare.
+
 ## Extra mono cameras (e.g. the rear camera)
 
 Any other SceneCapture2D can ride the same link as a plain colour camera: add
