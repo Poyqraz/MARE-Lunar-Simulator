@@ -26,7 +26,7 @@ and absolute report paths when launching from a relative project folder.
 
 ```text
 python -m pytest tests -q
-61 passed
+62 passed
 python -m ruff check mars_rover tests Content/Python/mars_*.py tools/unreal_mars_smoke.py
 All checks passed!
 ```
@@ -34,6 +34,12 @@ All checks passed!
 Compilation/import checks, CLI help paths and git diff whitespace checks are
 also run. CI repeats Python tests and lint on Windows/Linux with pinned Python
 3.12 dependencies; consult the PR checks for its actual remote status.
+
+The first actual Windows CI run found a CSV hash mismatch caused by Git's
+CRLF conversion. A new test reproduced it with `core.autocrlf=true` before
+the fix. Hashed CSV/manifest files now have explicit LF checkout attributes,
+binary heights remain binary, and the generator writes LF on every platform.
+The source-data hashes were retained; validation was not weakened to hide the issue.
 
 ## Measured data experiment
 

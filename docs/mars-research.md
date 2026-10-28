@@ -50,6 +50,9 @@ radiometry, terramechanics and sensor-derived autonomy are separate acceptance t
 8. The old fog-only preview was not a planetary atmosphere. SkyAtmosphere now
    uses Mars radius/nominal scale height and no Earth ozone, while remaining
    clearly labelled as a non-calibrated rendering preset.
+9. Actual Windows CI exposed CRLF rewriting of hash-protected CSV data.
+   Byte-preserving Git attributes and explicit LF generation now cover Windows
+   checkout and regeneration; hashes remain strict.
 
 ## Deliberate limits
 

@@ -31,3 +31,8 @@
 
 # Small reproducible Mars reference crop stays self-contained in the Git commit.
 Content/Mars/Jezero/ortho_reference.png -filter -diff -merge -text
+
+# The manifest hashes exact data bytes: Git for Windows must not rewrite them.
+Content/Mars/Jezero/*.csv text eol=lf
+Content/Mars/Jezero/manifest.json text eol=lf
+Content/Mars/Jezero/*.r16 -diff -merge -text

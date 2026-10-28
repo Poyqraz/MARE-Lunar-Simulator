@@ -40,6 +40,8 @@ def test_bundle_has_same_coordinates_for_unreal_gnc_and_source(tmp_path):
     manifest_path = prepare_bundle(read_dem(str(source), vertical_unit="m"), tmp_path / "out")
     m = json.loads(manifest_path.read_text())
     elevation = np.loadtxt(tmp_path / "out" / "elevation.csv")
+    assert b"\r" not in (tmp_path / "out" / "elevation.csv").read_bytes()
+    assert b"\r" not in (tmp_path / "out" / "soil.csv").read_bytes()
     np.testing.assert_allclose(elevation, values[::-1] + 9)
     layout = m["landscape"]
     h = np.fromfile(tmp_path / "out" / "heightmap.r16", dtype="<u2").reshape(layout["height"], layout["width"])

@@ -127,8 +127,10 @@ def prepare_bundle(dem: Dem, output, *, region="jezero", attribution=None, image
     stage = Path(tempfile.mkdtemp(prefix=".mars-", dir=output.parent))
     try:
         np.ascontiguousarray(np.fliplr(encoded), dtype="<u2").tofile(stage / "heightmap.r16")
-        np.savetxt(stage / "elevation.csv", local, fmt="%.9f", delimiter=" ")
-        np.savetxt(stage / "soil.csv", soil, fmt="%d", delimiter=" ")
+        with (stage / "elevation.csv").open("w", encoding="utf-8", newline="\n") as handle:
+            np.savetxt(handle, local, fmt="%.9f", delimiter=" ")
+        with (stage / "soil.csv").open("w", encoding="utf-8", newline="\n") as handle:
+            np.savetxt(handle, soil, fmt="%d", delimiter=" ")
         manifest = {
             "schema_version": 1, "planet": "mars", "region": region,
             "gravity_m_s2": 3.71, "source": {**dem.source, "attribution": attribution or {}},
@@ -156,7 +158,8 @@ def prepare_bundle(dem: Dem, output, *, region="jezero", attribution=None, image
                 "uv_mapping": "u=local_x/extent_x; v=1-local_y/extent_y",
                 "source": imagery.source,
             }
-        (stage / "manifest.json").write_text(json.dumps(manifest, indent=2, allow_nan=False) + "\n", encoding="utf-8")
+        (stage / "manifest.json").write_text(json.dumps(manifest, indent=2, allow_nan=False) + "\n",
+                                              encoding="utf-8", newline="\n")
         stage.rename(output)
     except BaseException:
         shutil.rmtree(stage, ignore_errors=True)
