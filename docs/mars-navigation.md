@@ -221,6 +221,16 @@ oldukları iddia edilmez.
 
 ## A1: Sürekli gözlem ve görev geçmişi
 
+Bu ek, temel PR'ın üzerine açılan `codex/mars-mission-history` dalındadır.
+Birleştirilmeden önce A1 API'lerini denemek için repo kökünde:
+
+```bash
+git fetch origin
+git switch codex/mars-mission-history
+```
+
+Ardından yukarıdaki sensör yapılandırması ve servis başlatma adımları kullanılır.
+
 Görev yokken, manuel sürüşte ve varıştan sonra poz izlenir. Tamamlanan görevin
 başlangıcı, ilk/aktif planı ve kaydı korunur. Yeni Play/saat sıfırlaması eski
 hedefi iptal eder. Nominal 5 Hz yol izi yalnız gözlenen pozlardan gelir;
