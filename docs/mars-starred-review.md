@@ -15,9 +15,10 @@ açık GitHub liste sayfaları ve public API kullanıldı. Depo dosyaları GitHu
 bağlantısından okundu. Gizli liste/depo erişimi varsayılmadı.
 
 Makine tarafından okunabilir [kayıt](data/starred-navigation-review.json),
-repo başına tarih, dal, **Git tree SHA** (commit SHA değildir), kök README
+repo başına tarih, dal, **commit SHA ve ayrı Git tree SHA**, kök README
 blob kimliği, seçili çekirdek dosyalar ve API lisans bilgisini saklar. Dallar
-değişebilir; kayıt incelenen içerik ağacını tanımlar. `null` lisans izin
+değişebilir; kimlikler commit metadata'sıyla ayrıca çapraz kontrol edildi.
+Kayıt incelenen commit'i ve onun içerik ağacını tanımlar. `null` lisans izin
 varsayımı değildir; `NOASSERTION` da tek başına kullanılabilir lisans sayılmaz.
 
 ## Mars listesinin tamamı
