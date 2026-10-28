@@ -218,3 +218,44 @@ Uydu ve rover görünümü arasında geçiş, ortak görev izi, ekran üzerinden
 seçimi ve canlı parametre paneli için [yeni geliştirme planı](mars-dual-view-plan.md)
 hazırlandı. Bunlar planlanan ek özelliklerdir; mevcut 2B arayüzde uygulanmış
 oldukları iddia edilmez.
+
+## A1: Sürekli gözlem ve görev geçmişi
+
+Görev yokken, manuel sürüşte ve varıştan sonra poz izlenir. Tamamlanan görevin
+başlangıcı, ilk/aktif planı ve kaydı korunur. Yeni Play/saat sıfırlaması eski
+hedefi iptal eder. Nominal 5 Hz yol izi yalnız gözlenen pozlardan gelir;
+mesafe bütün kabul edilen örnekler arasındaki XY kirişleri toplamıdır.
+0.25 s'den uzun boşluklar mesafeye eklenmez. Bu bir SLAM veya gerçek motor
+odometresi değildir. Sıçrama denetimi `dt <= 0.25 s` için
+`mesafe > 0.25 m + (2 m/s)*dt` deney eşiğini kullanır; aynı zamanda değişen
+poz ve aynı zaman damgası da sıçrama sayılır. Bu eşik rover kalibrasyonu değildir.
+
+Yeni salt okunur localhost yolları:
+
+| Yol | İçerik |
+|---|---|
+| `/mission/snapshot` | Güncel poz, veri yaşı, görev kimliği/başlangıcı, ilk/aktif plan, kalan mesafe, hız tahmini ve komutlar |
+| `/mission/trail?after_seq=0` | Oturumun nominal 5 Hz gözlenen izi; `mission_id=...` ile saklanan belirli görev seçilebilir |
+| `/mission/events?after_seq=0` | Görev, plan, veri boşluğu ve oturum olayları |
+| `/mission/export` | Saklanan görevler/izler/planlar/olaylar ve bellek sınırları; JSON dışa aktarımı |
+
+Bu yolların okunması hedef veya motor komutu yaratmaz. Zaman damgaları yeni
+API'de string nanosaniyedir. `pose_fresh` alım yaşını, `capture_clock_advancing`
+simülasyon zamanının ilerleyişini belirtir. Pause veya bayat veride eski hız
+yeni ölçüm gibi gösterilmez. Konum eskiyse `live_pose` son bilinen poz olabilir;
+istemci mutlaka tazelik alanlarını kontrol etmelidir.
+
+Varsayılan sınırlar: oturum/görev başına 4096 iz noktası, toplam 8 görev,
+256 olay ve görev başına 16 plan. İlk plan ayrıca korunur. Silinen kayıt
+sayıları ve cursor verisi eksikse `truncated=true` raporlanır; ilk kalan
+parça kesintiyle başlar. Bu kayıt **bellektedir**; işlem kapanınca kaybolur.
+İşlem sürerken örneğin PowerShell ile açıkça dışa aktarılabilir:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8766/mission/export -OutFile Saved/Mars/mission-history.json
+```
+
+`Saved/Mars` klasörü bulunmalıdır. Otomatik JSONL/SQLite günlüğü, kayıttan
+kurtarma ve native kamera/HUD sonraki teslimlerdir. Eski 2B arayüz bu aşamada
+yeni bütün katmanları çizmez; API hazır olması kamera özelliği kabulü değildir.
+TDD kanıtları ve kalan kontroller [yeniden inceleme belgesindedir](mars-dual-view-review.md).

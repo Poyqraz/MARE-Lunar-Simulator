@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 import socket
 import threading
+from urllib.parse import parse_qs, urlsplit
 
 from .bridge import BridgeServer
 from .drive import Calibration
@@ -167,6 +168,39 @@ class NavigationService:
                 self.wfile.write(payload)
 
             def do_GET(self):
+                parsed = urlsplit(self.path)
+                if parsed.path in ("/mission/snapshot", "/mission/trail", "/mission/events", "/mission/export"):
+                    try:
+                        if len(self.path) > 1024:
+                            raise ValueError("Query exceeds 1024 characters")
+                        query = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=True)
+                        allowed = (
+                            {"after_seq", "mission_id"}
+                            if parsed.path == "/mission/trail"
+                            else ({"after_seq"} if parsed.path == "/mission/events" else set())
+                        )
+                        if set(query) - allowed or any(len(v) != 1 for v in query.values()):
+                            raise ValueError("Unknown or repeated query field")
+                        raw = query.get("after_seq", ["0"])[0]
+                        if not raw.isascii() or not raw.isdigit() or len(raw) > 16 or int(raw) > 2**53 - 1:
+                            raise ValueError("after_seq must be an integer in 0..2^53-1")
+                        if parsed.path == "/mission/snapshot":
+                            result = service.session.mission_snapshot(service.bridge.status())
+                        elif parsed.path == "/mission/export":
+                            result = service.session.mission_export()
+                        else:
+                            with service.session.lock:
+                                if parsed.path == "/mission/trail":
+                                    result = service.session.mission.trail(
+                                        after_seq=int(raw), mission_id=query.get("mission_id", [None])[0]
+                                    )
+                                else:
+                                    result = service.session.mission.event_page(after_seq=int(raw))
+                        return self.reply(200, result)
+                    except ValueError as error:
+                        return self.reply(400, {"error": str(error)})
+                    except KeyError:
+                        return self.reply(404, {"error": "Mission is not retained in bounded history"})
                 if self.path == "/":
                     return self.file_reply(Path(__file__).with_name("mission_control.html"), "text/html; charset=utf-8")
                 if self.path == "/terrain.png":
@@ -178,17 +212,16 @@ class NavigationService:
                     with service.session.lock:
                         grid = service.session.grid
                         h, w = grid.heights.shape
-                        return self.reply(
-                            200,
-                            {
-                                "width": w,
-                                "height": h,
-                                "resolution_m": grid.resolution_m,
-                                "extent_m": [(w - 1) * grid.resolution_m, (h - 1) * grid.resolution_m],
-                                "revision": grid.revision,
-                                "blocked": grid.blocked.astype(int).ravel().tolist(),
-                            },
-                        )
+                        blocked = grid.blocked.copy()
+                        result = {
+                            "width": w,
+                            "height": h,
+                            "resolution_m": grid.resolution_m,
+                            "extent_m": [(w - 1) * grid.resolution_m, (h - 1) * grid.resolution_m],
+                            "revision": grid.revision,
+                        }
+                    result["blocked"] = blocked.astype(int).ravel().tolist()
+                    return self.reply(200, result)
                 if self.path != "/status":
                     return self.reply(404, {"error": "Unknown endpoint"})
                 self.reply(200, {**service.session.status(), "transport_error": service.last_transport_error})

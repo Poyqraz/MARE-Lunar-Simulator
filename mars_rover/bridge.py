@@ -152,6 +152,7 @@ class BridgeServer:
                 "connected": self.state.connected,
                 "connection_id": self.connection_id,
                 "wire_command": self.state.sample(),
+                "wheel_command_m_s": self.state.speeds.copy(),
                 "telemetry_unreal": telemetry,
                 "pose_local_m": pose,
                 "telemetry_age_s": None

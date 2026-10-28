@@ -5,12 +5,14 @@ separate gate from terrain planning. Ground-truth depth is labelled explicitly.
 """
 
 import math
+import copy
 import threading
 import time
 
 import numpy as np
 
 from .planning import NoRoute
+from .mission import MissionHistory
 from .sensors import PoseHistory, depth_points, pose_from_telemetry, transform_matrix, transform_points
 
 
@@ -116,6 +118,11 @@ class NavigationSession:
         self.started_at = None
         self._last_motion = None
         self._motion_xy = None
+        self.mission = MissionHistory(grid.manifest_sha256)
+        self.connected = False
+        self.observer_error = None
+        self.sensor_observation_error = None
+        self._pose_received_at = self._unique_pose_at = None
 
     def set_goal(self, goal):
         with self.lock:
@@ -123,22 +130,27 @@ class NavigationSession:
             row, col = self.grid.cell(goal)
             if self.grid.blocked[row, col]:
                 raise NoRoute("Requested goal is blocked; it was not silently moved")
+            self.mission.begin(goal)
             self.goal, self.follower = tuple(map(float, goal)), None
             self.state, self.error = "waiting_for_sensors", None
             self.started_at, self._last_motion, self._motion_xy = None, None, None
+            self.replans, self.plan_revision = 0, -1
 
     def stop(self):
         with self.lock:
+            self.mission.finish("stopped")
             self.goal, self.follower = None, None
             self.state = "idle"
 
-    def _reset_link(self):
+    def _reset_link(self, reason="new_connection"):
+        self.mission.new_session(reason)
         self.stop()
         self.history = PoseHistory()
         self.latest.clear()
         self.used.clear()
         self.health.clear()
         self.pose = None
+        self._pose_received_at = self._unique_pose_at = None
         self.state = "new_session_requires_goal"
 
     def feed_lidar(self, scan, *, now=None):
@@ -225,31 +237,82 @@ class NavigationSession:
             self.health[key] = {**report, "received_at": received, "stamp_ns": frame.stamp_ns}
             self.used[key] = signature
 
+    def _observe_bridge(self, bridge_status, now):
+        connection = bridge_status.get("connection_id")
+        if self.connection_id not in (None, 0) and connection != self.connection_id:
+            self._reset_link()
+        self.connection_id = connection
+        self.connected = bool(bridge_status.get("connected"))
+        if not self.connected:
+            if connection not in (None, 0):
+                self.mission.finish("disconnected")
+                self.goal, self.follower = None, None
+            self.state = "disconnected"
+            return False
+        age = bridge_status.get("telemetry_age_s")
+        if type(age) not in (float, int) or not math.isfinite(age) or not 0 <= age <= 0.3:
+            self.observer_error = "No fresh pose telemetry"
+            if self.goal:
+                self.state = "waiting_for_pose"
+            return False
+        try:
+            pose = pose_from_telemetry(bridge_status.get("telemetry_unreal") or {})
+            previous = self.pose
+            if previous:
+                dt = (pose.stamp_ns - previous.stamp_ns) / 1e9
+                moved = math.dist(pose.xy_heading[:2], previous.xy_heading[:2])
+                if dt < 0:
+                    self._reset_link("clock_reset")
+                elif (dt == 0 and not np.allclose(pose.matrix, previous.matrix, atol=1e-6, rtol=0)) or (
+                    0 < dt <= 0.25 and moved > 0.25 + 2 * dt
+                ):
+                    self._reset_link("teleport")
+                elif dt > 0.25:
+                    # A missing interval is not a bracketing pose or a clear
+                    # corridor. Fresh sensor captures must re-establish health.
+                    self.history = PoseHistory()
+                    self.latest.clear()
+                    self.used.clear()
+                    self.health.clear()
+                    self.follower = None
+            if self.pose is None or pose.stamp_ns != self.pose.stamp_ns:
+                self._unique_pose_at = now
+            self.pose = pose
+            self.history.add(pose)
+            self.mission.observe(pose)
+            self._pose_received_at = now - age
+            self.observer_error = None
+            if self.state == "disconnected" and not self.goal:
+                self.state = "idle"
+            try:
+                self._consume()
+                self.sensor_observation_error = None
+            except (ValueError, KeyError, TypeError) as error:
+                self.sensor_observation_error = str(error)
+            return True
+        except (ValueError, KeyError, TypeError) as error:
+            self.observer_error = str(error)
+            if self.goal:
+                self.state = "waiting_for_pose"
+            return False
+
     def step(self, bridge_status, *, now=None):
         now = time.monotonic() if now is None else now
         with self.lock:
-            connection = bridge_status.get("connection_id")
-            if self.connection_id not in (None, 0) and connection != self.connection_id:
-                self._reset_link()
-            self.connection_id = connection
-            if not bridge_status.get("connected"):
-                self.state = "disconnected"
-                return 0, 0
+            ready = self._observe_bridge(bridge_status, now)
+            command = self._drive(now) if ready else (0, 0)
+            if self.follower and self.pose:
+                self.mission.progress(self.follower.index, self.pose.xy_heading[:2])
+            self.mission.state(self.state, self.error)
+            return command
+
+    def _drive(self, now):
+        with self.lock:
             if not self.goal:
                 return 0, 0
             if self.state in ("arrived", "blocked", "stalled_or_timed_out"):
                 return 0, 0
-            age = bridge_status.get("telemetry_age_s")
-            if age is None or age > 0.3:
-                self.state = "waiting_for_pose"
-                return 0, 0
             try:
-                pose = pose_from_telemetry(bridge_status.get("telemetry_unreal") or {})
-                if self.pose and pose.stamp_ns < self.pose.stamp_ns:
-                    self._reset_link()
-                    return 0, 0
-                self.pose = pose
-                self.history.add(pose)
                 if (
                     self.follower is None
                     and self.started_at is None
@@ -263,6 +326,7 @@ class NavigationSession:
                     k in self.health
                     and now - self.health[k]["received_at"] <= self.timeout
                     and self.health[k]["valid_inside_points"] >= self.min_points
+                    and self.pose.stamp_ns - int(self.health[k].get("stamp_ns", 0)) <= self.timeout * 1e9
                     for k in ("lidar", self.depth_source)
                 )
                 if not ready:
@@ -278,6 +342,7 @@ class NavigationSession:
                 if self.follower is None:
                     route = self.grid.plan(xyh[:2], self.goal)
                     self.follower = RouteFollower(route, speed_m_s=self.speed)
+                    self.mission.plan(route, self.grid.revision)
                     self.plan_revision, self.replans = self.grid.revision, self.replans + 1
                     self.state, self.error = "following", None
                     self.started_at = self.started_at or now
@@ -334,3 +399,54 @@ class NavigationSession:
                 "native_rover_verified": False,
                 "terrain_manifest_sha256": self.grid.manifest_sha256,
             }
+
+    def mission_snapshot(self, bridge_status=None, *, now=None):
+        now = time.monotonic() if now is None else now
+        with self.lock:
+            age = max(0.0, now - self._pose_received_at) if self._pose_received_at is not None else None
+            fresh = self.connected and age is not None and age <= 0.3 and self.observer_error is None
+            advancing = self._unique_pose_at is not None and now - self._unique_pose_at <= 0.3
+            health = {}
+            for key, report in self.health.items():
+                health[key] = {k: v for k, v in report.items() if k != "received_at"}
+                if "stamp_ns" in health[key]:
+                    health[key]["stamp_ns"] = str(health[key]["stamp_ns"])
+                health[key]["received_age_s"] = max(0.0, now - report["received_at"])
+            return copy.deepcopy(
+                {
+                    "schema_version": 1,
+                    "session_id": self.mission.session_id,
+                    "snapshot_seq": self.mission.revision,
+                    "coordinate_frame_id": "mars_local_east_north_up_metres",
+                    "terrain_manifest_sha256": self.grid.manifest_sha256,
+                    "live_pose": self.mission.latest,
+                    "pose_fresh": fresh,
+                    "pose_age_s": age,
+                    "capture_clock_advancing": advancing,
+                    "speed_estimate_m_s": self.mission.speed_estimate if fresh and advancing else None,
+                    "position_source": "simulation telemetry",
+                    "mission": self.mission.summary(),
+                    "state": self.state,
+                    "observer_error": self.observer_error,
+                    "sensor_observation_error": self.sensor_observation_error,
+                    "sensor_health": health,
+                    "depth_source": self.depth_source,
+                    "map_revision": self.grid.revision,
+                    "wheel_command_m_s": (bridge_status or {}).get("wheel_command_m_s"),
+                    "wire_command": (bridge_status or {}).get("wire_command"),
+                    "unavailable": {
+                        "battery_percent": None,
+                        "motor_rpm": None,
+                        "motor_current_a": None,
+                        "motor_temperature_c": None,
+                    },
+                    "history_storage": "bounded memory; explicit export",
+                    "native_rover_verified": False,
+                    "micro_geometry_complete": False,
+                }
+            )
+
+    def mission_export(self):
+        with self.lock:
+            captured = self.mission.capture_export()
+        return copy.deepcopy(captured)
