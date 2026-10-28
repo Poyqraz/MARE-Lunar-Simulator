@@ -5,12 +5,26 @@ not derived from the converter. CI does not contact the data provider.
 """
 import importlib.util
 import json
+import hashlib
 from pathlib import Path
 
 import numpy as np
 import pytest
 
 ROOT = Path(__file__).parents[1]
+
+
+def test_frozen_dense_review_matches_the_exact_shipped_manifest():
+    path = ROOT / "Content/Mars/Jezero/manifest.json"
+    report = json.loads((ROOT / "docs/data/jezero-fidelity.json").read_text())
+    manifest = json.loads(path.read_text())
+    assert report["bundle_manifest_sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
+    comparison = report["source_comparison"]
+    assert comparison["sample_count"] == 64009
+    assert comparison["max_abs_error_m"] <= comparison["tolerance_m"]
+    assert comparison["source_file_sha256"] == manifest["source"]["attribution"]["source_file_sha256"]
+    assert set(report["source_documents_verified"]) == {"source_dem.xml", "source_ortho.xml"}
+    assert report["engine_collision_verified"] is False
 
 
 def test_starter_is_a_252_m_measured_crop_with_recorded_provenance():

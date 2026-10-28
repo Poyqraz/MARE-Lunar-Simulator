@@ -97,7 +97,8 @@ def landscape_layout(width: int, height: int) -> dict:
                 component_count_x=cx, component_count_y=cy, width=w, height=h)
 
 
-def prepare_bundle(dem: Dem, output, *, region="jezero", attribution=None, imagery=None) -> Path:
+def prepare_bundle(dem: Dem, output, *, region="jezero", attribution=None, imagery=None,
+                   source_documents=None) -> Path:
     """Write a reproducible bundle atomically; never replace an existing output."""
     output = Path(output)
     if output.exists():
@@ -146,6 +147,21 @@ def prepare_bundle(dem: Dem, output, *, region="jezero", attribution=None, image
         }
         for name in ("heightmap.r16", "elevation.csv", "soil.csv"):
             manifest["files"][name] = {"sha256": hashlib.sha256((stage / name).read_bytes()).hexdigest()}
+        if source_documents:
+            import xml.etree.ElementTree as ET
+            allowed = {"source_dem.xml", "source_ortho.xml"}
+            if not set(source_documents) <= allowed:
+                raise ValueError("Unsupported source metadata filename")
+            manifest["source_documents"] = {}
+            for name, document in source_documents.items():
+                content = document["content"]
+                if not isinstance(content, bytes) or len(content) > 1_000_000:
+                    raise ValueError("Source XML must be bytes, at most 1 MB")
+                if ET.fromstring(content).tag != "metadata":
+                    raise ValueError("Expected FGDC source metadata")
+                (stage / name).write_bytes(content)  # preserve original bytes, including line endings
+                manifest["files"][name] = {"sha256": hashlib.sha256(content).hexdigest()}
+                manifest["source_documents"][name] = {"uri": document["uri"]}
         if imagery is not None:
             from PIL import Image
             if imagery.rgb.dtype != np.uint8 or imagery.rgb.ndim != 3 or imagery.rgb.shape[2] != 3:

@@ -6,6 +6,7 @@
 import argparse
 import json
 from pathlib import Path
+import urllib.request
 
 from .terrain import prepare_bundle, read_dem
 from .geospatial import local_metric_dem
@@ -45,8 +46,14 @@ def main(argv=None):
         image = read_ortho(ortho_source, dem, size=preset.get("ortho_size", 1024)) if ortho_source and not args.no_ortho else None
         attribution = preset["attribution"] if not args.source else {
             "note": "Caller-supplied source; verify origin, units and redistribution terms"}
+        documents = {}
+        for name, uri in preset.get("source_documents", {}).items() if not args.source else ():
+            if args.no_ortho and name == "source_ortho.xml":
+                continue
+            with urllib.request.urlopen(uri, timeout=30) as response:
+                documents[name] = {"uri": uri, "content": response.read(1_000_001)}
         path = prepare_bundle(dem, args.output, region=args.region or preset["region"], attribution=attribution,
-                              imagery=image)
+                              imagery=image, source_documents=documents)
     except (OSError, ValueError) as error:
         parser.exit(1, f"Terrain preparation failed: {error}\n")
     print(f"Prepared {path.resolve()}")

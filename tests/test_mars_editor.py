@@ -103,6 +103,8 @@ def test_level_gravity_import_and_delayed_save(setup_module, bundle, monkeypatch
     world = engine.EditorLoadingAndSavingUtils.new_blank_map.return_value
     engine.get_editor_subsystem.return_value.get_editor_world.return_value = world
     monkeypatch.setitem(sys.modules, "unreal", engine)
+    import mars_collision
+    monkeypatch.setattr(mars_collision, "verify_landscape", lambda *a, **k: {"verified": True})
     result = setup_module.build(str(bundle), preview_material=False, rover_blueprint="/Game/Blueprints/Leo_Raph")
     engine.EditorLoadingAndSavingUtils.save_map.assert_not_called()
     settings = engine.EditorLoadingAndSavingUtils.new_blank_map.return_value.get_world_settings.return_value

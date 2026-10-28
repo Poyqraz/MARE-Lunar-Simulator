@@ -24,6 +24,10 @@ def load_bundle(manifest_path):
     if m.get("schema_version") != 1 or m.get("planet") != "mars":
         raise ValueError("Expected schema 1 Mars bundle")
     required = {"heightmap.r16", "elevation.csv", "soil.csv"}
+    documents = m.get("source_documents", {})
+    if not isinstance(documents, dict) or not set(documents) <= {"source_dem.xml", "source_ortho.xml"}:
+        raise ValueError("Unsupported source metadata files")
+    required.update(documents)
     if "imagery" in m:
         if not isinstance(m["imagery"], dict) or m["imagery"].get("filename") != "ortho_reference.png":
             raise ValueError("Invalid registered imagery filename")
@@ -47,7 +51,8 @@ def load_bundle(manifest_path):
         raise ValueError("Landscape dimensions do not match the layout")
     if not (3 <= grid["width"] <= layout["width"] and 3 <= grid["height"] <= layout["height"]):
         raise ValueError("Invalid source grid dimensions")
-    numbers = [*layout["scale"], *layout["location_cm"], grid["resolution_m"], m["gravity_m_s2"]]
+    numbers = [*layout["scale"], *layout["location_cm"], grid["resolution_m"], m["gravity_m_s2"],
+               m["vertical_datum_offset_m"]]
     if any(type(v) not in (int, float) or not math.isfinite(v) for v in numbers):
         raise ValueError("Non-finite bundle geometry")
     if len(layout["scale"]) != 3 or len(layout["location_cm"]) != 3 or min(layout["scale"]) <= 0:

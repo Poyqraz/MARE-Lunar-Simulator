@@ -42,3 +42,8 @@ checksums. A registered grayscale orbital reference from the paired
 ESP_045994_1985 image is also included; it is not RGB true colour or albedo.
 Full source and transformation notes are in
 [DATA_SOURCES.md](Content/Mars/Jezero/DATA_SOURCES.md).
+
+The exact original USGS FGDC metadata snapshots are included as
+`source_dem.xml` and `source_ortho.xml`. The review figure
+`docs/images/jezero-fidelity.png` plots these derived USGS/HiRISE data;
+it is not an Unreal render or a newly acquired Mars image.

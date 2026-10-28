@@ -1,25 +1,32 @@
 {
   "schema_version": 1,
-  "purpose": "Illustrative Mars rendering preset; not calibrated radiometry, albedo or measured dust optical properties",
+  "purpose": "Literature-bounded Mars scenario with explicit approximations; not calibrated site photometry",
   "sun_azimuth_deg": 135.0,
   "sun_elevation_deg": 35.0,
   "sun_illuminance_lux": 30000.0,
+  "sun_distance_km": 227956000.0,
   "fixed_exposure_ev100": 13.0,
   "reference_exposure_ev100": 0.0,
   "ground_radius_km_fallback": 3396.19,
   "atmosphere_height_km": 80.0,
-  "scale_height_km": 11.0,
+  "gas_scale_height_km": 11.0,
+  "dust_scale_height_km": 11.0,
+  "dust_optical_depth_880nm": 0.45,
+  "dust_single_scattering_albedo": 0.93,
+  "dust_spectral_model": "Grey RGB approximation to an 880 nm scenario opacity; no measured wavelength conversion or phase function",
   "rayleigh_scattering_per_km": [0.000087, 0.000203, 0.000497],
-  "mie_scattering_per_km": [0.035, 0.030, 0.025],
-  "mie_absorption_per_km": [0.001, 0.008, 0.020],
   "mie_anisotropy": 0.7,
+  "force_visual_lod0": true,
   "terrain_color_a_linear": [0.18, 0.075, 0.035],
   "terrain_color_b_linear": [0.28, 0.14, 0.075],
   "terrain_roughness": 0.95,
   "sources": [
     "https://nssdc.gsfc.nasa.gov/planetary/factsheet/marsfact.html",
     "https://science.nasa.gov/mars/facts/",
-    "https://dev.epicgames.com/documentation/en-us/unreal-engine/sky-atmosphere-component-properties-in-unreal-engine?application_version=5.7"
+    "https://dev.epicgames.com/documentation/en-us/unreal-engine/sky-atmosphere-component-properties-in-unreal-engine?application_version=5.7",
+    "https://doi.org/10.1126/sciadv.abo4856",
+    "https://doi.org/10.1029/2003JE002058",
+    "https://www.iau.org/common/Uploaded%20files/IAUGA2015-Resolution-B3-recommended-nominal-conversion.pdf"
   ],
-  "provenance": "Radius uses DEM reference body when available; 11 km is NASA's nominal atmospheric scale height. Lighting, RGB scattering, dust distribution, colour, roughness, exposure and sun pose are rendering choices, not site measurements. No Earth ozone layer, extra fog, synthetic collision rocks or fabricated topography is added."
+  "provenance": "Radius follows the DEM reference body. Gas scale height 11 km and Sun distance use nominal NASA values. Tau880=0.45 is a scenario inside a published early Jezero range of 0.4-0.5, not a chosen sol measurement. Grey SSA=0.93 is a scenario motivated by TES solar-band fits of 0.92-0.94, not a Jezero spectral retrieval. Dust height=11 km is an assumed exponential profile, independently configurable from gas. RGB Rayleigh values, anisotropy, terrain colour, 30 klux, exposure and sun pose remain uncalibrated. No Earth ozone layer, extra fog, synthetic collision rocks or fabricated relief. A single grey Henyey-Greenstein aerosol cannot validate Mars sky colours or its blue sunset aureole."
 }

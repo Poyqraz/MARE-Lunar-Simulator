@@ -44,7 +44,8 @@ job = mars_setup.build(report_path=r"C:/temp/jezero-import.json")
 
 `job['status']` önce `importing`, sonra `saved` veya `failed` olur. Betik,
 yükseklikleri plugin üzerinden geri okuyup dosyayla eşleştirmeden haritayı
-kaydetmez. Başarı log'u: **heightmap verified and level saved**.
+kaydetmez. Ardından basit ve karmaşık çarpışmayı decoded yüksekliklerle
+karşılaştırır. Başarı log'u: **heightmap and sampled collision verified**.
 Beklerken Play'e geçmeyin veya başka dünya açmayın. Dünya değişirse, Play
 başlarsa, hedef harita zaten varsa veya ikinci içe aktarım başlatılırsa
 işlem kaydetmek yerine durur. Sonuç `/Game/Mars/Jezero` seviyesidir.
@@ -72,11 +73,12 @@ gömülü Python'una NumPy/rasterio kurmayın; editor betikleri standart kütüp
 ```bash
 python -m pip install -r requirements-mars-dev.txt
 python -m pytest tests -q
-python -m ruff check mars_rover tests Content/Python/mars_setup.py Content/Python/mars_scene.py Content/Python/mars_materials.py tools/unreal_mars_smoke.py
+python -m ruff check mars_rover tests Content/Python/mars_setup.py Content/Python/mars_scene.py Content/Python/mars_materials.py Content/Python/mars_collision.py tools/unreal_mars_smoke.py
+python -m mars_rover.fidelity
 ```
 
 Gerçek Windows editor denetimi ayrı UE işlemi açar, benzersiz bir QA seviyesi
-oluşturur, dosyadan yükseklik geri okumasını karşılaştırır ve JSON raporu arar:
+oluşturur, yükseklik geri okumasını ve örneklenmiş gerçek çarpışmayı karşılaştırır:
 
 ```powershell
 python -m mars_rover.unreal_check --editor "C:/Program Files/Epic Games/UE_5.7/Engine/Binaries/Win64/UnrealEditor.exe"
@@ -84,7 +86,10 @@ python -m mars_rover.unreal_check --editor "C:/Program Files/Epic Games/UE_5.7/E
 ```
 
 Rapor/log `Saved/Mars/` altındadır. Yalnızca editor çıkış kodu 0 diye başarı
-verilmez; raporun `status=saved` ve `heightmap_verified=true` olması gerekir.
+verilmez; raporun `status=saved`, `heightmap_verified=true` ve
+`collision_verified=true` olması gerekir. Bu kesitte 260 konumda toplam 520
+basit/karmaşık ışın sorgusu istenir; bütün üçgenlerin veya hareketli teker
+temasının doğrulandığı anlamına gelmez.
 Başlangıç betikleri editor varlıklarını kirletirse kaydetme önkoşulu hata
 verebilir; log'u inceleyin ve interaktif editor akışıyla doğrulayın.
 
@@ -116,10 +121,18 @@ köşesinde referans-küreye göre ihmal edilen sag yaklaşık 4.7 mm'dir. Datum
 stereo eşleme ve gerçek zemin belirsizlikleri bunun üzerindedir.
 
 Sahnenin nominal yerçekimi 3.71 m/s²'dir. SkyAtmosphere yarıçapı veri referans
-küresinden alınır, Dünya ozon katmanı kaldırılır. NASA'nın nominal 11 km ölçek
-yüksekliği kullanılır; RGB saçılma/toz katsayıları, güneş pozu, 30 klux ve pozlama
-**kalibre edilmemiş görüntüleme tercihleridir**. Bir Mars gününe/mevsimine ait
-ölçülmüş atmosfer veya radyometrik sensör modeli olduğu iddia edilmez.
+küresinden alınır ve yerel z için çıkarılan datum ofseti atmosfer tabanına da
+uygulanır. Dünya ozon katmanı kaldırılır. NASA'nın nominal 11 km gaz ölçek
+yüksekliği kullanılır; toz dağılım yüksekliği ayrı bir varsayımdır. Toz katsayıları
+artık açık `tau880=0.45`, `SSA=0.93` senaryosundan hesaplanır. Güneş çapı nominal
+uzaklıktan yaklaşık 0,3497° bulunur. Gri RGB yaklaşımı, gaz saçılması, güneş pozu,
+30 klux ve pozlama **kalibre edilmemiştir**. Bir sol/mevsime ait ölçülmüş atmosfer
+veya radyometrik sensör modeli olduğu iddia edilmez.
+
+Özgün USGS DTM/ortogörüntü metadata XML'leri de pakettedir ve hash'leri denetlenir.
+64.009 postun bağımsız kaynak karşılaştırması, baz uzunluğuna göre eğim farkları,
+küçük taş sınırı ve sonraki rover stereo-mesh yolu
+[bilimsel incelemede](mars-scientific-review.md) açıklanır.
 
 ## Daha büyük veya başka kesit
 

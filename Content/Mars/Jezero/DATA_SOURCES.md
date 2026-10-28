@@ -19,7 +19,9 @@ metadata lists access/use constraints as None.
 
 Read on 2026-10-28. Full original DTM SHA-256:
 `0c681fa0c2fa72ec2253d09ed8643d5794ea0c3575f5fa953d470cc0beeb1751`.
-The original large files are not committed.
+The original large rasters are not committed. The exact original metadata
+snapshots **source_dem.xml** and **source_ortho.xml** are included and protected
+by manifest hashes and byte-preserving Git attributes.
 
 The selected source window is column 3278, row 6970, width/height 505. It is
 reprojected to a Mars azimuthal-equidistant grid centred near 77.4421842 E,
@@ -47,6 +49,10 @@ no-go mask, not measured geology, traction, sand depth or bearing strength.
 Scene colour/noise and atmospheric scattering coefficients are illustrative;
 no fabricated microtopography or collision rocks are added. DTM sampling
 interval is not scientific accuracy; small features and stereo artifacts remain.
+The literature-bounded dust scenario and original camera sampling limits are
+explained in [the scientific review](../../../docs/mars-scientific-review.md).
+The dense offline audit compares all 64,009 terrain posts against the original
+DTM; it does not measure the source's actual ground accuracy.
 
 Reproduce into a NEW output folder with Python 3.12 outside Unreal:
 

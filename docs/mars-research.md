@@ -56,6 +56,20 @@ radiometry, terramechanics and sensor-derived autonomy are separate acceptance t
 
 ## Deliberate limits
 
+The second review is documented in [the scientific review](mars-scientific-review.md).
+It adds the actual source observation/catalogue, the original FGDC XML files,
+Sutton et al. (2022) on effective DTM resolution, Bell et al. (2022) on Jezero
+880 nm opacity, Clancy et al. (2003) on solar-band dust SSA, the MEDA archive,
+the IAU solar-radius convention, Epic's collision API and NASA-AMMOS Landform.
+Published ranges are scenario context; no wavelength/sol-specific measurement
+is fabricated. Gas and aerosol distribution heights are separate parameters.
+The apparent solar disk is computed from nominal Mars–Sun distance. Removed
+local height datum is also applied to the atmosphere's bottom radius.
+
+The offline source audit now checks every terrain post. The native editor
+acceptance path requires sampled simple/complex collision before saving,
+alongside heightmap readback. This path has not run without an installed UE.
+
 No small collision rocks, false microtopography or recovered material classes
 are presented as measured Jezero features. The colour/noise material adds only
 synthetic shading variation. The local planar terrain does not model spherical

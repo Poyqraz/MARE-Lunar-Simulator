@@ -36,3 +36,6 @@ Content/Mars/Jezero/ortho_reference.png -filter -diff -merge -text
 Content/Mars/Jezero/*.csv text eol=lf
 Content/Mars/Jezero/manifest.json text eol=lf
 Content/Mars/Jezero/*.r16 -diff -merge -text
+# Official FGDC XML snapshots retain provider CRLF and original trailing spaces.
+Content/Mars/Jezero/source_*.xml -text -whitespace
+docs/images/jezero-fidelity.png -filter -diff -merge -text

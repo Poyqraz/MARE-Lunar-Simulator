@@ -1,0 +1,93 @@
+{
+  "schema_version": 1,
+  "region": "jezero",
+  "extent_m": [
+    252.0,
+    252.0
+  ],
+  "bundle_manifest_sha256": "aea08f2fbc305462a0b9c59f2566197fa33d08da3312cedb4c921e5e59230f88",
+  "source_documents_verified": [
+    "source_dem.xml",
+    "source_ortho.xml"
+  ],
+  "source_comparison": {
+    "sample_count": 64009,
+    "max_abs_error_m": 5.00676833325997e-10,
+    "rmse_m": 2.88040563029122e-10,
+    "tolerance_m": 2e-06,
+    "source_file_sha256": "0c681fa0c2fa72ec2253d09ed8643d5794ea0c3575f5fa953d470cc0beeb1751",
+    "method": "inverse CRS transform and independent four-source-post bilinear interpolation",
+    "is_ground_truth_accuracy_measurement": false
+  },
+  "heightfield_encoding": {
+    "post_count": 64009,
+    "max_abs_error_m": 6.09502901331993e-05,
+    "quantization_step_m": 0.0001219005250312794,
+    "is_source_accuracy": false
+  },
+  "terrain": {
+    "post_spacing_m": 1.0,
+    "height_range_m": 7.988750908,
+    "triangle_slope_upper_bound_deg": 21.11567964831501,
+    "quads_with_any_candidate_triangle_over_15deg_percent": 0.048815822625346436,
+    "central_difference_slopes": {
+      "2": {
+        "baseline_m": 2.0,
+        "max_deg": 15.84165353482492,
+        "p95_deg": 5.102997469489662,
+        "sample_count": 63001,
+        "border_excluded_cells": 1
+      },
+      "4": {
+        "baseline_m": 4.0,
+        "max_deg": 14.442994764873339,
+        "p95_deg": 4.708726118036265,
+        "sample_count": 62001,
+        "border_excluded_cells": 2
+      },
+      "10": {
+        "baseline_m": 10.0,
+        "max_deg": 10.966855607902856,
+        "p95_deg": 3.876310803099118,
+        "sample_count": 59049,
+        "border_excluded_cells": 5
+      },
+      "20": {
+        "baseline_m": 20.0,
+        "max_deg": 7.088228965061565,
+        "p95_deg": 3.3745323782785306,
+        "sample_count": 54289,
+        "border_excluded_cells": 10
+      }
+    },
+    "heightfield_is_2_5d": true,
+    "wheel_scale_obstacles_validated": false,
+    "interpretation": "Slopes depend on baseline and triangulation; no vehicle-safe route is certified."
+  },
+  "imagery": {
+    "registered": true,
+    "grayscale_reference": true,
+    "texture_sample_spacing_m": [
+      0.24609375,
+      0.24609375
+    ],
+    "source_accuracy_measured": false
+  },
+  "source_quality": {
+    "crop_effective_resolution_m": null,
+    "per_post_height_uncertainty_m": null,
+    "absolute_geodetic_accuracy_m": null,
+    "edited_or_interpolated_area_mask_available": false
+  },
+  "engine_collision_verified": false,
+  "photometry_validated": false,
+  "wheel_soil_physics_validated": false,
+  "limits": [
+    "An orthoimage does not supply 3D rock geometry or hidden crater floors.",
+    "Posting/quantization are not effective resolution or stereo/datum accuracy.",
+    "Source stereo products include manual editing/interpolation; no per-post confidence mask is bundled.",
+    "A heightfield cannot represent caves, overhangs or deformable soil.",
+    "Small pits, rocks, steps and loose regolith need additional measured rover-scale data.",
+    "This offline report never substitutes for native engine collision and render acceptance."
+  ]
+}

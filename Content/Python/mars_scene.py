@@ -1,4 +1,5 @@
 """Unreal Editor orchestration; geometry validation lives in mars_setup."""
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -13,9 +14,14 @@ def load_scene(path=None):
         raise ValueError("Unsupported Mars scene preset")
     scalar_keys = ("sun_azimuth_deg", "sun_elevation_deg", "sun_illuminance_lux", "fixed_exposure_ev100",
                    "reference_exposure_ev100", "ground_radius_km_fallback", "atmosphere_height_km",
-                   "scale_height_km", "mie_anisotropy", "terrain_roughness")
-    color_keys = ("rayleigh_scattering_per_km", "mie_scattering_per_km", "mie_absorption_per_km",
+                   "gas_scale_height_km", "dust_scale_height_km", "dust_optical_depth_880nm",
+                   "dust_single_scattering_albedo", "sun_distance_km", "mie_anisotropy", "terrain_roughness")
+    color_keys = ("rayleigh_scattering_per_km",
                   "terrain_color_a_linear", "terrain_color_b_linear")
+    if not set(scalar_keys + color_keys + ("force_visual_lod0", "dust_spectral_model")) <= set(scene):
+        raise ValueError("Mars scene preset is missing required scenario parameters")
+    if type(scene["force_visual_lod0"]) is not bool:
+        raise ValueError("force_visual_lod0 must be a boolean")
     for key in scalar_keys:
         if type(scene[key]) not in (int, float) or not math.isfinite(scene[key]):
             raise ValueError(f"Non-finite scene value: {key}")
@@ -23,11 +29,33 @@ def load_scene(path=None):
         if len(scene[key]) != 3 or any(type(v) not in (int, float) or not math.isfinite(v) or v < 0 for v in scene[key]):
             raise ValueError(f"Invalid scene RGB vector: {key}")
     if (not -5 <= scene["sun_elevation_deg"] <= 90 or not 0 <= scene["mie_anisotropy"] < 1 or
-            not 0 < scene["terrain_roughness"] <= 1 or scene["scale_height_km"] <= 0 or
+            not 0 < scene["terrain_roughness"] <= 1 or scene["gas_scale_height_km"] <= 0 or
+            scene["dust_scale_height_km"] <= 0 or not 0 <= scene["dust_optical_depth_880nm"] <= 20 or
+            not 0 <= scene["dust_single_scattering_albedo"] <= 1 or
+            not 200_000_000 <= scene["sun_distance_km"] <= 255_000_000 or
             not 3300 < scene["ground_radius_km_fallback"] < 3500 or
             not 0 < scene["atmosphere_height_km"] <= 200 or scene["sun_illuminance_lux"] <= 0):
         raise ValueError("Scene parameter outside its supported physical/rendering range")
     return scene
+
+
+def atmosphere_parameters(scene):
+    """Grey aerosol coefficients for beta(z)=beta(0)*exp(-z/H), in km^-1.
+
+    Integrate to the declared finite atmosphere top, so optical depth stays
+    fixed when changing the assumed dust distribution. This is a controllable
+    scenario, not a spectral Mars radiative-transfer calibration.
+    """
+    column_km = scene["dust_scale_height_km"] * -math.expm1(
+        -scene["atmosphere_height_km"] / scene["dust_scale_height_km"])
+    extinction = scene["dust_optical_depth_880nm"] / column_km
+    ssa = scene["dust_single_scattering_albedo"]
+    return {"mie_extinction_per_km": extinction, "mie_scattering_per_km": extinction * ssa,
+            "mie_absorption_per_km": extinction * (1 - ssa),
+            "sun_angular_diameter_deg": math.degrees(2 * math.asin(695700 / scene["sun_distance_km"])),
+            "dust_optical_depth_880nm": scene["dust_optical_depth_880nm"],
+            "dust_single_scattering_albedo": ssa, "photometry_validated": False,
+            "model": scene["dust_spectral_model"]}
 
 
 def sun_rotation(azimuth_deg, elevation_deg):
@@ -37,6 +65,7 @@ def sun_rotation(azimuth_deg, elevation_deg):
 
 def _lighting(unreal, actors, manifest, scene, mode):
     if mode == "simulation":
+        parameters = atmosphere_parameters(scene)
         pitch, yaw = sun_rotation(scene["sun_azimuth_deg"], scene["sun_elevation_deg"])
         sun = actors.spawn_actor_from_class(unreal.DirectionalLight, unreal.Vector(0, 0, 10000),
                                             unreal.Rotator(pitch=pitch, yaw=yaw, roll=0))
@@ -44,27 +73,31 @@ def _lighting(unreal, actors, manifest, scene, mode):
         light.set_mobility(unreal.ComponentMobility.MOVABLE)
         light.set_intensity(scene["sun_illuminance_lux"])
         light.set_editor_property("atmosphere_sun_light", True)
+        light.set_editor_property("source_angle", parameters["sun_angular_diameter_deg"])
         sky_atmosphere = actors.spawn_actor_from_class(unreal.SkyAtmosphere, unreal.Vector(0, 0, 0))
         atmosphere = sky_atmosphere.get_component_by_class(unreal.SkyAtmosphereComponent)
         radius = manifest["source"].get("reprojection", {}).get("reference_semi_major_m")
         scalar_properties = {
-            "bottom_radius": radius / 1000 if radius else scene["ground_radius_km_fallback"],
+            # Local z=0 is the crop's minimum, not reference-sphere zero.
+            "bottom_radius": ((radius / 1000 if radius else scene["ground_radius_km_fallback"]) +
+                              manifest.get("vertical_datum_offset_m", 0) / 1000),
             "atmosphere_height": scene["atmosphere_height_km"],
-            "rayleigh_exponential_distribution": scene["scale_height_km"],
-            "mie_exponential_distribution": scene["scale_height_km"],
+            "rayleigh_exponential_distribution": scene["gas_scale_height_km"],
+            "mie_exponential_distribution": scene["dust_scale_height_km"],
             "rayleigh_scattering_scale": 1.0, "mie_scattering_scale": 1.0,
             "mie_absorption_scale": 1.0, "mie_anisotropy": scene["mie_anisotropy"],
             "other_absorption_scale": 0.0,  # remove the default Earth ozone layer
         }
         for key, value in scalar_properties.items():
             atmosphere.set_editor_property(key, value)
-        for key, source in (("rayleigh_scattering", "rayleigh_scattering_per_km"),
-                            ("mie_scattering", "mie_scattering_per_km"),
-                            ("mie_absorption", "mie_absorption_per_km")):
-            atmosphere.set_editor_property(key, unreal.LinearColor(*scene[source], 1))
+        atmosphere.set_editor_property("rayleigh_scattering", unreal.LinearColor(*scene["rayleigh_scattering_per_km"], 1))
+        for key in ("mie_scattering", "mie_absorption"):
+            value = parameters[key + "_per_km"]
+            atmosphere.set_editor_property(key, unreal.LinearColor(value, value, value, 1))
         sky = actors.spawn_actor_from_class(unreal.SkyLight, unreal.Vector(0, 0, 10000))
         sky_component = sky.get_component_by_class(unreal.SkyLightComponent)
         sky_component.set_mobility(unreal.ComponentMobility.MOVABLE)
+        sky_component.set_editor_property("real_time_capture", True)
         sky_component.recapture_sky()
     # Reference imagery has baked illumination: no dynamic light/atmosphere pass.
     exposure = scene["fixed_exposure_ev100"] if mode == "simulation" else scene["reference_exposure_ev100"]
@@ -137,6 +170,11 @@ def build_environment(manifest_path, level_path, *, load_bundle, pending, rover_
     if landscape is None:
         raise RuntimeError("DEM import failed; see LogDEMLandscape")
     landscape.set_actor_label("Mars_Jezero_MeasuredTerrain")
+    for key, value in {"collision_mip_level": 0, "simple_collision_mip_level": 0,
+                       "bake_material_position_offset_into_collision": False}.items():
+        landscape.set_editor_property(key, value)
+    if scene["force_visual_lod0"]:
+        landscape.set_editor_property("max_lod_level", 0)
     if material is None and preview_material:
         from mars_materials import create_material
         material = create_material(unreal, assets_folder, mode, manifest_path, manifest, scene)
@@ -144,6 +182,8 @@ def build_environment(manifest_path, level_path, *, load_bundle, pending, rover_
         landscape.set_editor_property("landscape_material", material)
     landscape.set_editor_property("tags", ["landscape", "mars", "jezero"])
     for component in landscape.get_components_by_class(unreal.LandscapeComponent):
+        component.set_editor_property("collision_mip_level", 0)
+        component.set_editor_property("simple_collision_mip_level", 0)
         component.set_render_custom_depth(True)
         component.set_custom_depth_stencil_value(5)
     actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
@@ -167,16 +207,19 @@ def build_environment(manifest_path, level_path, *, load_bundle, pending, rover_
         unreal.Vector(-col * r_cm - 1500, row * r_cm - 1500, z_cm + 1500),
         unreal.Rotator(pitch=-30, yaw=45, roll=0))
     result = {"level": level_path, "landscape": landscape, "rover": rover, "status": "importing",
-              "error": None, "mode": mode, "heightmap_verified": False,
+              "error": None, "mode": mode, "heightmap_verified": False, "collision_verified": False,
               "gravity_m_s2": manifest["gravity_m_s2"], "extent_m": grid["extent_m"],
-              "editor_script_executed": True, "gpu_render_verified": False, "visual_qa_passed": False}
+              "editor_script_executed": True, "gpu_render_verified": False, "visual_qa_passed": False,
+              "photometry_validated": False, "wheel_scale_obstacles_validated": False,
+              "atmosphere_scenario": atmosphere_parameters(scene) if mode == "simulation" else None,
+              "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest()}
     unreal.log_warning("Mars: measured terrain; rendering presets are illustrative. Orbital reference is "
                        "unlit grayscale, not albedo/true colour. Soil and vehicle physics remain unvalidated.")
-    _save_after_import(unreal, world, landscape, expected, result, pending, report_path)
+    _save_after_import(unreal, world, landscape, expected, result, pending, report_path, manifest)
     return result
 
 
-def _save_after_import(unreal, world, landscape, expected, result, pending, report_path):
+def _save_after_import(unreal, world, landscape, expected, result, pending, report_path, manifest):
     started = time.monotonic()
     token = object()
 
@@ -187,12 +230,23 @@ def _save_after_import(unreal, world, landscape, expected, result, pending, repo
                 raise RuntimeError("Editor world changed or Play started during import; map NOT saved")
             heights = unreal.DEMLandscapeLibrary.get_heightmap_data(landscape)
             if len(heights) == len(expected) and all(a == b for a, b in zip(heights, expected)):
+                from mars_collision import verify_landscape
+                try:
+                    collision = verify_landscape(unreal, world, landscape, manifest, expected,
+                                                  ignored_actors=[result["rover"]] if result["rover"] else [])
+                except RuntimeError as error:
+                    if time.monotonic() - started <= 60:
+                        result["last_collision_error"] = str(error)
+                        return  # collision cooking may finish after the heightmap readback
+                    raise
                 if unreal.EditorAssetLibrary.does_asset_exist(result["level"]):
                     raise FileExistsError("Target appeared during import")
                 if not unreal.EditorLoadingAndSavingUtils.save_map(world, result["level"]):
                     raise RuntimeError("Could not save Mars map")
-                result.update(status="saved", heightmap_verified=True)
-                unreal.log(f"Mars: heightmap verified and level saved: {result['level']}")
+                result.update(status="saved", heightmap_verified=True, collision_verified=True,
+                              collision=collision)
+                result.pop("last_collision_error", None)
+                unreal.log(f"Mars: heightmap and sampled collision verified; level saved: {result['level']}")
             elif time.monotonic() - started > 60:
                 raise RuntimeError("Heightmap did not read back within 60 seconds; map NOT saved")
             else:

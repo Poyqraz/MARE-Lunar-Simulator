@@ -33,9 +33,42 @@ def test_simulation_uses_mars_radius_and_removes_earth_ozone_layer():
     component.set_editor_property.assert_any_call("mie_exponential_distribution", 11.0)
 
 
+def test_atmosphere_ground_radius_accounts_for_removed_height_datum():
+    engine, actors = MagicMock(), MagicMock()
+    manifest = {"source": {"reprojection": {"reference_semi_major_m": 3396190}},
+                "vertical_datum_offset_m": -2580.5820169885833}
+    scene_module._lighting(engine, actors, manifest, scene_module.load_scene(), "simulation")
+    component = actors.spawn_actor_from_class.return_value.get_component_by_class.return_value
+    component.set_editor_property.assert_any_call("bottom_radius", pytest.approx(3393.6094179830114))
+    component.set_editor_property.assert_any_call("source_angle", pytest.approx(0.3497230666))
+
+
 def test_invalid_scene_value_fails_before_creating_assets(tmp_path):
     scene = scene_module.load_scene()
     scene["mie_anisotropy"] = 3
+    path = tmp_path / "scene.json"
+    path.write_text(json.dumps(scene))
+    with pytest.raises(ValueError):
+        scene_module.load_scene(path)
+
+
+def test_dust_coefficients_reproduce_declared_optical_depth():
+    scene = scene_module.load_scene()
+    values = scene_module.atmosphere_parameters(scene)
+    import math
+    column = scene["dust_scale_height_km"] * -math.expm1(-scene["atmosphere_height_km"] / scene["dust_scale_height_km"])
+    assert (values["mie_scattering_per_km"] + values["mie_absorption_per_km"]) * column == pytest.approx(0.45)
+    assert values["mie_scattering_per_km"] / values["mie_extinction_per_km"] == pytest.approx(0.93)
+    assert values["sun_angular_diameter_deg"] == pytest.approx(0.3497, abs=0.001)
+    assert values["photometry_validated"] is False
+
+
+@pytest.mark.parametrize("key,value", [("dust_optical_depth_880nm", -1),
+                                      ("dust_single_scattering_albedo", 1.1),
+                                      ("dust_scale_height_km", 0), ("sun_distance_km", float("nan"))])
+def test_nonphysical_atmosphere_scenarios_are_rejected(tmp_path, key, value):
+    scene = scene_module.load_scene()
+    scene[key] = value
     path = tmp_path / "scene.json"
     path.write_text(json.dumps(scene))
     with pytest.raises(ValueError):

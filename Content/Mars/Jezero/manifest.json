@@ -50,6 +50,7 @@
       "catalog": "https://astrogeology.usgs.gov/search/map/mars-2020-jezero-crater-landing-site-products",
       "metadata": "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/HiRISE/DTM_MOLAtopography_DeltaGeoid_Jezero_C_Edited_affine_1m_Eqc_latTs0_lon0.xml",
       "retrieved": "2026-10-28",
+      "source_file_sha256": "0c681fa0c2fa72ec2253d09ed8643d5794ea0c3575f5fa953d470cc0beeb1751",
       "changes": "Reproject a measured pixel-window crop to a local Mars azimuthal-equidistant grid at 1 m; reverse rows to north-increasing local y; subtract minimum height for local z; quantize to UE r16. Registered grayscale orthoimage is a separate unlit reference, not albedo. No invented relief or rocks."
     }
   },
@@ -100,8 +101,22 @@
     "soil.csv": {
       "sha256": "ab7b2617f3586463ad82089c34bf55d9efa994b4b6edbbace46ea09a06f1ba55"
     },
+    "source_dem.xml": {
+      "sha256": "2cc8fbb23500e037e6190974d709c9ab6455cc0b18985ca1bf5dbec3662d759a"
+    },
+    "source_ortho.xml": {
+      "sha256": "f38d297d974f3cbd9f99a6543a9a5ba3d2c56f57d5a10f7fc064e54c97882b7f"
+    },
     "ortho_reference.png": {
       "sha256": "60f148b8816945f073e0e9975ceeb9db5c2bf87132a5fb0245e64ad93cf1823d"
+    }
+  },
+  "source_documents": {
+    "source_dem.xml": {
+      "uri": "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/HiRISE/DTM_MOLAtopography_DeltaGeoid_Jezero_C_Edited_affine_1m_Eqc_latTs0_lon0.xml"
+    },
+    "source_ortho.xml": {
+      "uri": "https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/HiRISE/ESP_045994_1985_Edited_affine_25cm_Eqc_latTs0_lon0.xml"
     }
   },
   "imagery": {

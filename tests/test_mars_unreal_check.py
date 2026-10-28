@@ -24,7 +24,8 @@ def test_launcher_uses_argument_list_and_requires_verified_report(tmp_path, monk
         assert command[1] == str(root / "Moon_Simulator.uproject")
         assert "shell" not in kwargs
         report = Path(kwargs["env"]["MARE_MARS_REPORT"])
-        report.write_text(json.dumps({"status": "saved", "heightmap_verified": True, "visual_qa_passed": False}))
+        report.write_text(json.dumps({"status": "saved", "heightmap_verified": True,
+                                      "collision_verified": True, "visual_qa_passed": False}))
         return SimpleNamespace(returncode=0)
     monkeypatch.setattr("mars_rover.unreal_check.subprocess.run", run)
     result = run_validation(editor, project_root=root)
@@ -34,6 +35,7 @@ def test_launcher_uses_argument_list_and_requires_verified_report(tmp_path, monk
 @pytest.mark.parametrize("returncode,report", [
     (0, None), (1, {"status": "saved", "heightmap_verified": True}),
     (0, {"status": "failed", "heightmap_verified": False}),
+    (0, {"status": "saved", "heightmap_verified": True, "collision_verified": False}),
 ])
 def test_process_exit_alone_cannot_report_success(tmp_path, monkeypatch, returncode, report):
     editor, root = setup_project(tmp_path)
@@ -53,7 +55,7 @@ def test_relative_project_root_does_not_make_nested_report_paths(tmp_path, monke
         report = Path(kwargs["env"]["MARE_MARS_REPORT"])
         assert report.is_absolute()
         assert kwargs["cwd"] == root
-        report.write_text(json.dumps({"status": "saved", "heightmap_verified": True}))
+        report.write_text(json.dumps({"status": "saved", "heightmap_verified": True, "collision_verified": True}))
         return SimpleNamespace(returncode=0)
     monkeypatch.setattr("mars_rover.unreal_check.subprocess.run", run)
     run_validation(editor, project_root=Path(root.name))

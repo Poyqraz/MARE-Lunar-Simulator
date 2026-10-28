@@ -6,6 +6,9 @@
 > and [review/test limits](docs/mars-validation.md). Dynamic simulation shading and unlit
 > grayscale orbital reference are separate modes. Python tests run in CI;
 > actual GPU appearance and vehicle calibration still require Windows UE 5.7.
+> The [scientific fidelity review (Türkçe)](docs/mars-scientific-review.md) records
+> all 64,009 source-post comparisons, slope baselines, rock/soil limitations,
+> atmosphere assumptions and the new native collision acceptance gate.
 > The original lunar simulator is documented below.
 
 [![arXiv](https://img.shields.io/badge/arXiv-2610.28465-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2610.28465)

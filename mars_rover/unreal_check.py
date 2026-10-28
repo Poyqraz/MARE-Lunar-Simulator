@@ -40,8 +40,9 @@ def run_validation(editor, *, mode="simulation", project_root=None, timeout_s=60
     if not report.is_file():
         raise RuntimeError(f"Unreal produced no acceptance report; inspect {log}")
     result = json.loads(report.read_text(encoding="utf-8"))
-    if process.returncode != 0 or result.get("status") != "saved" or result.get("heightmap_verified") is not True:
-        raise RuntimeError(f"Unreal import/readback failed; inspect {report} and {log}")
+    if (process.returncode != 0 or result.get("status") != "saved" or
+            result.get("heightmap_verified") is not True or result.get("collision_verified") is not True):
+        raise RuntimeError(f"Unreal import/readback/collision failed; inspect {report} and {log}")
     return {"report_path": str(report), "log_path": str(log), "result": result}
 
 
@@ -56,7 +57,7 @@ def main():
     except (OSError, RuntimeError, ValueError) as error:
         parser.exit(1, str(error) + "\n")
     print(json.dumps(result, indent=2))
-    print("Editor geometry import/readback passed. Visual QA and rover motion require interactive acceptance.")
+    print("Editor heightmap readback and sampled collision passed. Visual QA and rover motion remain separate.")
 
 
 if __name__ == "__main__":
