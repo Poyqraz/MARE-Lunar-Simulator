@@ -1,0 +1,6 @@
+# Python 3.12 outside Unreal only; editor scripts use its standard library.
+# Pin the tested geospatial toolchain for reproducible reprojection and images.
+numpy==2.3.5
+rasterio==1.5.2
+pyproj==3.8.0
+Pillow==12.3.0

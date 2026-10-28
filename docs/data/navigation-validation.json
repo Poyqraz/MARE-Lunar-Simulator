@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "manifest_sha256": "aea08f2fbc305462a0b9c59f2566197fa33d08da3312cedb4c921e5e59230f88",
+  "frame": "local east/north/up, metres",
+  "terrain_source": "decoded r16 of the measured USGS Jezero_C DTM crop",
+  "grid_shape": [
+    253,
+    253
+  ],
+  "grid_resolution_m": 1.0,
+  "limits": {
+    "robot_radius_m": 0.6,
+    "max_slope_deg": 15.0,
+    "max_neighbor_step_m": 0.35,
+    "obstacle_height_m": 0.15,
+    "slope_cost_weight": 2.0
+  },
+  "inflated_blocked_posts": 2201,
+  "successful_routes": [
+    {
+      "start_local_m": [
+        126.0,
+        126.0
+      ],
+      "goal_local_m": [
+        200.0,
+        100.0
+      ],
+      "waypoint_count": 75,
+      "route_length_xy_m": 84.76955262170047,
+      "max_quad_slope_bound_on_route_deg": 4.52493631809456,
+      "all_segments_clear": true,
+      "kinematic_arrived_and_stopped": true,
+      "kinematic_final_distance_m": 0.2481312349858799,
+      "kinematic_duration_s": 570.4
+    },
+    {
+      "start_local_m": [
+        126.0,
+        126.0
+      ],
+      "goal_local_m": [
+        60.0,
+        100.0
+      ],
+      "waypoint_count": 67,
+      "route_length_xy_m": 76.76955262170047,
+      "max_quad_slope_bound_on_route_deg": 3.7906835247664947,
+      "all_segments_clear": true,
+      "kinematic_arrived_and_stopped": true,
+      "kinematic_final_distance_m": 0.2471829482870174,
+      "kinematic_duration_s": 523.95
+    },
+    {
+      "start_local_m": [
+        126.0,
+        126.0
+      ],
+      "goal_local_m": [
+        180.0,
+        180.0
+      ],
+      "waypoint_count": 56,
+      "route_length_xy_m": 76.95331880577405,
+      "max_quad_slope_bound_on_route_deg": 6.021614378944641,
+      "all_segments_clear": true,
+      "kinematic_arrived_and_stopped": true,
+      "kinematic_final_distance_m": 0.2454607377618976,
+      "kinematic_duration_s": 513.0
+    },
+    {
+      "start_local_m": [
+        126.0,
+        126.0
+      ],
+      "goal_local_m": [
+        100.0,
+        200.0
+      ],
+      "waypoint_count": 75,
+      "route_length_xy_m": 84.76955262170047,
+      "max_quad_slope_bound_on_route_deg": 3.795005363263739,
+      "all_segments_clear": true,
+      "kinematic_arrived_and_stopped": true,
+      "kinematic_final_distance_m": 0.2437997686382207,
+      "kinematic_duration_s": 572.4
+    }
+  ],
+  "rejected_goals": [
+    {
+      "goal_local_m": [
+        -1.0,
+        20.0
+      ],
+      "reason": "Goal/start lies outside measured terrain"
+    },
+    {
+      "goal_local_m": [
+        0.0,
+        0.0
+      ],
+      "reason": "Start/goal is blocked after terrain and vehicle-footprint checks"
+    }
+  ],
+  "kinematic_model": {
+    "dt_s": 0.05,
+    "speed_m_s": 0.15,
+    "slip": "not modelled",
+    "pose": "exact"
+  },
+  "native_unreal_executed": false,
+  "native_sensor_stream_verified": false,
+  "native_rover_verified": false,
+  "micro_geometry_complete": false,
+  "scientific_dem_accuracy_verified": false
+}

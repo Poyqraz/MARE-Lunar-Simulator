@@ -26,3 +26,43 @@ Required attribution for the Yutu model (CC-BY-4.0):
 
 The Poly Haven assets are CC0 and need no attribution; they are credited here
 as a courtesy.
+
+## Jezero starter terrain added in this fork
+
+`Content/Mars/Jezero/` contains a locally reprojected 253 × 253 grid from the USGS
+Mars 2020 HiRISE DTM **Jezero_C**, published 2020-07-24. Originators listed in
+the source metadata: Robin Fergason, Donna Galuszka, Trent Hare, David Mayer,
+Bonnie Redding and Ethan Smith. HiRISE instrument: NASA/JPL/University of Arizona.
+
+The [source metadata](https://asc-pds-services.s3.us-west-2.amazonaws.com/mosaic/mars2020_trn/HiRISE/DTM_MOLAtopography_DeltaGeoid_Jezero_C_Edited_affine_1m_Eqc_latTs0_lon0.xml)
+lists access and use constraints as **None**. Source data are credited here;
+they are not relicensed as original MIT software. The bundled manifest records
+the original URL, CRS, pixel window, scale, offset, transformations and output
+checksums. A registered grayscale orbital reference from the paired
+ESP_045994_1985 image is also included; it is not RGB true colour or albedo.
+Full source and transformation notes are in
+[DATA_SOURCES.md](Content/Mars/Jezero/DATA_SOURCES.md).
+
+The exact original USGS FGDC metadata snapshots are included as
+`source_dem.xml` and `source_ortho.xml`. The review figure
+`docs/images/jezero-fidelity.png` plots these derived USGS/HiRISE data;
+it is not an Unreal render or a newly acquired Mars image.
+
+`docs/images/jezero-navigation.png` is another derived USGS/HiRISE plot, with
+offline geometric routes and a blocked mask. It is not an Unreal render or
+an actual rover traverse. The same source attribution above applies.
+
+## Navigation method references and optional dependency
+
+The starred repository review in `docs/mars-starred-review.md` and its JSON
+inventory records method references and license metadata. No source code,
+models, weights, calibration files or assets from those starred projects were
+copied into this fork. Standard A*, rigid transforms, terrain tests and route
+tracking were implemented independently here.
+
+Optional stereo mode calls [OpenCV](https://opencv.org/) through the pinned
+`opencv-python-headless` package; OpenCV 4.5+ uses the
+[Apache 2.0 license](https://opencv.org/license/). The wheel is installed as
+a dependency, not vendored in this repository; its included third-party
+notices remain applicable. Stereo method documentation:
+[StereoSGBM](https://docs.opencv.org/4.x/d2/d85/classcv_1_1StereoSGBM.html).

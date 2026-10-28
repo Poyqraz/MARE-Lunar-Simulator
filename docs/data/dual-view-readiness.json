@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "review_date_local": "2026-10-28",
+  "timezone": "Europe/Istanbul",
+  "status": "design_only_not_implemented",
+  "repository": "Poyqraz/MARE-Lunar-Simulator",
+  "pull_request": 1,
+  "reviewed_head_sha": "b3c27ccb8baca3c72ff039b77f0c65774e856210",
+  "reviewed_tree_sha": "154485d8d3cf5f4d657c09f212b9ac59d9e000f0",
+  "open_pr_count_at_review": 1,
+  "existing_local_tests_passed": 112,
+  "existing_ci": {
+    "run_id": 40739224113,
+    "url": "https://github.com/Poyqraz/MARE-Lunar-Simulator/actions/runs/40739224113",
+    "windows": "success",
+    "linux": "success",
+    "scope": "Existing Python tests, route benchmark and lint; not native Unreal"
+  },
+  "native_unreal_executed": false,
+  "new_dual_view_implemented": false,
+  "reference_data": {
+    "instrument": "MRO HiRISE",
+    "observation": "ESP_045994_1985",
+    "observation_acquired": "2016-05-19",
+    "observation_catalog": "https://www.uahirise.org/ESP_045994_1985",
+    "derived_usgs_product_published": "2020-07-24",
+    "crop_extent_m": [252, 252],
+    "dem_post_spacing_m": 1,
+    "reference_image_dimensions_px": [1024, 1024],
+    "imagery_is_live": false,
+    "overlay_pose_source": "simulation telemetry, not satellite detection or SLAM",
+    "micro_geometry_complete": false
+  },
+  "review_findings": [
+    {
+      "id": "R1", "priority": "P0", "path": "mars_rover/navigation.py", "symbol": "NavigationSession.step",
+      "finding": "Idle/terminal returns precede pose ingestion; continuous observation required.",
+      "required_phase": "A1", "resolved": false
+    },
+    {
+      "id": "R2", "priority": "P0", "path": "mars_rover/nav_service.py", "symbol": "Handler.do_GET /map",
+      "finding": "JSON/network reply under control lock; static slow-client latency risk, not a measured incident.",
+      "required_phase": "A1", "resolved": false
+    },
+    {
+      "id": "R3", "priority": "P0", "path": "mars_rover/navigation.py", "symbol": "NavigationSession and RouteFollower",
+      "finding": "Missing mission identity, fixed start, actual trail, plan history and exposed progress.",
+      "required_phase": "A1", "resolved": false
+    },
+    {
+      "id": "R4", "priority": "P0", "path": "Content/Python/rover_cameras.py", "symbol": "DASHBOARD_URL",
+      "finding": "GNC 5001 camera link is separate from ROS-free 8766; single camera authority required.",
+      "required_phase": "A2", "resolved": false
+    },
+    {
+      "id": "R5", "priority": "P1", "path": "Content/Python/rover_cameras.py", "symbol": "top and follow",
+      "finding": "8 m perspective top view and active rover camera are not orbital imagery or a raw navcam feed.",
+      "required_phase": "A2", "resolved": false
+    },
+    {
+      "id": "R6", "priority": "P0", "path": "Content/Python/mars_materials.py", "symbol": "create_material",
+      "finding": "World-build material modes must not be used for live view switching; sensor RGB would change.",
+      "required_phase": "A2", "resolved": false
+    },
+    {
+      "id": "R7", "priority": "P1", "path": "mars_rover/nav_service.py", "symbol": "HTTP API",
+      "finding": "No native screen picking or browser live-camera endpoint in current 2D mission UI.",
+      "required_phase": "A3", "resolved": false
+    },
+    {
+      "id": "R8", "priority": "P1", "path": "mars_rover/bridge.py", "symbol": "BridgeServer.status",
+      "finding": "Wire commands are not measured wheel RPM; battery/current/temperature channels are unestablished.",
+      "required_phase": "A4", "resolved": false
+    },
+    {
+      "id": "R9", "priority": "P1", "path": "Content/Python/mars_sensor_setup.py", "symbol": "configure_and_export",
+      "finding": "Export actual center RGB id and calibration before serving the display stream.",
+      "required_phase": "A5", "resolved": false
+    },
+    {
+      "id": "R10", "priority": "P0", "path": "Content/Python/rover_cameras.py", "symbol": "editor camera tick",
+      "finding": "Editor-only camera requires runtime integration for packaged interaction.",
+      "required_phase": "A2", "resolved": false
+    }
+  ],
+  "planned_phases": [
+    {"id": "A0", "name": "Native foundation acceptance", "implemented": false},
+    {"id": "A1", "name": "Continuous mission observation, trail and bounded snapshots", "implemented": false},
+    {"id": "A2", "name": "Single-owner native camera rig and transitions", "implemented": false},
+    {"id": "A3", "name": "Map/native view goal preview and picking", "implemented": false},
+    {"id": "A4", "name": "Shared overlays and telemetry HUD", "implemented": false},
+    {"id": "A5", "name": "Sensor frame display and adaptive view quality", "implemented": false},
+    {"id": "A6", "name": "End-to-end native and packaged acceptance", "implemented": false}
+  ],
+  "invariants": [
+    "View switches preserve mission id, goal, Play session and sensor configuration",
+    "Actual trail derives from telemetry, not planned waypoints",
+    "Archived imagery and live simulation overlays are separately labelled",
+    "Unavailable telemetry channels are never fabricated",
+    "Native world picking and sensor-derived picking remain distinct",
+    "Old-session and mismatched-map goals cannot execute",
+    "Encoding/network/disk work cannot hold the control lock"
+  ],
+  "optional_later": [
+    "Cesium Mars context with verified horizontal and vertical reference transforms",
+    "Pixel Streaming for unified browser Unreal video and input",
+    "Capture-matched browser navcam/depth picking",
+    "SPICE-based physical orbital observation replay"
+  ],
+  "excluded_current_phase": [
+    "Soil sinkage and traction",
+    "User CAD and real motor calibration",
+    "Complete wheel-scale measured Mars geometry",
+    "Live MRO video or flight-qualified autonomy"
+  ]
+}

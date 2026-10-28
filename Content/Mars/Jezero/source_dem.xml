@@ -1,0 +1,303 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<!--Record created using version 2.0.5 of the USGS Metadata Wizard tool. (https://github.com/usgs/fort-pymdwizard)-->
+<metadata>
+  <idinfo>
+    <citation>
+      <citeinfo>
+        <origin>Robin Fergason</origin>
+        <origin>Donna Galuszka</origin>
+        <origin>Trent Hare</origin>
+        <origin>David Mayer</origin>
+        <origin>Bonnie Redding</origin>
+        <origin>Ethan Smith</origin>
+        <pubdate>20200724</pubdate>
+        <title>High-Resolution Imaging Science Experiment Digital Terrain Model Jezero_C; ESP_045994_1985, ESP_046060_1985aa</title>
+        <geoform>raster digital data</geoform>
+        <onlink>https://doi.org/10.5066/P9REJ9JN</onlink>
+        <lworkcit>
+          <citeinfo>
+            <origin>Mars 2020 Terrain Relative Navigation</origin>
+            <pubdate>20200724</pubdate>
+            <title>DTM_MOLAtopography_DeltaGeoid_Jezero_C_Edited_affine_1m_Eqc_latTs0_lon0.tif</title>
+            <geoform>raster digital data</geoform>
+            <pubinfo>
+              <pubplace>Flagstaff, Arizona</pubplace>
+              <publish>United States Geological Survey, Astrogeology Science Center</publish>
+            </pubinfo>
+            <onlink>http://astrogeology.usgs.gov</onlink>
+          </citeinfo>
+        </lworkcit>
+      </citeinfo>
+    </citation>
+    <descript>
+      <abstract>This is a digital terrain model (DTM) extracted from High-Resolution Imaging Science Experiment (HiRISE) stereo images from the Mars Reconnaissance Orbiter mission. The original data product is a DTM from stereo images acquired at approximately 0.25 meters/pixel resolution, which allows an output DTM resolution of 1 meter/pixel using a softcopy photogrammetry system. Elevation values are in meters and refer to the Mars 2020 IAU Sphere with a radius of 3396190m.</abstract>
+      <purpose>The Mars 2020 rover will explore Jezero crater, Mars to investigate an ancient delta for evidence of past microbial life and to better understand the geologic history of the region. The landing system onboard Mars 2020 will use technology developed at the Jet Propulsion Laboratory (JPL) called Terrain Relative Navigation (TRN), which will enable the spacecraft to autonomously avoid hazards (e.g., rock fields, crater rims) that exceed the safety requirements of the landing system. This capability allows small-scale hazards to be present in the landing ellipse, providing greater flexibility in selecting a landing location. In support of TRN, the USGS Astrogeology Science Center has generated and delivered a High-Resolution Imaging Science Experiment (HiRISE) digital terrain model (DTM) mosaic and orthomosaic that is the basemap onto which surface hazards were mapped. The hazard map will be onboard the spacecraft and used by TRN to help identify the final, hazard-free landing location. This DTM serves as a foundation for ortho-projection and control of the LVS map orthoimages and mosaics.</purpose>
+    </descript>
+    <timeperd>
+      <timeinfo>
+        <sngdate>
+          <caldate>20191024</caldate>
+        </sngdate>
+      </timeinfo>
+      <current>Publication date</current>
+    </timeperd>
+    <status>
+      <progress>Complete</progress>
+      <update>None</update>
+    </status>
+    <spdom>
+      <bounding>
+        <westbc>77.3826</westbc>
+        <eastbc>77.5017</eastbc>
+        <northbc>18.5506</northbc>
+        <southbc>18.3069</southbc>
+      </bounding>
+    </spdom>
+    <keywords>
+      <theme>
+        <themekt>Planetary</themekt>
+        <themekey>Mars 2020</themekey>
+        <themekey>Terrain Relative Navigation</themekey>
+        <themekey>Entry, Decent, and Landing (EDL)</themekey>
+        <themekey>High-Resolution Imaging Science Experiment</themekey>
+        <themekey>Mars Reconnaissance Orbiter</themekey>
+        <themekey>Digital Terrain Model (DTM)</themekey>
+        <themekey>Mars</themekey>
+      </theme>
+      <place>
+        <placekt>http://science.nasa.gov/glossary</placekt>
+        <placekey>Mars</placekey>
+      </place>
+    </keywords>
+    <accconst>None</accconst>
+    <useconst>None</useconst>
+    <ptcontac>
+      <cntinfo>
+        <cntperp>
+          <cntper>Robin L Fergason</cntper>
+          <cntorg>U.S. Geological Survey, Southwest Region</cntorg>
+        </cntperp>
+        <cntpos>Supervisory Physical Scientist</cntpos>
+        <cntaddr>
+          <addrtype>mailing address</addrtype>
+          <address>2255 North Gemini Drive</address>
+          <city>Flagstaff</city>
+          <state>AZ</state>
+          <postal>86001</postal>
+          <country>US</country>
+        </cntaddr>
+        <cntvoice>928-556-7034</cntvoice>
+        <cntfax>928-556-7014</cntfax>
+        <cntemail>rfergason@usgs.gov</cntemail>
+      </cntinfo>
+    </ptcontac>
+    <datacred>Mars Reconnaissance Orbiter High-Resolution Imaging Science Experiment</datacred>
+    <secinfo>
+      <secsys>None</secsys>
+      <secclass>Unclassified</secclass>
+      <sechandl>None</sechandl>
+    </secinfo>
+    <native>ISIS 3.5.2, GDAL 2.3.1, SOCET SET 5.6, Ames Stereo Pipeline 3.6.0, ArcMap 10.6</native>
+  </idinfo>
+  <dataqual>
+    <attracc>
+      <attraccr>See Process Steps.</attraccr>
+    </attracc>
+    <logic>See Process Steps.</logic>
+    <complete>The High-Resolution Imaging Science Experiment (HiRISE) stereo images used to generate this DTM are ESP_045994_1985 and ESP_046060_1985.</complete>
+    <posacc>
+      <horizpa>
+        <horizpar>To assess the horizontal registration, measurements between orthorectified images were made using the Open Source software package IMCORR (https://nsidc.org/data/velmap/imcorr.html). The approach used by IMCORR is the same basic matching strategy used in a variety of stereo photogrammetry software packages, and when applied to a pair of orthorectified images, the results can be interpreted as a measure of the co-registration of the images.</horizpar>
+        <qhorizpa>
+          <horizpav>1.1</horizpav>
+          <horizpae>All pairwise combinations of HiRISE orthoimages derived from the nadir-most members of each stereopair are registered to better than 3 meters at the 99th percentile, with most overlapping images registered to better than 1.1 meters at the 99th percentile. The HiRISE orthomosaic was also compared to the CTX orthomosaic (i.e., Lander Vision System (LVS) map) and we believe the result that 94.1% of matched features have displacements less than 6 meters is conservative.</horizpae>
+        </qhorizpa>
+      </horizpa>
+      <vertacc>
+        <vertaccr>To assess the vertical differences, DTMs were simply differenced.</vertaccr>
+        <qvertpa>
+          <vertaccv>0.4</vertaccv>
+          <vertacce>The HiRISE DTM mosaic has a median vertical offset from the CTX DTM mosaic (i.e., LVS elevation map) of ~0.4 meters, with the CTX DTM mosaic floating above the HiRISE mosaic.</vertacce>
+        </qvertpa>
+      </vertacc>
+    </posacc>
+    <lineage>
+      <srcinfo>
+        <srccite>
+          <citeinfo>
+            <origin>McEwen, A.S. et al.</origin>
+            <origin>McEwen, A.S. et al., Mars Reconnaissance Orbiter's High Resolution Imaging Science Experiment (HiRISE), J. Geophys. Res. 112, E05S04 (2007). https://doi.org/10.1029/2005JE002605</origin>
+            <pubdate>2007</pubdate>
+            <title>Mars Reconnaissance Orbiter's High Resolution Imaging Science Experiment (HiRISE)</title>
+            <geoform>document</geoform>
+            <onlink>https://agupubs.onlinelibrary.wiley.com/doi/full/10.1029/2005JE002605%4010.1002/%28ISSN%292169-9100.MARSROM1</onlink>
+          </citeinfo>
+        </srccite>
+        <typesrc>Planetary Data System (PDS) Reduced Data Record (RDR)</typesrc>
+        <srctime>
+          <timeinfo>
+            <rngdates>
+              <begdate>2006</begdate>
+              <enddate>2020</enddate>
+            </rngdates>
+          </timeinfo>
+          <srccurr>ground condition</srccurr>
+        </srctime>
+        <srccitea>HiRISE visible</srccitea>
+        <srccontr>https://pds-imaging.jpl.nasa.gov/volumes/mro.html</srccontr>
+      </srcinfo>
+      <procstep>
+        <procdesc>The DTMs were produced using SOCET SET and following a standard USGS process for generating HiRISE DTMs. This process involves manually designating 16 tiepoints and running a relative bundle adjustment to improve the initial alignment of images in each stereopair, followed by adding elevation information to each tie point from the Context Camera DTM mosaic (i.e., Lander Vision System (LVS) elevation map, generated by the USGS). The control network was then densified using Automatic Point Matching (APM) in SOCET SET, and bundle adjustment was run again. DTMs were then extracted from each stereopair at 1-meter post spacing and passed to Ames Stereo Pipeline (ASP). The individual HiRISE DTMs were rigidly aligned to one another using the pc_align program from the ASP software. pc_align is an implementation of an iterative closest points (ICP) algorithm. A temporary DTM mosaic was generated from these relatively-aligned HiRISE DTMs and subsequently aligned to the CTX LVS elevation map in order to bring the HiRISE DTMs into absolute alignment with an independent reference. All runs of pc_align allowed three-dimensional translation and rotation.
+ 
+Rather than mosaicking DTMs that had already been resampled multiple times in pc_align, the transformation matrices (rotation and translation) determined by pc_align were applied to the tie points associated with each stereo pair in SOCET SET. The transformed tie points were then treated as ground control points and used to perform an additional bundle adjustment of each stereopair in SOCET SET. The positions of the images were the starting point for performing a joint bundle adjustment of all 14 images in SOCET SET. This joint bundle adjustment was accomplished by first merging the individual stereo models into a single SOCET SET project, manually designating tiepoints between overlapping images, and manually filtering the existing set of ground control points to include only a few dozen points spread evenly across all seven stereomodels. The inclusion of tiepoints in areas of overlap between (potentially) more than two images establishes a more precise relationship between the HiRISE images. The inclusion of ground control points constrains the bundle adjustment solution to a state that is close to the true ground coordinates as defined by the CTX reference data while still allowing the HiRISE images to move relative to one another. The jointly bundle-adjusted images were then used to extract HiRISE DTMs that are absolutely aligned to CTX. These DTMs were then manually edited. 
+
+After editing, the HiRISE images were then orthorectified onto their corresponding DTM in SOCET SET. The resulting orthoimages and DTMs were exported from SOCET SET  into ISIS3 cube format following standard procedures used by the USGS. To transform the image data exported from SOCET SET into the final, cropped mosaics and to address horizontal misregistration between the HiRISE and CTX products, the following operations were performed. A scale distortion between the HiRISE and CTX mosaics was identified. To address this concern, a single two-dimensional (or first-order) affine transformation (translation, rotation, and scale) was determined based on an intermediate HiRISE mosaic product in order to preserve the excellent horizontal co-registration accuracy between individual HiRISE images achieved through the process described above. The two-dimensional affine transformation was then applied using Esri ArcGIS Pro application to each 1-meter edited DTM and 0.25-meter orthoimage that were exported from SOCET SET in order to bring them into horizontal alignment with the CTX reference data (i.e., LVS appearance map) and correct for horizontal scale distortions in the HiRISE image data. The affine-transformed 1-meter DTMs and 0.25-meter orthoimages were then reprojected into a common projection using the Open Source GDAL program gdalwarp and bilinear resampling (https://gdal.org/).
+</procdesc>
+        <procdate>20191024</procdate>
+        <proccont>
+          <cntinfo>
+            <cntperp>
+              <cntper>Robin L Fergason</cntper>
+              <cntorg>U.S. Geological Survey, Southwest Region</cntorg>
+            </cntperp>
+            <cntpos>Supervisory Physical Scientist</cntpos>
+            <cntaddr>
+              <addrtype>mailing address</addrtype>
+              <address>2255 North Gemini Drive</address>
+              <city>Flagstaff</city>
+              <state>AZ</state>
+              <postal>86001</postal>
+              <country>US</country>
+            </cntaddr>
+            <cntvoice>928-556-7034</cntvoice>
+            <cntfax>928-556-7014</cntfax>
+            <cntemail>rfergason@usgs.gov</cntemail>
+          </cntinfo>
+        </proccont>
+      </procstep>
+    </lineage>
+  </dataqual>
+  <spdoinfo>
+    <direct>Raster</direct>
+    <rastinfo>
+      <rasttype>Grid Cell</rasttype>
+      <rowcount>14445</rowcount>
+      <colcount>7061</colcount>
+      <vrtcount>1</vrtcount>
+    </rastinfo>
+  </spdoinfo>
+  <spref>
+    <horizsys>
+      <planar>
+        <mapproj>
+          <mapprojn>Equirectangular</mapprojn>
+          <equirect>
+            <stdparll>0.0</stdparll>
+            <longcm>0.0</longcm>
+            <feast>0.0</feast>
+            <fnorth>0.0</fnorth>
+          </equirect>
+        </mapproj>
+        <planci>
+          <plance>row and column</plance>
+          <coordrep>
+            <absres>1.0</absres>
+            <ordres>1.0</ordres>
+          </coordrep>
+          <plandu>meters</plandu>
+        </planci>
+      </planar>
+      <geodetic>
+        <horizdn>D_Mars_2000_Sphere</horizdn>
+        <ellips>Mars_2000_Sphere_IAU</ellips>
+        <semiaxis>3396190.0</semiaxis>
+        <denflat>1.0E-10</denflat>
+      </geodetic>
+    </horizsys>
+  </spref>
+  <eainfo>
+    <detailed>
+      <enttyp>
+        <enttypl>DTM_MOLAtopography_DeltaGeoid_Jezero_C_Edited_affine_1m_Eqc_latTs0_lon0.tif</enttypl>
+        <enttypd>Raster geospatial data file.</enttypd>
+        <enttypds>Producer Defined</enttypds>
+      </enttyp>
+      <attr>
+        <attrlabl>Value</attrlabl>
+        <attrdef>Unique numeric values contained in each raster cell.</attrdef>
+        <attrdefs>Producer Defined</attrdefs>
+        <attrdomv>
+          <rdom>
+            <rdommin>-2660.56201171875</rdommin>
+            <rdommax>-2429.797119140625</rdommax>
+          </rdom>
+        </attrdomv>
+      </attr>
+    </detailed>
+  </eainfo>
+  <distinfo>
+    <distrib>
+      <cntinfo>
+        <cntperp>
+          <cntper>Trent M Hare</cntper>
+          <cntorg>U.S. Geological Survey, Southwest Region</cntorg>
+        </cntperp>
+        <cntpos>Cartographer</cntpos>
+        <cntaddr>
+          <addrtype>mailing address</addrtype>
+          <address>2255 North Gemini Drive</address>
+          <city>Flagstaff</city>
+          <state>AZ</state>
+          <postal>86001</postal>
+          <country>US</country>
+        </cntaddr>
+        <cntvoice>928-556-7126</cntvoice>
+        <cntemail>thare@usgs.gov</cntemail>
+      </cntinfo>
+    </distrib>
+    <distliab>Unless otherwise stated, all data, metadata and related materials are considered to satisfy the quality standards relative to the purpose for which the data were collected. Although these data and associated metadata have been reviewed for accuracy and completeness and approved for release by the U.S. Geological Survey (USGS), no warranty expressed or implied is made regarding the display or utility of the data for other purposes, nor on all computer systems, nor shall the act of distribution constitute any such warranty. Any use of trade, firm, or product names is for descriptive purposes only and does not imply endorsement by the U.S. Government.
+</distliab>
+    <stdorder>
+      <digform>
+        <digtinfo>
+          <formname>Digital Data</formname>
+        </digtinfo>
+        <digtopt>
+          <onlinopt>
+            <computer>
+              <networka>
+                <networkr>https://astrogeology.usgs.gov/search/map/Mars/Mars2020/JEZ_hirise_soc_006_DTM_MOLAtopography_DeltaGeoid_1m_Eqc_latTs0_lon0_blend40</networkr>
+              </networka>
+            </computer>
+          </onlinopt>
+        </digtopt>
+      </digform>
+      <fees>None</fees>
+    </stdorder>
+  </distinfo>
+  <metainfo>
+    <metd>20200630</metd>
+    <metc>
+      <cntinfo>
+        <cntperp>
+          <cntper>Robin L Fergason</cntper>
+          <cntorg>U.S. Geological Survey, Southwest Region</cntorg>
+        </cntperp>
+        <cntpos>Supervisory Physical Scientist</cntpos>
+        <cntaddr>
+          <addrtype>mailing address</addrtype>
+          <address>2255 North Gemini Drive</address>
+          <city>Flagstaff</city>
+          <state>AZ</state>
+          <postal>86001</postal>
+          <country>US</country>
+        </cntaddr>
+        <cntvoice>928-556-7034</cntvoice>
+        <cntfax>928-556-7014</cntfax>
+        <cntemail>rfergason@usgs.gov</cntemail>
+      </cntinfo>
+    </metc>
+    <metstdn>FGDC Content Standards for Digital Geospatial Metadata</metstdn>
+    <metstdv>FGDC-STD-001-1998</metstdv>
+  </metainfo>
+</metadata>
