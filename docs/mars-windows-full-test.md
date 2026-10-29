@@ -291,8 +291,9 @@ veya kaynak DTM'in saha doğruluğunu doğrulamaz. Kullanıcı log'unda ilk kay�
 sonrası Landscape fiziksel materyal oluşturma ve haritanın yeniden kaydı da
 görülür; harita kapatılıp açıldıktan sonraki ölçümler ayrı kanıttır.
 
-`orbital_reference`, GPU görsel/performance, LiDAR, depth, rover ve görev
-testleri beklemektedir. QA04 raporundaki `gpu_render_verified`,
+QA04 yalnız `simulation` modunu kapsar; `orbital_reference` için sonraki
+QA03 sonucuna bakın. GPU performans, LiDAR, depth, rover ve görev testleri
+beklemektedir. QA04 raporundaki `gpu_render_verified`,
 `visual_qa_passed`, `photometry_validated` ve
 `wheel_scale_obstacles_validated` alanları `false` olarak kalır. Bu rapor
 elle değiştirilmez. Yeni reference seviyesi ayrı isimle oluşturulur; mevcut
@@ -335,8 +336,40 @@ ref = mars_setup.build(level_path="/Game/Mars/JezeroRefQA03", mode="orbital_refe
 
 `ref` için 4.1'deki sorgunun değişken adı uyarlanır; `importing` ise yalnız
 durum sorgusu tekrarlanır. Yeni JSON ve log birlikte istenir. `saved` ve iki
-doğrulama bayrağı geçse bile gerçek görüntü/hizalama ve GPU görünümü ayrıca
-incelenir. Burada UE çalıştırılmadı; native QA03 sonucu beklenmektedir.
+doğrulama bayrağı geçse bile görüntü/hizalama ve GPU görünümü ayrıca incelenir.
+
+### 4.6. QA03: native HiRISE referansı
+
+29 Ekim 2026'da kullanıcının UE 5.7.4 log'u, konsolu ve
+[QA03 raporu](data/native-jezero-refqa03.json) birlikte incelendi. Referans
+modu `/Game/Mars/JezeroRefQA03` olarak kaydedilmiş, tüm kodlanmış
+yüksekliklerin geri okuması ve 260 noktada 520 basit/karmaşık collision
+sorgusu geçmiş; en büyük sayısal konum farkı yaklaşık 0,084 mm'dir. Manifest
+SHA-256'sı QA04 ve bu daldaki veri paketiyle eşleşir.
+
+Kullanıcının ekran görüntüsünde tek gri HiRISE kesiti arazi üzerinde görünür.
+Ekran görüntüsü ile paketteki PNG arasında özellik eşleştirme ve perspektif
+dönüşümü, benzer motiflerin aynı görünür yönde olduğunu destekler. Bu yalnız
+görüntü uzayında bir kontroldür; DEM ile görüntünün yer koordinatlarındaki
+hatasını, Mars'taki gerçek ölçüm doğruluğunu veya bütün pikselleri bağımsız
+doğrulamaz. Gözlenen görüntü testi, `gpu_render_verified` veya
+`visual_qa_passed` alanlarını elle değiştirme gerekçesi değildir. Teker
+ölçeğinde 3B taşlar veya çukurlar PNG'den yaratılmaz.
+
+Logda editör başlatılırken, Mars kurulumundan önce altı kez genel
+`LogAutomationTest: Error: Condition failed` vardır; kaynak test adı veya
+stack verilmediğinden nedeni henüz kesinleştirilmemiştir. Epic'in
+[UE-305638 kaydı](https://issues.unrealengine.com/issue/UE-305638) virgül
+kullanan locale'lerde aynı metni üreten motor içi bir sorunu açıklar;
+kayıtta etkilenen sürüm 5.6'dır. Kullanıcının 5.7.4 oturumunda bu hata ile
+aynı nedenin geçerli olduğu yalnızca bir olasılıktır. Başlangıç logunu
+otomatik olarak rover TCP telemetrisiyle eşitlemeyin; gerçek
+3003 hat verisi ayrıca incelenmelidir. Raporlanan D3D12 desteği, seçilen GPU
+adaptörü ve tamamlanmış performans kabulüyle eşdeğer değildir.
+
+QA03 referans kurulum ve görüntüleme smoke testi geçmiştir; kesin görüntü/DEM
+yer hizası, sensör kalibrasyonu, uzun GPU performans koşusu, rover hareketi
+ve paketli uygulama kabulü beklemektedir.
 
 ## 5. Otomatik native yükseklik ve collision testi
 

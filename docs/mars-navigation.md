@@ -5,10 +5,12 @@ bağlar. Küresel harita ölçülmüş Jezero DEM'idir; konum Unreal'ın simüla
 telemetrisidir. Bu bir SLAM veya NASA uçuş yazılımı uygulaması değildir.
 Kum, batma ve çekiş modeli bu aşamanın kapsamı dışındadır.
 
-Gerçek UE 5.7/GPU çalıştırması burada yapılmadı. Aşağıdaki akışın Python
-algoritmaları ve TCP protokolleri test edildi; motor/sensör/geometri kabulü
-kullanılacak Unreal kurulumunda tamamlanmalıdır. Kaynak araştırması ve
-entegrasyon kararları [yıldızlı depo incelemesindedir](mars-starred-review.md).
+Gerçek UE 5.7 çalıştırması geliştirme ortamında yapılmadı. Kullanıcının native
+QA04 ve QA03 testleri her iki statik arazi modunda geri okuma ve örneklenmiş
+collision sonucunu doğruladı. Aşağıdaki akışın Python algoritmaları ve TCP
+protokolleri test edildi; gerçek motor/sensör/rover kabulü hâlâ bekler. Kaynak
+araştırması ve entegrasyon kararları
+[yıldızlı depo incelemesindedir](mars-starred-review.md).
 
 ## Kurulum ve yeni seviye
 
@@ -196,7 +198,7 @@ soketlerini kullanır; karşı uç test fixture'ıdır.
 | Geometri planlayıcı | Yapıldı; çukur, eğim, NaN, footprint ve çapraz geçiş TDD testleri |
 | Mevcut LiDAR/NAVF protokolü | Yapıldı; parçalı TCP, zaman ve tam poz dönüşümü testleri |
 | Hedef seçimi ve dur/yeniden planla | Yapıldı; HTTP/TCP ve kinematik testler |
-| UE'de seviye/sensör kalibrasyonu | Betik hazır; gerçek plugin derleme, 520 çarpışma sorgusu ve gerçek sensör düzlemi deneyi **bekliyor** |
+| UE'de seviye/sensör kalibrasyonu | Kullanıcı UE 5.7.4'te iki mod için 520 örneklenmiş çarpışma sorgusunu geçti; gerçek sensör düzlemi ve kalibrasyonu **bekliyor** |
 | UE'de rover görevi | Gerçek 10–20 m düşük hızlı rota, koordinat yönleri, hedefte durma, engel ekleme, sensör kesme ve yeniden Play testi **bekliyor** |
 | Teker ölçeğinde gerçek Mars mesh'i | Kaynak seçimi ve eşkayıt bekliyor; rover stereo ürünleri/Landform yolu araştırma belgesinde |
 | Kullanıcının CAD/kontrol yazılımı, zemin fiziği | Sonraki aşama; şimdiki geliştirmeye bağımlılık değil |

@@ -108,8 +108,13 @@ sorgunun geçtiğini ve azami konum farkının yaklaşık 0,084 mm olduğunu bil
 Bu, burada belirtilen örneklerin beklenen kodlanmış yüksekliğe sayısal
 uyumudur; Mars'ın gerçek yükselti doğruluğu, her üçgen veya teker teması
 ölçümü değildir. QA04 raporu test edilen commit'i veya GPU modelini içermez.
-Python testleri yalnızca denetim kurallarını sınar. `orbital_reference`,
-`gpu_render_verified` ve `visual_qa_passed` için ayrı kanıt gerekir.
+Kullanıcının [QA03 orbital referans raporu](data/native-jezero-refqa03.json)
+da aynı yükseklik geri okumasını ve 520 sorguyu başarılı bildirir; görüntü
+ekran görüntüsünde arazi üzerinde görünmüştür. Kaynak PNG ile ekran görüntüsü
+arasındaki özellik eşleşmeleri görsel yön/örtüşmeyi destekler; bu analiz
+jeodezik hassasiyet veya görüntü–DEM yer eşkaydını ölçmez. Python testleri
+yalnızca denetim kurallarını sınar. `gpu_render_verified` ve `visual_qa_passed`
+raporda false kalır; sensör ve dinamik araç doğrulaması ayrıdır.
 
 ## Atmosfer: hangi sayı neyi ifade ediyor?
 
