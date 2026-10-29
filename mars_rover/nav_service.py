@@ -14,7 +14,7 @@ import socket
 import threading
 from urllib.parse import parse_qs, urlsplit
 
-from .bridge import BridgeServer
+from .bridge import BridgeServer, TELEMETRY_FORMATS, TR_TELEMETRY_NOTICE
 from .drive import Calibration
 from .navigation import NavigationSession
 from .planning import TerrainMap
@@ -116,6 +116,7 @@ class NavigationService:
         min_points=20,
         depth_source="ground_truth",
         settle_s=2.0,
+        telemetry_format="json",
     ):
         self.session = NavigationSession(
             grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s
@@ -124,7 +125,8 @@ class NavigationService:
         self.last_transport_error = None
         self.threads = []
         self.bridge = BridgeServer(
-            Calibration(), tcp_port=tcp_port, http_port=bridge_http_port, on_external_command=self.session.stop
+            Calibration(), tcp_port=tcp_port, http_port=bridge_http_port, on_external_command=self.session.stop,
+            telemetry_format=telemetry_format,
         )
         self.lidar, self.camera, self.http = None, None, None
         try:
@@ -325,15 +327,21 @@ def main(argv=None):
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--goal", nargs=2, type=float)
     parser.add_argument("--depth-source", choices=("ground_truth", "stereo"), default="ground_truth")
+    parser.add_argument("--telemetry-format", choices=TELEMETRY_FORMATS, default="json",
+                        help="wire format; unreal-tr-v1 is explicit compatibility for a tr-TR UE producer")
     args = parser.parse_args(argv)
     try:
         config = json.loads(args.sensors.read_text(encoding="utf-8"))
         grid = TerrainMap.from_bundle(args.manifest)
-        with NavigationService(grid, config, depth_source=args.depth_source) as service:
+        with NavigationService(grid, config, depth_source=args.depth_source,
+                               telemetry_format=args.telemetry_format) as service:
             if args.goal:
                 service.session.set_goal(args.goal)
             print("Navigation API http://127.0.0.1:8766; start Unreal Play after this line.", flush=True)
             print(f"Depth source: {args.depth_source}; native rover acceptance is still required.", flush=True)
+            print(f"Telemetry format: {args.telemetry_format}", flush=True)
+            if args.telemetry_format == "unreal-tr-v1":
+                print(TR_TELEMETRY_NOTICE, flush=True)
             try:
                 while not service.ending.wait(0.5):
                     pass

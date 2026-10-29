@@ -71,6 +71,15 @@ Bu servis motor köprüsünü zaten içerir. **Önce servis, sonra Unreal Play:*
 python -m mars_rover.nav_service --sensors Saved/Mars/jezero-sensors.json
 ```
 
+Bu komut katı JSON telemetrisi bekler. Kullanıcının 29 Ekim 2026'daki TCP
+kaydında doğrulanan Türkçe sayılı eski Blueprint çıktısı için, yalnızca Unreal
+üreticisinin bu biçimi kullandığı simülasyon koşusunda komuta
+`--telemetry-format unreal-tr-v1` eklenebilir. Mod üretici yerel ayarını
+otomatik denetlemez; ayar değişirse bazı sayılar yanlış yorumlanabilir.
+Bu geçici uyumluluk katmanı ve ham kayıt için
+[Windows test rehberindeki §4.8'e](mars-windows-full-test.md#48-rover-telemetrisi-ayrışmıyorsa-ham-tcp-tanısı)
+bakın. Gerçek ve yerel ayardan bağımsız JSON üretimi ayrı geliştirme gerektirir.
+
 Tarayıcıda <http://127.0.0.1:8766> açın. Haritadan bir nokta seçip **Hedefe git**
 düğmesine basın. Kuzey yukarı, doğu sağdır; koordinatlar yerel metredir.
 Kırmızı katman, eğim/basamak/sınır ve rover engel payı nedeniyle kapalı alanı

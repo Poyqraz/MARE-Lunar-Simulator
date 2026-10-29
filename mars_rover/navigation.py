@@ -425,6 +425,7 @@ class NavigationSession:
                     "capture_clock_advancing": advancing,
                     "speed_estimate_m_s": self.mission.speed_estimate if fresh and advancing else None,
                     "position_source": "simulation telemetry",
+                    "telemetry_format": (bridge_status or {}).get("telemetry_format"),
                     "mission": self.mission.summary(),
                     "state": self.state,
                     "observer_error": self.observer_error,

@@ -80,7 +80,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe tools/mars_navigation_benchmark.py --output generated/native-preflight.json
 ```
 
-Beklenen mevcut test sayısı **165** ve dört başarılı offline rotadır.
+Beklenen mevcut test sayısı **184** ve dört başarılı offline rotadır.
 `generated/native-preflight.json` varsa yeni çıktı adı seç. Venv'i aktive
 etmek veya PowerShell execution policy değiştirmek zorunlu değildir.
 **Unreal'ın gömülü Python'una pip/NumPy/rasterio/OpenCV kurulmaz.**
@@ -426,16 +426,30 @@ doğruluğunun veya kesintisiz sensör sağlığının kabulü değildir.
 
 Köprü bir bağlantı gördü, ancak `Telemetry exceeded 64 KiB without a complete
 JSON object` sonrasında bağlantı kesildi; poz gelmedi, bütün teker komutları
-sıfırda kaldı. Blueprint logundaki örnek `"time": 0,033, "x": -12.600,019`
-geçerli JSON sayıları içermez ve yerel sayı biçimlendirmesi olası bir nedendir.
-Fakat Blueprint logu TCP baytları değildir; **hat üzerindeki veri henüz
-yakalanmamıştır** ve neden kesinleştirilmez. İngilizce yerel ayar da basamak
-gruplaması ekleyebileceğinden tek başına güvenli bir JSON çözümü sayılmaz.
+sıfırda kaldı. Sonraki 2048 baytlık **gerçek TCP kaydı**, ağ verisinin de
+`"time": 0,033, "x": -12.600,019` gibi Türkçe sayı biçimiyle geldiğini ve
+geçerli JSON olmadığını gösterdi. Kayıtta 10 tam, bir kesilmiş nesne vardır.
+İngilizce yerel ayar da gruplama ekleyebileceğinden tek başına güvenli JSON
+çözümü sayılmaz.
 
-Köprü artık kapama ayracı gelmiş bozuk JSON nesnesini 64 KiB beklemeden hata
-olarak raporlar; tamamlanmamış/çok parçalı JSON, dizgilerdeki ayraçlar ve
-kaçışlar ayrı test edilir. Bu iyileştirme veriyi dönüştürmez ve neden
-doğrulanmadan yerel biçimlendirilmiş sayıları kabul etmez.
+Köprü varsayılan olarak hâlâ yalnız geçerli JSON okur. Açıkça seçilen
+`--telemetry-format unreal-tr-v1` modu, bu kayıtta görülen sıralı alanları ve
+Türkçe nokta-gruplama/virgül-ondalık biçimini okuyan, yalnız simülasyon için
+geçici bir uyumluluk katmanıdır. Bilinmeyen alan, sıra, geçersiz gruplama,
+geçersiz zaman damgası veya belirsiz yalnız noktalı örnekler reddedilir;
+zaman damgasının tamsayı metni aynen korunur. Üreticinin sayıları göndermeden
+önce yuvarladığı doğruluk geri kazanılamaz. Üretici yerel ayarı değiştirilirse
+bu mod kullanılmamalıdır: bazı diğer yerel ayar çıktıları aynı metin biçimiyle
+farklı sayılar anlatabilir ve bu durum otomatik saptanamaz. Kalıcı çözüm,
+Blueprint/üretici tarafında kültürden bağımsız gerçek JSON üretmektir.
+
+Gerçek kaydın 17 baytlık parçalarla yeniden oynatılması 10 nesneyi çözdü;
+ilk konum −12600.019 / 12603.5 / 628.473 cm, zaman damgaları sıralıydı.
+Aynı kayıt localhost testinde poz oluşturdu ve hedef yokken teker komutları
+sıfır kaldı. Ayrıca ölçülmüş biçimdeki telemetri, yapay zaman eşli LiDAR ve
+derinlik paketleriyle localhost üzerinden eşleştirildi. Bu, yeni modun gerçek
+UE canlı koşusunu veya sensör/teker kabulünü kanıtlamaz. Testlerde varsayılan
+katı JSON korunur ve bozuk veri reddedilir.
 
 Ham kanıt için önce Unreal'da Play'i, sonra navigasyon servisini durdurun.
 Güncel dalda repo kökünden çalıştırın:
@@ -540,6 +554,11 @@ servisi **önce**, Play'i **sonra** başlat:
 ```powershell
 .\.venv\Scripts\python.exe -m mars_rover.nav_service --sensors Saved/Mars/fulltest02-sensors.json
 ```
+
+Yalnız Türkçe biçimli telemetriyi ham TCP kaydıyla doğruladığınız koşuda,
+yukarıdaki komuta `--telemetry-format unreal-tr-v1` ekleyin. Yerel ayar
+değişebilir ve servis bunu otomatik doğrulayamaz; §4.8'deki sınırlar geçerlidir.
+İlk koşuda hedef vermeyin; önce telemetri ve sensör health değerlerini okuyun.
 
 Tarayıcıda `http://127.0.0.1:8766` aç, sonra UE'de Play. İlk fizik yerleşmesini
 bekle; otomatik en az 2 s kararlılık penceresi aranır. Gerekirse toplam
