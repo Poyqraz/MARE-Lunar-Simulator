@@ -80,7 +80,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe tools/mars_navigation_benchmark.py --output generated/native-preflight.json
 ```
 
-Beklenen mevcut test sayısı **122** ve dört başarılı offline rotadır.
+Beklenen mevcut test sayısı **126** ve dört başarılı offline rotadır.
 `generated/native-preflight.json` varsa yeni çıktı adı seç. Venv'i aktive
 etmek veya PowerShell execution policy değiştirmek zorunlu değildir.
 **Unreal'ın gömülü Python'una pip/NumPy/rasterio/OpenCV kurulmaz.**
@@ -106,6 +106,74 @@ Bu content/plugin projesinde olmayan bir `Moon_SimulatorEditor` target'ı
 varmış gibi manuel `.sln` build adımı varsayılmaz. Rebuild çalışmazsa log'a
 göre plugin/host build yolu ayrıca çözülür. Genel bir hata üzerine pluginleri
 silerek veya UE sürümünü değiştirerek teste devam edilmez.
+
+### 4.1. UE 5.7.4'te gözlenen materyal giriş hatasından dönüş
+
+29 Ekim 2026'da kullanıcı bilgisayarındaki motor
+`5.7.4-51494982+++UE5+Release-5.7`, `DEMLandscapeLibrary=True` ve
+`mars_setup.py` yolu doğrulandı. İlk gerçek `simulation` kurulumu,
+`MaterialExpressionNoise` düğümünde `Position` yerine **`World Position`**
+girişi sunulduğu için durdu:
+
+```text
+Material input not exposed; available pins: ['World Position', 'FilterWidth']
+```
+
+Bu, betiğin giriş adı uyarlamasındaki hatadır. `mars_materials.connect_input`
+artık motorun bildirdiği girişler arasında `Position` → `World Position`
+eşlemesini de çözer. Eski `Position` adı desteklenir; `FilterWidth` veya
+rastgele ilk girişe bağlantı yapılmaz. Unreal bağlantıyı reddederse hata
+korunur. Kaynak:
+[Epic 5.7 MaterialEditingLibrary](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/MaterialEditingLibrary?application_version=5.7).
+Bu API giriş adlarının sorgulanmasını ve bağlantının başarı sonucunu açıklar;
+gözlenen `World Position` yazımı kullanıcının native log'undan gelir.
+
+Test önce aynı hatayı üretti: iki başarısız, 17 başarılı ilgili test. Düzeltme
+sonrası 19 ilgili test başarılıdır. Bunlar gerçek pin listesiyle modellenen
+Python sözleşme testleridir; shader derlemesi veya native kurulumun geçtiği
+anlamına gelmez. `build()` dönmeden kesildiği için `job` ataması gerçekleşmez;
+sonraki `NameError` bu ilk hatanın sonucudur.
+
+Yarım kalmış `Untitled` haritası doğrulanmış Mars seviyesi değildir. Kurtarma:
+
+1. Editörü kapat. Yalnız bu başarısız denemenin başlıksız haritası ve üretilen
+   Mars materyali için **Kaydetme / Don't Save** seç. Kullanıcıya ait başka
+   değişiklikleri ayrı koru; hiçbir kaynak seviyeyi veya varlığı silme.
+2. PowerShell'de kaynak dalı güncelle:
+
+   ```powershell
+   Set-Location C:\work\MARE-Lunar-Simulator
+   git fetch origin
+   git switch codex/mars-mission-history
+   git pull --ff-only
+   git rev-parse HEAD
+   ```
+
+   Git yerel değişiklik/çakışma nedeniyle durursa çıktıyı incele; hard reset,
+   clean veya dosyaların üzerine zorla yazma uygulanmaz.
+3. Projeyi 5.7.4 ile yeniden aç. Açılıştaki normal sahnede bekleyen değişiklik
+   varsa kontrol ederek kaydet; Play kapalı kalsın. Editörü yeniden açmak eski
+   Python modül önbelleğinin düzeltilmiş dosyayı kullanmasını sağlar.
+4. Önceki denemenin adı yerine yeni bir ad kullan. Python konsolunda:
+
+   ```python
+   import mars_setup
+   job = None
+   job = mars_setup.build(level_path="/Game/Mars/JezeroQA02", report_path=r"C:/work/MARE-Lunar-Simulator/Saved/Mars/jezero-qa02.json")
+   ```
+
+   Bu satırlar konsolda ayrı ayrı çalıştırılabilir. Hata yoksa, bekledikten
+   sonra sonuç sorgulanır. `importing` durumunda yalnız sorguyu tekrar et;
+   `build()` çağrısını tekrarlama. `job is None` ise ilk traceback incelenir:
+
+   ```python
+   print({k: job.get(k) for k in ("status", "heightmap_verified", "collision_verified", "error")} if isinstance(job, dict) else "Kurulum donmedi; ilk traceback'i inceleyin.")
+   ```
+
+   `saved`, iki doğrulama için `True` ve `error=None` gereklidir. İşlem boyunca
+   Play başlatma veya dünya değiştirme. Yeni denemenin JSON raporu ve log'u
+   saklanır. Yükseklik/collision, görsel GPU ve sensör/sürüş kabulü, yeni gerçek
+   sonuçlar gelene kadar **PENDING** kalır.
 
 ## 5. Otomatik native yükseklik ve collision testi
 

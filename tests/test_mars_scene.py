@@ -90,3 +90,54 @@ def test_texture_sample_connects_the_exposed_uv_pin():
     source, target = object(), object()
     module.connect_input(lib, source, target, "Coordinates")
     lib.connect_material_expressions.assert_called_once_with(source, "", target, "UVs")
+
+
+@pytest.mark.parametrize("position_pin", ["World Position", "Position"])
+def test_procedural_graph_connects_world_position_to_the_exposed_noise_pin(position_pin):
+    """The first pin list is from the user's failed UE 5.7.4 native import."""
+    spec = importlib.util.spec_from_file_location("material_under_test", PATH.with_name("mars_materials.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    engine = MagicMock()
+    engine.EditorAssetLibrary.does_asset_exist.return_value = False
+    engine.EditorAssetLibrary.save_asset.return_value = True
+    lib = engine.MaterialEditingLibrary
+    expressions = {}
+
+    def create_expression(material, expression_class):
+        expression = MagicMock()
+        expressions[expression_class] = expression
+        return expression
+
+    lib.create_material_expression.side_effect = create_expression
+    lib.get_material_expression_input_names.side_effect = lambda target: (
+        [position_pin, "FilterWidth"]
+        if target is expressions[engine.MaterialExpressionNoise] else ["A", "B", "Alpha"])
+    lib.connect_material_expressions.return_value = True
+    lib.connect_material_property.return_value = True
+    module.create_material(engine, "/Game/Mars/Test_Assets", "simulation", None, {}, scene_module.load_scene())
+    lib.connect_material_expressions.assert_any_call(
+        expressions[engine.MaterialExpressionWorldPosition], "",
+        expressions[engine.MaterialExpressionNoise], position_pin)
+
+
+def test_noise_position_cannot_fall_back_to_filter_width():
+    spec = importlib.util.spec_from_file_location("material_under_test", PATH.with_name("mars_materials.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    lib = MagicMock()
+    lib.get_material_expression_input_names.return_value = ["FilterWidth"]
+    with pytest.raises(RuntimeError, match="Material input not exposed"):
+        module.connect_input(lib, object(), object(), "Position")
+    lib.connect_material_expressions.assert_not_called()
+
+
+def test_material_connection_rejected_by_unreal_is_not_silenced():
+    spec = importlib.util.spec_from_file_location("material_under_test", PATH.with_name("mars_materials.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    lib = MagicMock()
+    lib.get_material_expression_input_names.return_value = ["World Position", "FilterWidth"]
+    lib.connect_material_expressions.return_value = False
+    with pytest.raises(RuntimeError, match="Cannot connect material input World Position"):
+        module.connect_input(lib, object(), object(), "Position")

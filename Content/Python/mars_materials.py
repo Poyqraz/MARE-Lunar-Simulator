@@ -2,9 +2,11 @@
 
 
 def connect_input(lib, source, target, input_name, output=""):
-    """Resolve displayed UE pin names (TextureSample uses UVs, not Coordinates)."""
+    """Resolve supported aliases against UE's actual displayed input names."""
     available = [str(v) for v in lib.get_material_expression_input_names(target)]
-    aliases = {"Coordinates": ("UVs", "Coordinates"), "Input": ("Input", "")}
+    # UE 5.7.4 exposes Noise's Position input as "World Position".
+    aliases = {"Coordinates": ("UVs", "Coordinates"), "Input": ("Input", ""),
+               "Position": ("World Position", "Position")}
     if available and input_name not in available:
         input_name = next((name for name in aliases.get(input_name, (input_name,)) if name in available), None)
         if input_name is None:
