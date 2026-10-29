@@ -128,6 +128,26 @@ bağlantı kapanması sensör sağlığını geçersiz kılar. Bu sayısal eşik
 simülasyon deneyi içindir; gerçek rover başarısı ölçülmeden fiziksel sınır
 olarak değerlendirilmez.
 
+Yoğun sensör işlemesi sırasında poz veya sensör verisi eskirse, hesaplanan
+hareket komutu veya yeni varış kararı reddedilir (`waiting_for_fresh_data`). Bir komut
+zaten üretilmişse, kaynak verinin zaman sınırı köprüdeki örnekleme sırasında
+da uygulanır. Paket kilit beklerken geçen süre tazelikten düşülür; stereo
+çıktısının yaşı iki girişten eski olanın zamanından başlar. Bunlar Python
+tarafındaki korumalardır; ağ tamamen koparsa veya işlem kapanırsa bağımsız
+Unreal motor watchdog'unun yerini tutmaz.
+
+`/mission/snapshot` ve `/mission/export` içindeki `control_timing` alanı
+servis başlangıcından beri kontrol çevrimlerinin duvar saati sürelerini ve
+reddedilen gecikmiş kararların sayısını gösterir. `sensor_health` içindeki
+`processing_s`, **son işlenen** LiDAR veya derinlik gözleminin yerel işleme
+süresidir. Sayaçlar gecikmenin kaynağını tek başına kanıtlamaz; boşta ve
+görev sırasında ayrı ölçülmelidir. Hedef yoksa `expired_decisions=0` olması
+hareket komutu korumasının canlı koşuda sınandığı anlamına gelmez. Çevrim
+süresine döngünün sonunda ayrıca beklenen 50 ms dahil değildir; yoğun yükte
+toplam çevrim aralığı bu beklemeyle birlikte uzar. Sensörün yerel alım zamanı
+paket çözüldüğünde kaydedilir; işletim sistemi veya ağ tamponundaki önceki
+bekleme ayrıca ölçülmez.
+
 ## Planlama, engeller ve sınırlar
 
 `TerrainMap.from_bundle()` CSV'yi yeniden ölçeklemez: Unreal'a gönderilen

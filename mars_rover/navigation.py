@@ -15,6 +15,8 @@ from .planning import NoRoute
 from .mission import MissionHistory
 from .sensors import PoseHistory, depth_points, pose_from_telemetry, transform_matrix, transform_points
 
+LATE_DATA_ERROR = "Pose or sensor data expired during control processing"
+
 
 class RouteFollower:
     """Low-speed waypoint tracker with rotate-in-place turns, for skid steering."""
@@ -123,6 +125,7 @@ class NavigationSession:
         self.observer_error = None
         self.sensor_observation_error = None
         self._pose_received_at = self._unique_pose_at = None
+        self._late_decision = False
 
     def set_goal(self, goal):
         with self.lock:
@@ -182,7 +185,8 @@ class NavigationSession:
                 self._feed(key, frame, now)
                 with self.lock:
                     if "left" in self.latest and "right" in self.latest:
-                        left, right = self.latest["left"][0], self.latest["right"][0]
+                        left, left_received = self.latest["left"]
+                        right, right_received = self.latest["right"]
                         if (
                             left.frame_id == right.frame_id
                             and left.stamp_ns == right.stamp_ns
@@ -190,14 +194,17 @@ class NavigationSession:
                         ):
                             depth = stereo_pair_depth(left, right, pair)
                             self.used["stereo_pair"] = left.frame_id, left.stamp_ns
-                            self._feed("stereo", depth, now)
+                            # A stereo result cannot be fresher than its older
+                            # input, including time spent computing disparity.
+                            self._feed("stereo", depth, min(left_received, right_received))
 
     def _feed(self, key, value, now):
+        received = time.monotonic() if now is None else now
         with self.lock:
             old = self.latest.get(key)
             if old and value.stamp_ns < old[0].stamp_ns:
                 return
-            self.latest[key] = value, time.monotonic() if now is None else now
+            self.latest[key] = value, received
 
     def _consume(self):
         depth_key = self.depth_source
@@ -208,6 +215,7 @@ class NavigationSession:
             signature = frame.frame_id, frame.stamp_ns
             if self.used.get(key) == signature:
                 continue
+            processing_started = time.monotonic()
             # Wait for a bracketing pose, rather than using the rover's current
             # pose on an asynchronously returned scan/image.
             pose = self.history.at(frame.stamp_ns)
@@ -234,7 +242,8 @@ class NavigationSession:
                 points = points[3 * sigma_z * height_factor <= self.grid.limits.obstacle_height_m / 2]
             world = transform_points(points, matrix)
             report = self.grid.observe(world)
-            self.health[key] = {**report, "received_at": received, "stamp_ns": frame.stamp_ns}
+            self.health[key] = {**report, "received_at": received, "stamp_ns": frame.stamp_ns,
+                                "processing_s": max(0.0, time.monotonic() - processing_started)}
             self.used[key] = signature
 
     def _observe_bridge(self, bridge_status, now):
@@ -296,15 +305,54 @@ class NavigationSession:
                 self.state = "waiting_for_pose"
             return False
 
-    def step(self, bridge_status, *, now=None):
-        now = time.monotonic() if now is None else now
+    def step(self, bridge_status, *, now=None, wall_clock=None):
+        if now is None:
+            now = time.monotonic()
+            wall_clock = time.monotonic if wall_clock is None else wall_clock
         with self.lock:
+            self._late_decision = False
+            previous_state = self.state
             ready = self._observe_bridge(bridge_status, now)
             command = self._drive(now) if ready else (0, 0)
             if self.follower and self.pose:
                 self.mission.progress(self.follower.index, self.pose.xy_heading[:2])
+            terminal = self.state in ("arrived", "blocked", "stalled_or_timed_out")
+            if ready and self.goal and (command != (0, 0) or (terminal and self.state != previous_state)):
+                deadline = self.motion_deadline()
+                finished_at = wall_clock() if wall_clock is not None else now
+                if (type(finished_at) not in (float, int) or not math.isfinite(finished_at)
+                        or finished_at < now or deadline is None or deadline <= finished_at):
+                    if self.state == "arrived" and self.follower:
+                        self.follower.arrived = False
+                    self.state, self.error = "waiting_for_fresh_data", LATE_DATA_ERROR
+                    self._late_decision = True
+                    command = (0, 0)
+                elif self.error == LATE_DATA_ERROR:
+                    self.error = None
             self.mission.state(self.state, self.error)
             return command
+
+    def motion_deadline(self):
+        """Latest monotonic time a command based on the current observations may be sent."""
+        with self.lock:
+            if not self.connected or self.pose is None:
+                return None
+            times = (self._pose_received_at, self._unique_pose_at)
+            if any(type(t) not in (int, float) or not math.isfinite(t) for t in times):
+                return None
+            deadlines = [t + 0.3 for t in times]
+            for key in ("lidar", self.depth_source):
+                report = self.health.get(key)
+                if not report or report.get("valid_inside_points", 0) < self.min_points:
+                    return None
+                received, stamp = report.get("received_at"), report.get("stamp_ns")
+                if (type(received) not in (int, float) or not math.isfinite(received)
+                        or type(stamp) is not int
+                        or self.pose.stamp_ns - stamp > self.timeout * 1e9
+                        or stamp - self.pose.stamp_ns > 1024):
+                    return None
+                deadlines.append(received + self.timeout)
+            return min(deadlines)
 
     def _drive(self, now):
         with self.lock:

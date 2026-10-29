@@ -58,6 +58,11 @@ def test_real_packet_sockets_reach_control_and_sensor_disconnect_stops_it():
                 if moving:
                     break
             assert moving
+            with urllib.request.urlopen(url + "/mission/snapshot", timeout=2) as response:
+                snapshot = json.load(response)
+                assert snapshot["control_timing"]["cycles"] > 0
+                assert snapshot["sensor_health"]["lidar"]["processing_s"] >= 0
+                assert snapshot["sensor_health"]["ground_truth"]["processing_s"] >= 0
             camera.shutdown(socket.SHUT_RDWR)
             deadline = time.monotonic() + 1
             stopped = False
@@ -89,6 +94,10 @@ def test_mission_map_and_legacy_stop_api_are_connected():
         with urllib.request.urlopen(base + "/map") as response:
             data = json.load(response)
             assert data["extent_m"] == [9, 9] and len(data["blocked"]) == 100
+        with urllib.request.urlopen(base + "/mission/snapshot") as response:
+            snapshot = json.load(response)
+            assert snapshot["control_timing"]["cycles"] >= 0
+            assert snapshot["mission"] is None
         service.session.set_goal((5, 5))
         request = urllib.request.Request(
             f"http://127.0.0.1:{service.bridge.http_port}/stop",

@@ -465,6 +465,50 @@ yazdırır ve bağlantıyı kapatır; ardından Play'i durdurun. Çıktıların
 ise diğer süreçleri rastgele kapatmayın; önce port hatasını inceleyin.
 Bu kısa kayıt uydu görüntüsü, sensör verimi veya gerçek sürüş kabulü değildir.
 
+### 4.9. İlk kısa native görev: gözlenen sonuç ve bekleyen zamanlama incelemesi
+
+Kullanıcının UE 5.7.4 ve `unreal-tr-v1` ile çalıştırdığı ilk yaklaşık iki
+metrelik görevde hedef `(126,124)` m kabul edildi. Kaydedilen başlangıç ve
+varış pozları sırasıyla yaklaşık `(126.017,126.038)` ve `(126.011,124.219)` m;
+son nokta hedeften **0.219 m** uzaktaydı ve 0.25 m toleransı içinde
+`arrived` kaydedildi. Başlangıçtan varışa simülasyon saatinde 18 s geçti.
+Konumdan hesaplanan net yer değiştirme yaklaşık 1.819 m'dir. Görev kaydının
+1.802 m yol değerinde `distance_complete=false`: aradaki poz boşlukları bu
+toplama katılmadığı için tam odometri olarak kullanılamaz.
+
+Görev açıkken dört poz aralığı 0.25 s sınırını aştı; sensör bekleme durumu
+birkaç kez görüldü. İki plan kaydı ve harita revizyonundaki artış, gerçek bir
+engel algılandığını veya rotanın engelden kaçtığını kanıtlamaz. Varış
+sonrasında sonraki kayıtlarda yaklaşık 5 cm ek yer değiştirme vardır; bunun
+nedeni bu kayıtla belirlenemez. Son anlık görüntü bağlantı kesildikten ve veri
+eskidikten sonra alınmıştır. Ayrı bir hareket anı teker komutu kaydı, ölçülmüş
+sensör mesafesi ve Unreal locale çıktısı paylaşılmadığından bunlar ve bağımsız
+duruş testi açık kalır.
+
+Zamanlama incelemesinde, uzun bir kontrol işleme çevriminin sonunda başlangıçta
+taze olan veriye dayanarak süresi geçmiş hareket komutunun üretilebildiği
+birim ve servis testiyle tekrarlandı. Python köprüsü artık komutun geçerlilik
+süresini poz ve iki sensörün **duvar saati varış yaşlarıyla** sınırlar;
+bağlantı değişimi veya süre aşımında gönderim reddedilir. Bu değişiklik poz
+boşluklarının kullanıcının bilgisayarındaki nedenini kanıtlamaz veya bunları
+tek başına azaltmaz. Tekrarda önce hedefsiz ölçüm yapın:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8766/mission/snapshot | ConvertTo-Json -Depth 20
+Start-Sleep -Seconds 30
+Invoke-RestMethod http://127.0.0.1:8766/mission/snapshot | ConvertTo-Json -Depth 20
+Invoke-RestMethod http://127.0.0.1:8766/mission/events | ConvertTo-Json -Depth 20
+```
+
+`control_timing` süreç başlangıcından beri kontrol çevrimlerini ölçer;
+`cycles_over_50ms` ve `cycles_over_250ms` ile `sensor_health` altındaki son
+`processing_s` değerleri iki snapshot arasında karşılaştırılır. İki eşik tanı
+içindir; 250 ms duvar süresi Unreal simülasyon zamanı boşluğuyla aynı ölçüm
+değildir. Sayaçlar tek başına darboğazın yerini belirlemez. Hedef yokken sıfır
+reddedilmiş komut görmek, canlı hareket korumasının test edildiği anlamına
+gelmez. Poz/sensör kalibrasyonu, uzun GPU testi, engel ve stop senaryoları,
+stereo ve tekrar edilebilir hareket ölçümleri hâlâ gereklidir.
+
 ## 5. Otomatik native yükseklik ve collision testi
 
 Önce editor'daki çalışmayı kaydet ve editor'ı kapat. Repo kökündeki PowerShell:
