@@ -392,13 +392,29 @@ vektörler sessizce normalize edilmez ve gerçek ölçüm yerine tahmin yazılma
 TDD'de önce 4 başarısız / 4 başarılı ilgili test, düzeltmeden sonra 8 başarılı
 ilgili test ve 154 başarılı tam Python testi görüldü; bunlar native test değildir.
 
-Mevcut başlıksız dünya açıksa önce Play'i durdurun; yeniden başlatmadan veya
-haritayı değiştirmeden `Mars_Rover_Reference` aktöründeki LiDAR'ın takip
-ettiği bileşeni, ileri/yukarı vektörlerini, dünya konumunu ve ölçeğini yalnız
-okuyarak kaydedin. Çıktı yoksa önce editör dünyasındaki aktör listesini
-kontrol edin. Bu kanıt, bozuk dönüşüm mü, henüz güncellenmemiş bileşen mi,
-başka bir geometrik durum mu olduğunu değerlendirmek için gereklidir. Eski
-başarısız `JezeroFullTest01_Assets` klasörü ve kullanıcı çalışmaları silinmez.
+Sonraki UE 5.7.4 teşhisinde önceki rover artık açık editör dünyasında yoktu.
+`Lunar_Terrain_Raph` dünyasında aynı Blueprint'ten geçici bir rover oluşturulup
+hemen ölçüldü ve başarıyla kaldırıldı. Bu bağımsız örnekte `LidarCam`,
+`Navcam_Center` bileşenini takip ediyordu; kamera ileri/yukarı vektörlerinin
+uzunluk kareleri yaklaşık 1, skaler çarpımları yaklaşık −5.6e−17 idi ve
+`map_frame()` geçti. Ölçülen kamera ölçeği `(0.1, 0.1, 0.1)` idi. Bu, kamera
+ölçeğini değiştirmenin gerektiğine dair kanıt değildir: yön vektörleri bu
+örnekte zaten geçerlidir. Bu ölçüm önceki Mars dünyasındaki aynı aktör ve
+ayar değişiklikleriyle yapılmadığı için ilk hatanın nedenini veya çözümünü
+kanıtlamaz.
+
+Ek incelemede, bir ayar değişikliği sonrasında editör bileşenlerinin veya
+dönüşümlerinin değişmesi halinde eski ölçümün dosyaya yazılabileceği görüldü.
+Unreal `set_editor_property` çağrıları editörün değişiklik işleme kodunu
+çalıştırabilir; bu durumun ilk hatayı oluşturduğu henüz gösterilmemiştir.
+Kurulum artık her ayarda güncel sensör bileşenini yeniden bulur, ayarların
+uygulandığını okur ve **tüm ayarlardan sonra** güncel sensör geometrisini
+yeniden doğrulayıp yazar. Geometri geçersizse veya ayar korunmamışsa config
+oluşturmaz. İlgili yeniden oluşturma ve dönüşüm senaryoları test çiftleriyle
+modellenmiştir: yeni korumalar öncesinde 4 test başarısızdı; sonrasında ilgili
+14 test ve tam 160 Python testi geçti. Bunlar gerçek UE kabul testi değildir;
+gerçek UE ile yeniden deneme hâlâ gereklidir. Eski başarısız
+`JezeroFullTest01_Assets` klasörü ve kullanıcı çalışmaları silinmez.
 
 ## 5. Otomatik native yükseklik ve collision testi
 
@@ -435,16 +451,18 @@ Window → Developer Tools → Output Log aç; alt komut türünü **Python** se
 ```python
 import mars_setup
 job = mars_setup.build(
-    level_path="/Game/Mars/JezeroFullTest01",
+    level_path="/Game/Mars/JezeroFullTest02",
     rover_blueprint="/Game/Blueprints/Leo_Raph",
-    navigation_config_path=r"C:/work/MARE-Lunar-Simulator/Saved/Mars/fulltest01-sensors.json",
-    report_path=r"C:/work/MARE-Lunar-Simulator/Saved/Mars/fulltest01-import.json",
+    navigation_config_path=r"C:/work/MARE-Lunar-Simulator/Saved/Mars/fulltest02-sensors.json",
+    report_path=r"C:/work/MARE-Lunar-Simulator/Saved/Mars/fulltest02-import.json",
 )
 ```
 
 `job['status'] == 'saved'` ve rapordaki heightmap/collision doğrulamalarını
-bekle. İçe aktarım sırasında Play veya dünya değişimi yapma. Seviye/JSON zaten
-varsa `02` gibi yeni adlar seç. Kendi CAD'i gerekmez.
+bekle. Sensör JSON'u harita doğrulaması tamamlanmadan oluşturulabilir; yalnız
+dosyanın varlığı başarı anlamına gelmez. İçe aktarım sırasında Play veya dünya
+değişimi yapma. Seviye, varlık klasörü veya JSON zaten varsa üçü için de yeni
+adlar seç. Kendi CAD'i gerekmez.
 
 Ayrı orbital referans incelemesi için `rover_blueprint` ve sensör config'i
 olmadan yeni seviyede `mode="orbital_reference"` kullanılabilir; örnek
@@ -485,7 +503,7 @@ GNC/başka bridge varsa aynı portları kullanan süreçleri durdur. ROS'suz
 servisi **önce**, Play'i **sonra** başlat:
 
 ```powershell
-.\.venv\Scripts\python.exe -m mars_rover.nav_service --sensors Saved/Mars/fulltest01-sensors.json
+.\.venv\Scripts\python.exe -m mars_rover.nav_service --sensors Saved/Mars/fulltest02-sensors.json
 ```
 
 Tarayıcıda `http://127.0.0.1:8766` aç, sonra UE'de Play. İlk fizik yerleşmesini
@@ -541,7 +559,7 @@ test takılırsa Play'i bitir.
 **Stereo:** Play'i bitir, varsayılan servisi normal kapat. Ayrı koşuda:
 
 ```powershell
-.\.venv\Scripts\python.exe -m mars_rover.nav_service --sensors Saved/Mars/fulltest01-sensors.json --depth-source stereo
+.\.venv\Scripts\python.exe -m mars_rover.nav_service --sensors Saved/Mars/fulltest02-sensors.json --depth-source stereo
 ```
 
 Sonra yeniden Play ve **yeni hedef**. Bu sefer `depth_source=stereo` görülmeli.

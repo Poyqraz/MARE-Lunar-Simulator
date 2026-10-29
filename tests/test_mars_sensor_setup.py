@@ -89,11 +89,14 @@ def fake_rover_for_sensor_export(*, invalid_lidar=False):
 
     def scene(name, position, properties=None, forward=(-1, 0, 0)):
         obj = MagicMock()
+        values = {} if properties is None else dict(properties)
         obj.get_name.return_value = name
         obj.get_forward_vector.return_value = vec(*forward)
         obj.get_up_vector.return_value = vec(0, 0, 1)
         obj.get_world_location.return_value = vec(*position)
-        obj.get_editor_property.side_effect = (properties or {}).__getitem__
+        obj.get_editor_property.side_effect = values.__getitem__
+        obj.set_editor_property.side_effect = values.__setitem__
+        obj._test_values = values
         return obj
 
     cam = {"projection_type": perspective, "texture_target": None, "fov_angle": 90.0}
@@ -105,11 +108,14 @@ def fake_rover_for_sensor_export(*, invalid_lidar=False):
                   {"follow_component_name": "None", "sensor_id": 1, "mode": "GPU"},
                   (0, 0, 0) if invalid_lidar else (-1, 0, 0))
     streamer = MagicMock()
-    streamer.get_editor_property.side_effect = {
+    values = {
         "left_capture_name": "NavcamLeft", "right_capture_name": "NavcamRight",
         "center_capture_name": "NavcamCenter", "capture_width": 640, "capture_height": 480,
         "depth_cam_id": 4, "left_cam_id": 1, "right_cam_id": 2,
-    }.__getitem__
+    }
+    streamer.get_editor_property.side_effect = values.__getitem__
+    streamer.set_editor_property.side_effect = values.__setitem__
+    streamer._test_values = values
     rover = MagicMock()
     rover.get_name.return_value = "ReferenceRover"
     lookup = {engine.SceneComponent: [base, left, right, center, lidar],
@@ -149,6 +155,128 @@ def test_valid_sensor_mounts_export_measured_rigid_transforms(tmp_path):
     assert config["native_rover_motion_verified"] is False
     lidar.set_editor_property.assert_any_call("server_port", 3007)
     streamer.set_editor_property.assert_any_call("server_port", 3004)
+
+
+def test_export_rechecks_geometry_after_editor_property_changes(tmp_path):
+    m = setup()
+    engine, rover, lidar, streamer = fake_rover_for_sensor_export()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    output = tmp_path / "sensors.json"
+
+    def editor_change(key, value):
+        streamer._test_values[key] = value
+        # Editor property changes may cause other components to update.
+        lidar.get_world_location.return_value = vec(-100, 200, 80)
+
+    streamer.set_editor_property.side_effect = editor_change
+    m.configure_and_export(engine, rover, manifest, output)
+    config = json.loads(output.read_text())
+    assert config["lidar"]["to_body"][2][3] == pytest.approx(0.8)
+
+
+def test_post_edit_invalid_mount_does_not_write_sensor_config(tmp_path):
+    m = setup()
+    engine, rover, lidar, streamer = fake_rover_for_sensor_export()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    output = tmp_path / "sensors.json"
+
+    def editor_change(key, value):
+        streamer._test_values[key] = value
+        lidar.get_forward_vector.return_value = vec(0, 0, 0)
+
+    streamer.set_editor_property.side_effect = editor_change
+    with pytest.raises(ValueError, match="orthonormal"):
+        m.configure_and_export(engine, rover, manifest, output)
+    assert not output.exists()
+
+
+def test_export_uses_recreated_live_camera_mount(tmp_path):
+    m = setup()
+    engine, rover, lidar, streamer = fake_rover_for_sensor_export()
+    original_lookup = rover.get_components_by_class.side_effect
+    original_components = list(original_lookup(engine.SceneComponent))
+    lidar._test_values["follow_component_name"] = "NavcamCenter"
+    original_center = next(c for c in original_components if c.get_name() == "NavcamCenter")
+    replacement = MagicMock()
+    replacement.get_name.return_value = "NavcamCenter"
+    replacement.get_forward_vector.return_value = vec(-1, 0, 0)
+    replacement.get_up_vector.return_value = vec(0, 0, 1)
+    replacement.get_world_location.return_value = vec(-100, 190, 80)
+    replacement.get_editor_property.side_effect = original_center.get_editor_property.side_effect
+    scene = [original_components]
+    rover.get_components_by_class.side_effect = lambda cls: scene[0] if cls is engine.SceneComponent else original_lookup(cls)
+
+    def editor_change(key, value):
+        streamer._test_values[key] = value
+        scene[0] = [replacement if c is original_center else c for c in original_components]
+
+    streamer.set_editor_property.side_effect = editor_change
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    output = tmp_path / "sensors.json"
+    m.configure_and_export(engine, rover, manifest, output)
+    config = json.loads(output.read_text())
+    assert config["lidar"]["to_body"][2][3] == pytest.approx(0.8)
+    assert config["depth"]["to_body"][2][3] == pytest.approx(0.8)
+
+
+def test_editor_settings_must_be_present_on_current_components(tmp_path):
+    m = setup()
+    engine, rover, lidar, streamer = fake_rover_for_sensor_export()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    output = tmp_path / "sensors.json"
+    # Simulate edits that do not persist on the live component.
+    streamer.set_editor_property.side_effect = lambda key, value: None
+    with pytest.raises((ValueError, RuntimeError), match="setting|property"):
+        m.configure_and_export(engine, rover, manifest, output)
+    assert not output.exists()
+
+
+def test_recreated_streamer_is_resolved_again_between_edits(tmp_path):
+    m = setup()
+    engine, rover, lidar, streamer = fake_rover_for_sensor_export()
+    original_lookup = rover.get_components_by_class.side_effect
+    replacement = MagicMock()
+    replacement_values = dict(streamer._test_values)
+    replacement.get_editor_property.side_effect = replacement_values.__getitem__
+    replacement.set_editor_property.side_effect = replacement_values.__setitem__
+    current = [streamer]
+
+    def get_components(cls):
+        return [current[0]] if cls is engine.UnrealStereoCam else original_lookup(cls)
+
+    def first_edit(key, value):
+        if current[0] is not streamer:
+            raise RuntimeError("attempted to edit a stale component")
+        replacement_values[key] = value
+        current[0] = replacement
+
+    rover.get_components_by_class.side_effect = get_components
+    streamer.set_editor_property.side_effect = first_edit
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    output = tmp_path / "sensors.json"
+    m.configure_and_export(engine, rover, manifest, output)
+    assert replacement_values["server_port"] == 3004
+    assert replacement_values["stream_center_depth"] is True
+    assert json.loads(output.read_text())["lidar"]["port"] == 3007
+
+
+def test_observed_navcam_center_mount_has_expected_body_transform():
+    from mars_rover.sensors import transform_matrix
+
+    m = setup()
+    body = component(-12600.018597446624, 12603.499999975213, 628.473267823903)
+    body.get_forward_vector = lambda: vec(-2.220446049250313e-16, -1, 0)
+    camera = component(-12600.018597446624, 12584.999999975213, 674.973267823903)
+    camera.get_forward_vector = lambda: vec(-2.220446049250313e-16, -0.9396926207859083, -0.34202014332566877)
+    camera.get_up_vector = lambda: vec(-8.326672684688674e-17, -0.34202014332566877, 0.9396926207859084)
+    transform = transform_matrix(m.relative_frame(m.map_frame(body), m.map_frame(camera)))
+    np.testing.assert_allclose(transform[:3, 3], [0.185, 0, 0.465], atol=1e-10)
+    np.testing.assert_allclose(transform[:3, 0], [np.cos(np.deg2rad(20)), 0, -np.sin(np.deg2rad(20))], atol=1e-10)
 
 
 def test_runtime_sensor_plugins_are_explicitly_enabled_in_project():
