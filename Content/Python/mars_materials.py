@@ -4,10 +4,14 @@
 def connect_input(lib, source, target, input_name, output=""):
     """Resolve supported aliases against UE's actual displayed input names."""
     available = [str(v) for v in lib.get_material_expression_input_names(target)]
-    # UE 5.7.4 exposes Noise's Position input as "World Position".
-    aliases = {"Coordinates": ("UVs", "Coordinates"), "Input": ("Input", ""),
-               "Position": ("World Position", "Position")}
-    if available and input_name not in available:
+    # An empty selector means "first input" in UE. Use it for a logical
+    # Input only when the node reports exactly one unnamed pin; UE 5.7.4
+    # exposes ComponentMask's sole input as the string "None".
+    if input_name == "Input" and available in (["None"], [""]):
+        input_name = ""
+    elif available and input_name not in available:
+        # UE 5.7.4 exposes Noise's Position input as "World Position".
+        aliases = {"Coordinates": ("UVs", "Coordinates"), "Position": ("World Position", "Position")}
         input_name = next((name for name in aliases.get(input_name, (input_name,)) if name in available), None)
         if input_name is None:
             raise RuntimeError(f"Material input not exposed; available pins: {available}")

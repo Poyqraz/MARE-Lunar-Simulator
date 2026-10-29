@@ -80,7 +80,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe tools/mars_navigation_benchmark.py --output generated/native-preflight.json
 ```
 
-Beklenen mevcut test sayısı **142** ve dört başarılı offline rotadır.
+Beklenen mevcut test sayısı **149** ve dört başarılı offline rotadır.
 `generated/native-preflight.json` varsa yeni çıktı adı seç. Venv'i aktive
 etmek veya PowerShell execution policy değiştirmek zorunlu değildir.
 **Unreal'ın gömülü Python'una pip/NumPy/rasterio/OpenCV kurulmaz.**
@@ -298,6 +298,46 @@ testleri beklemektedir. QA04 raporundaki `gpu_render_verified`,
 elle değiştirilmez. Yeni reference seviyesi ayrı isimle oluşturulur; mevcut
 QA04 üstüne yazılmaz.
 
+### 4.5. HiRISE referansında adsız ComponentMask girişi
+
+29 Ekim 2026'da kullanıcının UE 5.7.4 log'u, `JezeroRefQA01` denemesinde
+HiRISE gri PNG'sinin içe aktarıldığını ve kaydedildiğini; ardından
+`MaterialExpressionComponentMask` için sunulan tek girişin `['None']`
+olarak raporlandığını gösterdi. `connect_input` bunu `Input` adıyla
+eşleştiremedi ve materyal tamamlanmadan durdu. Daha sonra aynı isimle yapılan
+denemeler, kalan `JezeroRefQA01_Assets` klasörüne yanlışlıkla yazmayı
+önleyen `Assets folder exists` kontrolünde durdu. Kullanıcının QA02 ekranında
+da içe alınmış doku ve tamamlanmamış materyal görünür; QA02'nin ilk traceback'i
+ayrıca sağlanmamıştır.
+
+[Epic'in 5.7 API açıklamasına](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/MaterialEditingLibrary?application_version=5.7)
+göre boş giriş adı ilk girişi seçer. Düzeltme bunu yalnızca mantıksal
+`Input` istendiğinde ve düğüm **tam olarak bir adsız giriş** (`None` veya boş
+isim) bildirdiğinde kullanır. Birden çok girişli belirsiz durumda ilk giriş
+seçilmez, Unreal bağlantıyı reddederse hata korunur. Diğer bilinen pin
+eşleştirmeleri ve kaynak veri değişmez.
+
+TDD'de önce 4 başarısız / 24 başarılı ilgili test görüldü; düzeltme sonrası
+28 ilgili test ve 149 tam Python testi başarılıdır. Orbital materyal grafiği,
+pin seçimi ve bağlantı reddi kontrollü sahte Unreal API'siyle test edilir;
+bunlar gerçek shader, görüntü hizalaması veya GPU render kabulü değildir.
+
+Kurtarma: Kullanıcının başka çalışmalarını koruyarak başarısız denemeye ait
+başlıksız haritayı ve yarım materyal değişikliklerini kaydetmeden editörü kapat.
+4.1'deki gibi dalı güncelle ve editörü yeniden aç. QA01/QA02 klasörlerini
+silme; Play kapalı ve bekleyen paketler temizken **yeni** adla dene:
+
+```python
+import mars_setup
+ref = None
+ref = mars_setup.build(level_path="/Game/Mars/JezeroRefQA03", mode="orbital_reference", report_path=r"C:/work/MARE-Lunar-Simulator/Saved/Mars/jezero-refqa03.json")
+```
+
+`ref` için 4.1'deki sorgunun değişken adı uyarlanır; `importing` ise yalnız
+durum sorgusu tekrarlanır. Yeni JSON ve log birlikte istenir. `saved` ve iki
+doğrulama bayrağı geçse bile gerçek görüntü/hizalama ve GPU görünümü ayrıca
+incelenir. Burada UE çalıştırılmadı; native QA03 sonucu beklenmektedir.
+
 ## 5. Otomatik native yükseklik ve collision testi
 
 Önce editor'daki çalışmayı kaydet ve editor'ı kapat. Repo kökündeki PowerShell:
@@ -503,7 +543,7 @@ otomatik kalıcı günlük varmış gibi davranma.
 
 | Grup | Kapanış koşulu |
 |---|---|
-| Python/CI | 142 test + lint + dört rota raporu başarılı; güncel CI'yı kontrol et |
+| Python/CI | 149 test + lint + dört rota raporu başarılı; güncel CI'yı kontrol et |
 | Native import/collision | Her iki modda saved + verified raporları |
 | GPU görünüm | Gerçek DX12/SM6 adaptörü, shader/asset hatası yok, ekran kanıtı |
 | GPU LiDAR / depth | Etkin GPU modu ve taze gerçek paketler; niceliksel kalibrasyon ayrı kaydedilmiş |
