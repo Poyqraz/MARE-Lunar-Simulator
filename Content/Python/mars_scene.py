@@ -73,7 +73,7 @@ def _lighting(unreal, actors, manifest, scene, mode):
         light.set_mobility(unreal.ComponentMobility.MOVABLE)
         light.set_intensity(scene["sun_illuminance_lux"])
         light.set_editor_property("atmosphere_sun_light", True)
-        light.set_editor_property("source_angle", parameters["sun_angular_diameter_deg"])
+        light.set_editor_property("light_source_angle", parameters["sun_angular_diameter_deg"])
         sky_atmosphere = actors.spawn_actor_from_class(unreal.SkyAtmosphere, unreal.Vector(0, 0, 0))
         atmosphere = sky_atmosphere.get_component_by_class(unreal.SkyAtmosphereComponent)
         radius = manifest["source"].get("reprojection", {}).get("reference_semi_major_m")

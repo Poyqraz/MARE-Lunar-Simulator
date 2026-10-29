@@ -80,7 +80,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe tools/mars_navigation_benchmark.py --output generated/native-preflight.json
 ```
 
-Beklenen mevcut test sayısı **126** ve dört başarılı offline rotadır.
+Beklenen mevcut test sayısı **128** ve dört başarılı offline rotadır.
 `generated/native-preflight.json` varsa yeni çıktı adı seç. Venv'i aktive
 etmek veya PowerShell execution policy değiştirmek zorunlu değildir.
 **Unreal'ın gömülü Python'una pip/NumPy/rasterio/OpenCV kurulmaz.**
@@ -174,6 +174,52 @@ Yarım kalmış `Untitled` haritası doğrulanmış Mars seviyesi değildir. Kur
    Play başlatma veya dünya değiştirme. Yeni denemenin JSON raporu ve log'u
    saklanır. Yükseklik/collision, görsel GPU ve sensör/sürüş kabulü, yeni gerçek
    sonuçlar gelene kadar **PENDING** kalır.
+
+### 4.2. Güneş bileşeni ve önceki denemeden kalan Assets klasörü
+
+29 Ekim 2026'da ikinci native log, `M_MarsProcedural` materyalinin oluşturulup
+kaydedildiğini gösterdi: önceki Noise giriş düzeltmesi bu aşamayı geçti.
+Sonraki hata `DirectionalLightComponent` üzerinde `source_angle` özelliğinin
+bulunamamasıydı. UE 5.7 Python editor özelliğinin doğru adı
+**`light_source_angle`** ve birimi derecedir. Hesaplanan nominal Mars güneş
+açısı yaklaşık 0.349723° olarak korunur; yalnız API adı düzeltilir.
+
+Kalan `_lighting` özellik adları aşağıdaki resmî 5.7 API sayfalarıyla
+karşılaştırıldı. İki modda toplam 23 farklı editor özelliği için testte
+bileşene özgü izin listeleri kullanılır; bilinmeyen adlar artık sınırsız
+`MagicMock` tarafından kabul edilmez. Bu fixture tip, shader veya native
+render doğrulaması değildir.
+
+| API | Denetlenen alan |
+|---|---|
+| [DirectionalLightComponent](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/DirectionalLightComponent?application_version=5.7) | Güneş bağlantısı ve `light_source_angle` |
+| [SkyAtmosphereComponent](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/SkyAtmosphereComponent?application_version=5.7) | Yarıçap, yükseklik, gaz/toz dağılımı ve saçılma/soğurma |
+| [SkyLightComponent](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/SkyLightComponent?application_version=5.7) | `real_time_capture`; `recapture_sky` yöntemi de belgede mevcut |
+| [PostProcessVolume](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/PostProcessVolume?application_version=5.7) | `unbound` ve `settings` |
+| [PostProcessSettings](https://dev.epicgames.com/documentation/en-us/unreal-engine/python-api/class/PostProcessSettings?application_version=5.7) | Pozlama sınırları ve override bayrakları |
+
+TDD önce iki başarısız / 19 başarılı ilgili test verdi; API adı düzeltildikten
+sonra 21 ilgili test başarılıdır. Tam Python test sayısı 128'dir. Native
+yükseklik/collision, GPU görüntüsü ve rover/sensör kabulü hâlâ bekler.
+
+Materyal bu hatadan önce kaydedildiği için `/Game/Mars/JezeroQA02_Assets`
+klasörü kalır. Aynı adla tekrar çağrı yapılınca görülen `Assets folder exists`
+hatası, varlığın üzerine yazmayı engelleyen doğru önkoşuldur. İzin listesi veya
+bu koruma kaldırılmaz. Aynı log'da elle `/Game/Untitled` adıyla kaydedilen
+yarım harita da betiğin yükseklik/collision kabul raporu yerine geçmez.
+
+Kurtarma için 4.1'deki dal güncellemesini editör kapalıyken uygula, editörü
+yeniden aç ve normal kaynak sahnede bekleyen değişiklikleri kontrol et.
+Eski QA varlıklarını silmek yerine yeni bir adla, Play kapalıyken bir kez çalıştır:
+
+```python
+import mars_setup
+job = None
+job = mars_setup.build(level_path="/Game/Mars/JezeroQA03", report_path=r"C:/work/MARE-Lunar-Simulator/Saved/Mars/jezero-qa03.json")
+```
+
+4.1'deki durum sorgusunu kullan. `importing` ise sadece sorguyu tekrar et;
+kurulumu tekrar başlatma. İlk hata varsa onu ve varsa yeni JSON'u sakla.
 
 ## 5. Otomatik native yükseklik ve collision testi
 

@@ -40,7 +40,66 @@ def test_atmosphere_ground_radius_accounts_for_removed_height_datum():
     scene_module._lighting(engine, actors, manifest, scene_module.load_scene(), "simulation")
     component = actors.spawn_actor_from_class.return_value.get_component_by_class.return_value
     component.set_editor_property.assert_any_call("bottom_radius", pytest.approx(3393.6094179830114))
-    component.set_editor_property.assert_any_call("source_angle", pytest.approx(0.3497230666))
+    component.set_editor_property.assert_any_call("light_source_angle", pytest.approx(0.3497230666))
+
+
+@pytest.mark.parametrize("mode", ["simulation", "orbital_reference"])
+def test_lighting_uses_documented_ue57_editor_properties(mode):
+    """Reject unknown names, as native set_editor_property does (not MagicMock)."""
+    # Independent UE 5.7 API allowlists; references are in the native test runbook.
+    properties = {
+        "DirectionalLightComponent": {"atmosphere_sun_light", "light_source_angle"},
+        "SkyAtmosphereComponent": {
+            "bottom_radius", "atmosphere_height", "rayleigh_exponential_distribution",
+            "mie_exponential_distribution", "rayleigh_scattering_scale", "mie_scattering_scale",
+            "mie_absorption_scale", "mie_anisotropy", "other_absorption_scale",
+            "rayleigh_scattering", "mie_scattering", "mie_absorption",
+        },
+        "SkyLightComponent": {"real_time_capture"},
+        "PostProcessVolume": {"unbound", "settings"},
+        "PostProcessSettings": {
+            "override_auto_exposure_min_brightness", "override_auto_exposure_max_brightness",
+            "override_auto_exposure_bias", "auto_exposure_bias",
+            "auto_exposure_min_brightness", "auto_exposure_max_brightness",
+        },
+    }
+    values = {name: {} for name in properties}
+
+    def editor_object(name):
+        obj = MagicMock(name=name)
+
+        def set_property(key, value):
+            if key not in properties[name]:
+                raise AttributeError(f"{name}: unknown UE 5.7 editor property {key}")
+            values[name][key] = value
+
+        obj.set_editor_property.side_effect = set_property
+        return obj
+
+    engine, actors = MagicMock(), MagicMock()
+    components = {name: editor_object(name) for name in properties}
+    volume = components["PostProcessVolume"]
+    volume.get_editor_property.return_value = components["PostProcessSettings"]
+    actor_map = {engine.PostProcessVolume: volume}
+    for actor_name, component_name in (("DirectionalLight", "DirectionalLightComponent"),
+                                       ("SkyAtmosphere", "SkyAtmosphereComponent"),
+                                       ("SkyLight", "SkyLightComponent")):
+        actor = MagicMock(name=actor_name)
+        actor.get_component_by_class.side_effect = {getattr(engine, component_name): components[component_name]}.__getitem__
+        actor_map[getattr(engine, actor_name)] = actor
+    actors.spawn_actor_from_class.side_effect = lambda cls, *args, **kwargs: actor_map[cls]
+    scene = scene_module.load_scene()
+    scene_module._lighting(engine, actors, {"source": {}}, scene, mode)
+    if mode == "simulation":
+        assert values["DirectionalLightComponent"]["light_source_angle"] == pytest.approx(0.3497, abs=0.001)
+        assert values["SkyAtmosphereComponent"]["other_absorption_scale"] == 0
+    else:
+        assert values["DirectionalLightComponent"] == {}
+        assert values["SkyAtmosphereComponent"] == {}
+        assert values["SkyLightComponent"] == {}
+    exposure = scene["fixed_exposure_ev100"] if mode == "simulation" else scene["reference_exposure_ev100"]
+    assert values["PostProcessSettings"]["auto_exposure_min_brightness"] == exposure
+    assert values["PostProcessSettings"]["auto_exposure_max_brightness"] == exposure
 
 
 def test_invalid_scene_value_fails_before_creating_assets(tmp_path):
