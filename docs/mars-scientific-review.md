@@ -102,9 +102,14 @@ toleransla uyması gerekir. Eksik veya farklı çarpışma haritayı başarılı
 kaydettirmez. Bu örneklem bütün üçgenlerin, hareketli teker temasının veya
 paketlenmiş oyunun denetimi değildir.
 
-**Burada Unreal/GPU bulunmadığından bu 520 native sorgu henüz çalıştırılmadı.**
-Python testleri yalnızca denetim kurallarını sınar. `collision_verified`,
-`gpu_render_verified` ve `visual_qa_passed` ayrı kanıtlardır.
+29 Ekim 2026'da kullanıcının UE 5.7.4 editöründe `simulation` modu için
+gönderdiği [QA04 raporu](data/native-jezero-qa04.json), 260 konumda 520 native
+sorgunun geçtiğini ve azami konum farkının yaklaşık 0,084 mm olduğunu bildirir.
+Bu, burada belirtilen örneklerin beklenen kodlanmış yüksekliğe sayısal
+uyumudur; Mars'ın gerçek yükselti doğruluğu, her üçgen veya teker teması
+ölçümü değildir. QA04 raporu test edilen commit'i veya GPU modelini içermez.
+Python testleri yalnızca denetim kurallarını sınar. `orbital_reference`,
+`gpu_render_verified` ve `visual_qa_passed` için ayrı kanıt gerekir.
 
 ## Atmosfer: hangi sayı neyi ifade ediyor?
 

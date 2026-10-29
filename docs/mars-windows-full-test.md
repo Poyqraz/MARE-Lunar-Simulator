@@ -7,9 +7,9 @@ ekrandan native hedef seçimi ve otomatik disk günlüğü henüz yoktur.
 
 ## 1. Merge kararı
 
-Kontrol edilen PR'lar: #1 `8b6243ec90afeac2f9b268763b0282d7b4df9883`,
-#2 `92e8ea2f03951a9c6b7e3c0ee93f5ecebb52aac6`. İkisi de açık/taslak ve
-mergeable; Python CI'ları başarılıdır. Bunlar native kabul sonucu değildir.
+İlgili PR'lar #1 ve #2'dir. Anlık dal uçları, taslak/merge durumu ve CI
+sonuçları için GitHub'daki PR kayıtlarını kontrol edin. Python CI'ı tek başına
+native kabul sonucu değildir.
 
 **Şimdilik merge gerekmiyor.** `codex/mars-mission-history` dalı iki PR'ın
 kodunu da içerir ve doğrudan test edilebilir. Native sonuçları görmeden
@@ -272,6 +272,32 @@ Durum sorgusu ve JSON **aynı** `saved`, iki `true`, `error=null` sonucunu
 taşımalıdır. `importing` iken yalnız durum sorgusunu tekrarla. Eski QA03
 seviyesi/raporu korunabilir; üzerine yazarak önceki kanıt değiştirilmez.
 
+### 4.4. QA04: ilk native simulation arazi sonucu
+
+29 Ekim 2026'da kullanıcı tarafından sağlanan UE **5.7.4** log ve
+[QA04 JSON raporu](data/native-jezero-qa04.json) birbiriyle tutarlıdır:
+`/Game/Mars/JezeroQA04`, `simulation`, `saved`, `heightmap_verified=true`,
+`collision_verified=true`, `error=null`. Manifest SHA-256 değeri
+`aea08f2fbc305462a0b9c59f2566197fa33d08da3312cedb4c921e5e59230f88`,
+bu daldaki veri paketi manifestiyle eşleşir. Çalıştırılan commit ve GPU
+modeli bu raporda yoktur; ayrıca kaydedilmelidir.
+
+Rapor 260 konum ve 520 basit/karmaşık trace için en büyük konum farkını
+0,000084457 m (yaklaşık 0,084 mm), sayısal toleransı 0,002 m olarak bildirir.
+Geri okuma, 253 × 253 kodlanmış yükseklik değerinin tamamını beklenen diziyle
+eşleştiren mevcut betiğe göre başarılıdır. Bu sonuç arazi içe aktarımı ve
+**örneklenmiş** collision için kabul edilir; tüm üçgenleri, teker temaslarını
+veya kaynak DTM'in saha doğruluğunu doğrulamaz. Kullanıcı log'unda ilk kayıt
+sonrası Landscape fiziksel materyal oluşturma ve haritanın yeniden kaydı da
+görülür; harita kapatılıp açıldıktan sonraki ölçümler ayrı kanıttır.
+
+`orbital_reference`, GPU görsel/performance, LiDAR, depth, rover ve görev
+testleri beklemektedir. QA04 raporundaki `gpu_render_verified`,
+`visual_qa_passed`, `photometry_validated` ve
+`wheel_scale_obstacles_validated` alanları `false` olarak kalır. Bu rapor
+elle değiştirilmez. Yeni reference seviyesi ayrı isimle oluşturulur; mevcut
+QA04 üstüne yazılmaz.
+
 ## 5. Otomatik native yükseklik ve collision testi
 
 Önce editor'daki çalışmayı kaydet ve editor'ı kapat. Repo kökündeki PowerShell:
@@ -477,7 +503,7 @@ otomatik kalıcı günlük varmış gibi davranma.
 
 | Grup | Kapanış koşulu |
 |---|---|
-| Python/CI | 122 test + lint + dört rota raporu başarılı |
+| Python/CI | 142 test + lint + dört rota raporu başarılı; güncel CI'yı kontrol et |
 | Native import/collision | Her iki modda saved + verified raporları |
 | GPU görünüm | Gerçek DX12/SM6 adaptörü, shader/asset hatası yok, ekran kanıtı |
 | GPU LiDAR / depth | Etkin GPU modu ve taze gerçek paketler; niceliksel kalibrasyon ayrı kaydedilmiş |
