@@ -13,7 +13,14 @@ import numpy as np
 
 from .planning import NoRoute
 from .mission import MissionHistory
-from .sensors import PoseHistory, depth_points, pose_from_telemetry, transform_matrix, transform_points
+from .sensors import (
+    CAPTURE_CLOCK_TOLERANCE_NS,
+    PoseHistory,
+    depth_points,
+    pose_from_telemetry,
+    transform_matrix,
+    transform_points,
+)
 
 LATE_DATA_ERROR = "Pose or sensor data expired during control processing"
 
@@ -124,6 +131,7 @@ class NavigationSession:
         self.connected = False
         self.observer_error = None
         self.sensor_observation_error = None
+        self.sensor_wait_details = {}
         self._pose_received_at = self._unique_pose_at = None
         self._late_decision = False
 
@@ -136,6 +144,7 @@ class NavigationSession:
             self.mission.begin(goal)
             self.goal, self.follower = tuple(map(float, goal)), None
             self.state, self.error = "waiting_for_sensors", None
+            self.sensor_wait_details = {}
             self.started_at, self._last_motion, self._motion_xy = None, None, None
             self.replans, self.plan_revision = 0, -1
 
@@ -144,6 +153,7 @@ class NavigationSession:
             self.mission.finish("stopped")
             self.goal, self.follower = None, None
             self.state = "idle"
+            self.sensor_wait_details = {}
 
     def _reset_link(self, reason="new_connection"):
         self.mission.new_session(reason)
@@ -206,6 +216,12 @@ class NavigationSession:
                 return
             self.latest[key] = value, received
 
+    def _capture_too_old(self, stamp_ns):
+        # Sensor and pose clocks are represented at different precisions. This
+        # allowance is at most 1.024 microseconds, not a new latency budget;
+        # independently require fresh arrival and pose times as before.
+        return self.pose.stamp_ns - stamp_ns > self.timeout * 1e9 + CAPTURE_CLOCK_TOLERANCE_NS
+
     def _consume(self):
         depth_key = self.depth_source
         for key in ("lidar", depth_key):
@@ -219,8 +235,9 @@ class NavigationSession:
             # Wait for a bracketing pose, rather than using the rover's current
             # pose on an asynchronously returned scan/image.
             pose = self.history.at(frame.stamp_ns)
-            if self.pose.stamp_ns - frame.stamp_ns > self.timeout * 1e9:
-                self.health[key] = {"received_at": received, "valid_inside_points": 0, "capture_stale": True}
+            if self._capture_too_old(frame.stamp_ns):
+                self.health[key] = {"received_at": received, "valid_inside_points": 0,
+                                    "capture_stale": True, "stamp_ns": frame.stamp_ns}
                 continue
             settings = (
                 self.config["lidar"]
@@ -311,6 +328,7 @@ class NavigationSession:
             wall_clock = time.monotonic if wall_clock is None else wall_clock
         with self.lock:
             self._late_decision = False
+            self.sensor_wait_details = {}
             previous_state = self.state
             ready = self._observe_bridge(bridge_status, now)
             command = self._drive(now) if ready else (0, 0)
@@ -329,7 +347,12 @@ class NavigationSession:
                     command = (0, 0)
                 elif self.error == LATE_DATA_ERROR:
                     self.error = None
-            self.mission.state(self.state, self.error)
+            details = (
+                {"sensors": self.sensor_wait_details}
+                if self.state == "waiting_for_sensors" and self.sensor_wait_details
+                else None
+            )
+            self.mission.state(self.state, self.error, details=details)
             return command
 
     def motion_deadline(self):
@@ -348,14 +371,15 @@ class NavigationSession:
                 received, stamp = report.get("received_at"), report.get("stamp_ns")
                 if (type(received) not in (int, float) or not math.isfinite(received)
                         or type(stamp) is not int
-                        or self.pose.stamp_ns - stamp > self.timeout * 1e9
-                        or stamp - self.pose.stamp_ns > 1024):
+                        or self._capture_too_old(stamp)
+                        or stamp - self.pose.stamp_ns > CAPTURE_CLOCK_TOLERANCE_NS):
                     return None
                 deadlines.append(received + self.timeout)
             return min(deadlines)
 
     def _drive(self, now):
         with self.lock:
+            self.sensor_wait_details = {}
             if not self.goal:
                 return 0, 0
             if self.state in ("arrived", "blocked", "stalled_or_timed_out"):
@@ -370,14 +394,8 @@ class NavigationSession:
                     self.state = "waiting_for_settle"
                     return 0, 0
                 self._consume()
-                ready = all(
-                    k in self.health
-                    and now - self.health[k]["received_at"] <= self.timeout
-                    and self.health[k]["valid_inside_points"] >= self.min_points
-                    and self.pose.stamp_ns - int(self.health[k].get("stamp_ns", 0)) <= self.timeout * 1e9
-                    for k in ("lidar", self.depth_source)
-                )
-                if not ready:
+                self.sensor_wait_details = self._sensor_wait_reasons(now)
+                if self.sensor_wait_details:
                     self.state = "waiting_for_sensors"
                     return 0, 0
                 xyh = self.pose.xy_heading
@@ -427,6 +445,35 @@ class NavigationSession:
                 self.error = str(error)
                 self.state = "blocked" if isinstance(error, NoRoute) else "waiting_for_sensors"
                 return 0, 0
+
+    def _sensor_wait_reasons(self, now):
+        """Record why a decision stopped; do not infer it later from a snapshot."""
+        details = {}
+        for key in ("lidar", self.depth_source):
+            report = self.health.get(key)
+            if report is None:
+                details[key] = {"reasons": ["missing"]}
+                continue
+            reasons = []
+            age = now - report["received_at"]
+            stamp = report.get("stamp_ns")
+            capture_age_ns = self.pose.stamp_ns - stamp if type(stamp) is int else None
+            if age > self.timeout:
+                reasons.append("arrival_stale")
+            if report.get("capture_stale") or (stamp is not None and self._capture_too_old(int(stamp))):
+                reasons.append("capture_stale")
+            elif report["valid_inside_points"] < self.min_points:
+                reasons.append("insufficient_points")
+            if stamp is None:
+                reasons.append("capture_time_missing")
+            if reasons:
+                details[key] = {
+                    "reasons": reasons,
+                    "arrival_age_s": max(0.0, age),
+                    "capture_age_s": capture_age_ns / 1e9 if capture_age_ns is not None else None,
+                    "valid_inside_points": report["valid_inside_points"],
+                }
+        return details
 
     def status(self):
         with self.lock:
@@ -480,6 +527,7 @@ class NavigationSession:
                     "observer_error": self.observer_error,
                     "sensor_observation_error": self.sensor_observation_error,
                     "sensor_health": health,
+                    "sensor_wait_details": self.sensor_wait_details,
                     "depth_source": self.depth_source,
                     "map_revision": self.grid.revision,
                     "wheel_command_m_s": (bridge_status or {}).get("wheel_command_m_s"),

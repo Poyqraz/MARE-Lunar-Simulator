@@ -150,14 +150,15 @@ class MissionHistory:
             self.current["remaining_route_m"] = 0.0
         self._event("mission_finished", status=status, error=error)
 
-    def state(self, status, error=None):
+    def state(self, status, error=None, *, details=None):
         if not self.active:
             return
         if status in ("arrived", "blocked", "stalled_or_timed_out"):
             self.finish(status, error)
         elif self.current["status"] != status or self.current["error"] != error:
             self.current.update(status=status, error=error)
-            self._event("state_changed", status=status, error=error)
+            fields = {"details": copy.deepcopy(details)} if details else {}
+            self._event("state_changed", status=status, error=error, **fields)
 
     def plan(self, route, map_revision):
         if not self.active:

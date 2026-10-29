@@ -84,6 +84,72 @@ def test_session_waits_for_both_sensors_and_stops_on_stale_data():
     assert session.step(status, now=1.03)[0] > 0
     assert session.step(status, now=2) == (0, 0)
     assert session.status()["state"] == "waiting_for_sensors"
+    details = session.mission_snapshot(now=2)["sensor_wait_details"]
+    assert details["lidar"]["reasons"] == ["arrival_stale"]
+    assert details["ground_truth"]["reasons"] == ["arrival_stale"]
+    event = session.mission.export()["events"][-1]
+    assert event["details"]["sensors"] == details
+
+
+def test_capture_time_boundary_tolerates_clock_precision_but_still_stops_for_stale_frames():
+    from mars_rover.planning import PlanningLimits, TerrainMap
+    from mars_rover.sensors import CameraFrame, LidarScan
+
+    grid = TerrainMap(np.zeros((20, 20)), 1, PlanningLimits(robot_radius_m=0))
+    optical = [[0, 0, 1, 0], [-1, 0, 0, 0], [0, -1, 0, 1], [0, 0, 0, 1]]
+    config = {
+        "schema_version": 1,
+        "manifest_sha256": None,
+        "lidar": {"sensor_id": 0, "to_body": np.eye(4).tolist()},
+        "depth": {"camera_id": 4, "hfov_deg": 90, "to_body": optical},
+    }
+    session = nav().NavigationSession(grid, config, min_points=1, settle_s=0)
+    session.set_goal((10, 5))
+    stamp = 1700000000000000000
+    depth = np.full((3, 3), np.nan, dtype="float32")
+    depth[2, 1] = 150
+
+    def status_at(capture):
+        return {
+            "connected": True,
+            "connection_id": 1,
+            "telemetry_age_s": 0,
+            "telemetry_unreal": dict(x=-500, y=500, z=0, roll=0, pitch=0, yaw=180, t_ns=str(capture)),
+        }
+
+    def lidar_at(capture, frame, received):
+        session.feed_lidar(LidarScan(0, frame, capture, np.array([[2.0, 0, 0]]), 1, 1), now=received)
+
+    lidar_at(stamp, 1, 1.0)
+    session.feed_camera(CameraFrame(4, 1, stamp, 2, depth), now=1.0)
+    session.step(status_at(stamp), now=1.0)  # plan while stopped
+    assert session.step(status_at(stamp), now=1.01)[0] > 0
+    # Pose continuity is required independently of sensor freshness.
+    lidar_at(stamp + 200000000, 2, 1.2)
+    assert session.step(status_at(stamp + 200000000), now=1.2)[0] > 0
+
+    # User's real capture ages: 0.400000020-0.400000021 seconds. Re-process a
+    # frame at that age so this exercises both observation and command gates.
+    lidar_at(stamp + 400000021, 3, 1.39)
+    session.feed_camera(CameraFrame(4, 2, stamp, 2, depth), now=1.0)
+    assert session.step(status_at(stamp + 400000021), now=1.39)[0] > 0
+    assert session.state == "following"
+    assert session.health["ground_truth"]["stamp_ns"] == stamp
+    assert session.motion_deadline() is not None
+
+    # The allowance is bounded to the LiDAR timestamp precision; an actually
+    # older frame must still block both consumption and motor commands.
+    lidar_at(stamp + 400001025, 4, 1.390001)
+    session.feed_camera(CameraFrame(4, 3, stamp, 2, depth), now=1.0)
+    assert session.step(status_at(stamp + 400001025), now=1.390001) == (0, 0)
+    assert session.state == "waiting_for_sensors"
+    assert session.health["ground_truth"]["capture_stale"] is True
+    assert session.motion_deadline() is None
+    details = session.mission_snapshot(now=1.390001)["sensor_wait_details"]
+    assert details["ground_truth"]["reasons"] == ["capture_stale"]
+    assert details["ground_truth"]["capture_age_s"] == pytest.approx(0.400001025)
+    event = session.mission.export()["events"][-1]
+    assert event["details"]["sensors"] == details
 
 
 def test_new_play_connection_cancels_the_old_goal():
