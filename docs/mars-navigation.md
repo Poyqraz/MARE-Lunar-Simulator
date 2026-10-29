@@ -121,7 +121,7 @@ ayna uygulanmaz. Kamera optik eksenleri sağ/aşağı/ileri; depth eksenel Z'dir
 ışının uzunluğu değildir. Roll/pitch/yaw ve gerçek sensör montajı birlikte
 kullanılır. Kalibrasyon sonrası kamera boyutu değişirse akış reddedilir.
 
-20 Hz kontrol döngüsü, poz yaşı 0.3 s veya sensörün varış/capture yaşı 0.4 s
+20 Hz hedefli kontrol döngüsü, poz yaşı 0.3 s veya sensörün varış/capture yaşı 0.4 s
 sınırını geçtiğinde durur. Her iki sensörden harita içinde en az 20 sonlu
 nokta gerekir. En fazla 8 m sensör noktaları kullanılır. Bozuk paket ve
 bağlantı kapanması sensör sağlığını geçersiz kılar. Bu sayısal eşikler ilk
@@ -142,11 +142,23 @@ reddedilen gecikmiş kararların sayısını gösterir. `sensor_health` içindek
 `processing_s`, **son işlenen** LiDAR veya derinlik gözleminin yerel işleme
 süresidir. Sayaçlar gecikmenin kaynağını tek başına kanıtlamaz; boşta ve
 görev sırasında ayrı ölçülmelidir. Hedef yoksa `expired_decisions=0` olması
-hareket komutu korumasının canlı koşuda sınandığı anlamına gelmez. Çevrim
-süresine döngünün sonunda ayrıca beklenen 50 ms dahil değildir; yoğun yükte
-toplam çevrim aralığı bu beklemeyle birlikte uzar. Sensörün yerel alım zamanı
-paket çözüldüğünde kaydedilir; işletim sistemi veya ağ tamponundaki önceki
-bekleme ayrıca ölçülmez.
+hareket komutu korumasının canlı koşuda sınandığı anlamına gelmez. Döngü, işleme
+süresi dahil yaklaşık 50 ms aralığı hedefler; 50 ms aşılırsa başka thread'lere
+fırsat vermek için en az 1 ms bekler. Gerçek zamanlama işletim sistemine ve
+yüke bağlıdır; 20 Hz garanti edilmez. Sensörün yerel alım zamanı paket
+çözüldüğünde kaydedilir; işletim sistemi veya ağ tamponundaki önceki bekleme
+ayrıca ölçülmez.
+
+`telemetry_timing`, aynı TCP bağlantısında köprü tarafından çözülen telemetri
+nesnelerinin sayısını ve ardışık geçerli `t_ns` değerleri arasındaki 250 ms'yi
+aşan simülasyon zamanı boşluklarını sayar. Eksik/geçersiz, tekrar eden veya
+geriye giden zamanlar ayrıca sayılır; geçersiz değer ardındaki aralık
+bilinmediğinden boşluk sayısı tek başına eksiksiz kanıt değildir. Sayaçlar her
+yeni rover bağlantısında sıfırlanır. Bunları `/mission/events` içindeki poz
+boşluklarıyla karşılaştırmak, boşluğun kaynağını araştırmaya yardımcı olur;
+kaynaktaki gönderimi, işletim sistemi tamponunu ve ağ aktarımını tek tek
+ayırmaz. `max_parsed_interval_s` paket çözümleri arasındaki duvar saati
+süresidir; simülasyon zamanı değildir.
 
 ## Planlama, engeller ve sınırlar
 

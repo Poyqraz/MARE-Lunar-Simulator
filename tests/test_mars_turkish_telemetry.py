@@ -91,6 +91,8 @@ def test_real_socket_bridge_receives_observed_format_only_when_enabled():
             assert state["telemetry_format"] == "unreal-tr-v1"
             assert state["telemetry_unreal"]["x"] == pytest.approx(-12600.019)
             assert state["telemetry_unreal"]["t_ns"] == "1700000000500000000"
+            assert state["telemetry_timing"]["frames_parsed"] == 1
+            assert state["telemetry_timing"]["invalid_stamps"] == 0
             assert state["pose_local_m"]["x"] == pytest.approx(126.00019)
             assert all(value == 0 for value in state["wheel_command_m_s"].values())
 

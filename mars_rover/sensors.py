@@ -129,7 +129,8 @@ def depth_points(depth_m, *, hfov_deg, stride=1):
     h, w = depth.shape
     fx = w / (2 * math.tan(math.radians(hfov_deg) / 2))
     # Pixel centres are u+0.5,v+0.5 in the edge-coordinate image convention.
-    rows, cols = np.mgrid[0:h:stride, 0:w:stride]
+    rows = np.arange(0, h, stride)[:, None]
+    cols = np.arange(0, w, stride)[None, :]
     z = depth[::stride, ::stride]
     points = np.stack(((cols - (w - 1) / 2) * z / fx, (rows - (h - 1) / 2) * z / fx, z), axis=-1).reshape(-1, 3)
     return points[np.isfinite(points).all(axis=1) & (points[:, 2] > 0)]

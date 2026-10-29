@@ -15,15 +15,50 @@ from mars_rover.sensors import CameraFrame, LidarScan, pose_from_telemetry
 class SingleControlTick:
     def __init__(self):
         self.done = False
+        self.wait_s = None
 
     def is_set(self):
         return self.done
 
-    def wait(self, _timeout):
+    def wait(self, timeout):
+        self.wait_s = timeout
         self.done = True
 
     def set(self):
         self.done = True
+
+
+@pytest.mark.parametrize("processing_s,expected_wait_s", [(0.01, 0.04), (0.07, 0.001), (0.3, 0.001)])
+def test_control_scheduler_includes_processing_time_in_its_period(monkeypatch, processing_s, expected_wait_s):
+    import mars_rover.nav_service as module
+
+    grid = TerrainMap(np.zeros((10, 10)), 1, PlanningLimits(robot_radius_m=0))
+    config = {
+        "schema_version": 1,
+        "manifest_sha256": None,
+        "lidar": {"sensor_id": 0, "to_body": np.eye(4).tolist()},
+        "depth": {"camera_id": 4, "to_body": np.eye(4).tolist(), "hfov_deg": 90},
+    }
+    service = NavigationService(grid, config, tcp_port=0, bridge_http_port=0, http_port=0,
+                                lidar_port=0, camera_port=0)
+    clock = SimpleNamespace(value=100.0)
+    monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: clock.value))
+    monkeypatch.setattr(service.bridge, "status", lambda: {"connected": False})
+
+    def work(*_args, **_kwargs):
+        clock.value += processing_s
+        return 0, 0
+
+    monkeypatch.setattr(service.session, "step", work)
+    ending = SingleControlTick()
+    service.ending = ending
+    try:
+        service._control()
+        assert ending.wait_s == pytest.approx(expected_wait_s)
+        assert service.session.goal is None
+        assert all(v == 0 for v in service.bridge.state.speeds.values())
+    finally:
+        service.close()
 
 
 @pytest.mark.parametrize("earliest,processing_delay", [("pose", 0.31), ("lidar", 0.21), ("depth", 0.21)])

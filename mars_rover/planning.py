@@ -209,9 +209,9 @@ class TerrainMap:
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError("Observed points must be Nx3 local-map metres")
         h, w = self.heights.shape
-        points = points[np.isfinite(points).all(axis=1)]
         points = points[
-            (points[:, 0] >= 0)
+            np.isfinite(points).all(axis=1)
+            & (points[:, 0] >= 0)
             & (points[:, 1] >= 0)
             & (points[:, 0] <= (w - 1) * self.resolution_m)
             & (points[:, 1] <= (h - 1) * self.resolution_m)

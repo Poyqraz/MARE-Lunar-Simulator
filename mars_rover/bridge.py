@@ -143,6 +143,51 @@ TR_TELEMETRY_NOTICE = (
 )
 
 
+class TelemetryTiming:
+    """Bounded per-connection counters for parsed telemetry capture timestamps."""
+
+    def __init__(self):
+        self.frames_parsed = 0
+        self.invalid_stamps = 0
+        self.duplicate_stamps = 0
+        self.backward_stamps = 0
+        self.capture_gaps_over_250ms = 0
+        self.max_capture_gap_s = None
+        self.max_parsed_interval_s = None
+        self._previous_stamp = self._previous_parsed_at = None
+
+    def observe(self, telemetry, parsed_at):
+        self.frames_parsed += 1
+        if self._previous_parsed_at is not None:
+            interval = max(0.0, parsed_at - self._previous_parsed_at)
+            self.max_parsed_interval_s = max(self.max_parsed_interval_s or 0.0, interval)
+        self._previous_parsed_at = parsed_at
+        raw = telemetry.get("t_ns")
+        text = str(raw).strip() if isinstance(raw, (str, int)) and not isinstance(raw, bool) else ""
+        if not text.isascii() or not text.isdigit() or len(text) > 19 or not 0 < int(text) <= 2**63 - 1:
+            self.invalid_stamps += 1
+            self._previous_stamp = None
+            return
+        stamp = int(text)
+        if self._previous_stamp is not None:
+            delta = stamp - self._previous_stamp
+            if delta == 0:
+                self.duplicate_stamps += 1
+            elif delta < 0:
+                self.backward_stamps += 1
+            else:
+                gap = delta / 1e9
+                self.max_capture_gap_s = max(self.max_capture_gap_s or 0.0, gap)
+                self.capture_gaps_over_250ms += int(delta > 250_000_000)
+        self._previous_stamp = stamp
+
+    def snapshot(self):
+        return {"frames_parsed": self.frames_parsed, "invalid_stamps": self.invalid_stamps,
+                "duplicate_stamps": self.duplicate_stamps, "backward_stamps": self.backward_stamps,
+                "capture_gaps_over_250ms": self.capture_gaps_over_250ms,
+                "max_capture_gap_s": self.max_capture_gap_s, "max_parsed_interval_s": self.max_parsed_interval_s}
+
+
 class BridgeServer:
     def __init__(self, calibration, *, tcp_port=3003, http_port=8765, timeout_s=0.3, on_external_command=None,
                  telemetry_format="json"):
@@ -152,6 +197,7 @@ class BridgeServer:
         self.state = CommandState(calibration, timeout_s)
         self.telemetry = None
         self.telemetry_received_at = None
+        self.telemetry_timing = TelemetryTiming()
         self.last_error = None
         self.connection_id = 0
         self.on_external_command = on_external_command
@@ -248,6 +294,7 @@ class BridgeServer:
                 "connected": self.state.connected,
                 "connection_id": self.connection_id,
                 "telemetry_format": self.telemetry_format,
+                "telemetry_timing": self.telemetry_timing.snapshot(),
                 "wire_command": self.state.sample(),
                 "wheel_command_m_s": self.state.speeds.copy(),
                 "telemetry_unreal": telemetry,
@@ -280,6 +327,7 @@ class BridgeServer:
                 with self.state.lock:
                     self.telemetry = None
                     self.telemetry_received_at = None
+                    self.telemetry_timing = TelemetryTiming()
                     self.last_error = None
                     self.connection_id += 1
                     self.state.connect()
@@ -301,6 +349,7 @@ class BridgeServer:
                                 with self.state.lock:
                                     self.telemetry = telemetry
                                     self.telemetry_received_at = time.monotonic()
+                                    self.telemetry_timing.observe(telemetry, self.telemetry_received_at)
                 except (OSError, ValueError, UnicodeError) as error:
                     self.last_error = str(error)
                 finally:

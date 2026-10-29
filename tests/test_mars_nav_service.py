@@ -61,6 +61,7 @@ def test_real_packet_sockets_reach_control_and_sensor_disconnect_stops_it():
             with urllib.request.urlopen(url + "/mission/snapshot", timeout=2) as response:
                 snapshot = json.load(response)
                 assert snapshot["control_timing"]["cycles"] > 0
+                assert snapshot["telemetry_timing"]["frames_parsed"] >= 1
                 assert snapshot["sensor_health"]["lidar"]["processing_s"] >= 0
                 assert snapshot["sensor_health"]["ground_truth"]["processing_s"] >= 0
             camera.shutdown(socket.SHUT_RDWR)

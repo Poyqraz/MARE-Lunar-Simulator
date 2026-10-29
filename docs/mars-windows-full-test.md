@@ -481,9 +481,10 @@ birkaç kez görüldü. İki plan kaydı ve harita revizyonundaki artış, gerç
 engel algılandığını veya rotanın engelden kaçtığını kanıtlamaz. Varış
 sonrasında sonraki kayıtlarda yaklaşık 5 cm ek yer değiştirme vardır; bunun
 nedeni bu kayıtla belirlenemez. Son anlık görüntü bağlantı kesildikten ve veri
-eskidikten sonra alınmıştır. Ayrı bir hareket anı teker komutu kaydı, ölçülmüş
-sensör mesafesi ve Unreal locale çıktısı paylaşılmadığından bunlar ve bağımsız
-duruş testi açık kalır.
+eskidikten sonra alınmıştır. Ayrı bir hareket anı teker komutu kaydı ve
+ölçülmüş sensör mesafesi paylaşılmadığından bunlar ve bağımsız duruş testi
+açık kalır. Sonraki editör oturumunda `UE_LOCALE: tr-TR` doğrulandı; bu değer
+önceki sürüş anında ayrıca kaydedilmemiştir.
 
 Zamanlama incelemesinde, uzun bir kontrol işleme çevriminin sonunda başlangıçta
 taze olan veriye dayanarak süresi geçmiş hareket komutunun üretilebildiği
@@ -508,6 +509,29 @@ değildir. Sayaçlar tek başına darboğazın yerini belirlemez. Hedef yokken s
 reddedilmiş komut görmek, canlı hareket korumasının test edildiği anlamına
 gelmez. Poz/sensör kalibrasyonu, uzun GPU testi, engel ve stop senaryoları,
 stereo ve tekrar edilebilir hareket ölçümleri hâlâ gereklidir.
+
+Sonraki hedefsiz UE çalıştırmasında `tr-TR` görüldü; iki snapshot taze poz,
+sıfır teker komutu ve LiDAR/depth gözlemleri içeriyordu. Son işlenen depth
+örnekleri 0.078 ve 0.093 s, LiDAR örnekleri 0.016 s sürdü. Snapshot'lar
+arasındaki 497 kontrol çevriminin 369'u 50 ms'yi aştı; oturum toplamındaki
+maksimum ölçülen çevrim 0.25 s idi. Olay kaydında toplam 16 poz boşluğu,
+bunların altısı iki snapshot arasında görüldü. `expired_decisions=0` hedefsiz
+koşuda hareket komutu korumasının sınandığını göstermez. `Start-Sleep 30`
+komutu ile iki pozun simülasyon zaman damgaları arasındaki yaklaşık 78.43 s
+aynı saat ölçümü değildir; terminalde komutların ne kadar aralıkla girildiği
+ve duvar saati uç noktaları ayrıca kaydedilmediğinden hız hesabı yapılmaz.
+
+Kontrol döngüsündeki eski sabit 50 ms bekleme, işlemeye ekleniyordu. Yeni
+planlama bekleme süresini işleme süresinden sonra kalan süreye ayarlar ve
+başka thread'ler için en az 1 ms bekler. Derinlik ışınlarında iki boyutlu
+indeks kopyası kaldırıldı ve gözlem noktalarına tek geçişte sınır/geçerlilik
+maskesi uygulandı; nokta seyreltilmez ve güvenlik eşikleri değişmez. Sentetik
+girdilerle 1050 karşılaştırmada önceki çıktı ve harita kararları aynıydı. Bu
+testler veya geliştirme makinesindeki hız, Windows'ta iyileşme garantisi
+değildir; yeni değişiklikler için hedefsiz native ölçüm tekrar gerekir.
+Yeni `telemetry_timing` sayaçları, köprünün çözdüğü ardışık telemetri zamanları
+ile görev gözlemcisi olaylarının karşılaştırılmasını sağlar; kaynağı tek
+başına teşhis etmez.
 
 ## 5. Otomatik native yükseklik ve collision testi
 

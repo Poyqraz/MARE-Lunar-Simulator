@@ -328,8 +328,11 @@ class NavigationService:
                 self.bridge.state.stop()
                 self.last_transport_error = str(error)
             finally:
-                self._record_control_timing(max(0.0, time.monotonic() - started), expired)
-            self.ending.wait(0.05)
+                duration = max(0.0, time.monotonic() - started)
+                self._record_control_timing(duration, expired)
+            # Keep the 50 ms target inclusive of work, with a short yield even
+            # after an overrun so the network/sensor threads can run.
+            self.ending.wait(max(0.001, 0.05 - duration))
         self.bridge.state.stop()
 
     def start(self):
