@@ -76,11 +76,11 @@ py -3.12 --version
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-mars-dev.txt
 .\.venv\Scripts\python.exe -m pytest tests -q
-.\.venv\Scripts\python.exe -m ruff check mars_rover tests Content/Python/mars_setup.py Content/Python/mars_scene.py Content/Python/mars_materials.py Content/Python/mars_collision.py Content/Python/mars_sensor_setup.py tools/unreal_mars_smoke.py tools/mars_fidelity_figure.py tools/mars_navigation_benchmark.py
+.\.venv\Scripts\python.exe -m ruff check mars_rover tests Content/Python/mars_setup.py Content/Python/mars_scene.py Content/Python/mars_materials.py Content/Python/mars_collision.py Content/Python/mars_sensor_setup.py tools/unreal_mars_smoke.py tools/mars_fidelity_figure.py tools/mars_navigation_benchmark.py tools/capture_rover_telemetry.py
 .\.venv\Scripts\python.exe tools/mars_navigation_benchmark.py --output generated/native-preflight.json
 ```
 
-Beklenen mevcut test sayısı **154** ve dört başarılı offline rotadır.
+Beklenen mevcut test sayısı **165** ve dört başarılı offline rotadır.
 `generated/native-preflight.json` varsa yeni çıktı adı seç. Venv'i aktive
 etmek veya PowerShell execution policy değiştirmek zorunlu değildir.
 **Unreal'ın gömülü Python'una pip/NumPy/rasterio/OpenCV kurulmaz.**
@@ -415,6 +415,41 @@ modellenmiştir: yeni korumalar öncesinde 4 test başarısızdı; sonrasında i
 14 test ve tam 160 Python testi geçti. Bunlar gerçek UE kabul testi değildir;
 gerçek UE ile yeniden deneme hâlâ gereklidir. Eski başarısız
 `JezeroFullTest01_Assets` klasörü ve kullanıcı çalışmaları silinmez.
+
+### 4.8. Rover telemetrisi ayrışmıyorsa ham TCP tanısı
+
+29 Ekim 2026'da kullanıcı `f4b8a44` ile rover'lı Jezero seviyesini başarıyla
+kaydetti. Başlangıç aktör konumu `(-12600,12600,633.47)` cm doğrulandı.
+Play logunda LiDAR GPU modu başladı, 3007'ye bağlandı; merkez kameradan 640×480
+ground-truth depth oluşturuldu ve stereo 3004'e bağlandı. Bu, gerçek paket
+doğruluğunun veya kesintisiz sensör sağlığının kabulü değildir.
+
+Köprü bir bağlantı gördü, ancak `Telemetry exceeded 64 KiB without a complete
+JSON object` sonrasında bağlantı kesildi; poz gelmedi, bütün teker komutları
+sıfırda kaldı. Blueprint logundaki örnek `"time": 0,033, "x": -12.600,019`
+geçerli JSON sayıları içermez ve yerel sayı biçimlendirmesi olası bir nedendir.
+Fakat Blueprint logu TCP baytları değildir; **hat üzerindeki veri henüz
+yakalanmamıştır** ve neden kesinleştirilmez. İngilizce yerel ayar da basamak
+gruplaması ekleyebileceğinden tek başına güvenli bir JSON çözümü sayılmaz.
+
+Köprü artık kapama ayracı gelmiş bozuk JSON nesnesini 64 KiB beklemeden hata
+olarak raporlar; tamamlanmamış/çok parçalı JSON, dizgilerdeki ayraçlar ve
+kaçışlar ayrı test edilir. Bu iyileştirme veriyi dönüştürmez ve neden
+doğrulanmadan yerel biçimlendirilmiş sayıları kabul etmez.
+
+Ham kanıt için önce Unreal'da Play'i, sonra navigasyon servisini durdurun.
+Güncel dalda repo kökünden çalıştırın:
+
+```powershell
+.\.venv\Scripts\python.exe tools/capture_rover_telemetry.py
+```
+
+`TCP 3003 hazir` yazınca 60 saniye içinde Unreal'da Play'e basın. Araç yalnız
+sıfır teker komutları gönderir, ilk en fazla 2048 baytı aynen Base64 olarak
+yazdırır ve bağlantıyı kapatır; ardından Play'i durdurun. Çıktıların
+`HAM_TCP_BOYUT` ve `HAM_TCP_BASE64` satırlarını saklayın. 3003 kullanımda
+ise diğer süreçleri rastgele kapatmayın; önce port hatasını inceleyin.
+Bu kısa kayıt uydu görüntüsü, sensör verimi veya gerçek sürüş kabulü değildir.
 
 ## 5. Otomatik native yükseklik ve collision testi
 

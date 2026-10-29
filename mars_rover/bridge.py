@@ -22,6 +22,32 @@ def _bad_constant(value):
     raise ValueError(f"Non-finite JSON value: {value}")
 
 
+def _has_complete_object(text):
+    """Detect a complete top-level object without mistaking quoted braces for framing."""
+    if not text.startswith("{"):
+        return False
+    depth = 0
+    quoted = False
+    escaped = False
+    for char in text:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return True
+    return False
+
+
 class JsonObjectStream:
     """Unreal sends concatenated JSON objects, sometimes without newlines."""
 
@@ -39,7 +65,9 @@ class JsonObjectStream:
                 return result
             try:
                 value, end = self.decoder.raw_decode(self.buffer)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as error:
+                if _has_complete_object(self.buffer):
+                    raise ValueError(f"Invalid telemetry JSON: {error.msg} at character {error.pos}") from error
                 if len(self.buffer) > 65536:
                     raise ValueError("Telemetry exceeded 64 KiB without a complete JSON object")
                 return result
