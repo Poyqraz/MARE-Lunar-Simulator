@@ -40,7 +40,7 @@ def run_validation(editor, *, mode="simulation", project_root=None, timeout_s=60
     if not report.is_file():
         raise RuntimeError(f"Unreal produced no acceptance report; inspect {log}")
     result = json.loads(report.read_text(encoding="utf-8"))
-    if (process.returncode != 0 or result.get("status") != "saved" or
+    if (process.returncode != 0 or result.get("status") != "saved" or result.get("error") is not None or
             result.get("heightmap_verified") is not True or result.get("collision_verified") is not True):
         raise RuntimeError(f"Unreal import/readback/collision failed; inspect {report} and {log}")
     return {"report_path": str(report), "log_path": str(log), "result": result}

@@ -5,10 +5,12 @@ bağlar. Küresel harita ölçülmüş Jezero DEM'idir; konum Unreal'ın simüla
 telemetrisidir. Bu bir SLAM veya NASA uçuş yazılımı uygulaması değildir.
 Kum, batma ve çekiş modeli bu aşamanın kapsamı dışındadır.
 
-Gerçek UE 5.7/GPU çalıştırması burada yapılmadı. Aşağıdaki akışın Python
-algoritmaları ve TCP protokolleri test edildi; motor/sensör/geometri kabulü
-kullanılacak Unreal kurulumunda tamamlanmalıdır. Kaynak araştırması ve
-entegrasyon kararları [yıldızlı depo incelemesindedir](mars-starred-review.md).
+Gerçek UE 5.7 çalıştırması geliştirme ortamında yapılmadı. Kullanıcının native
+QA04 ve QA03 testleri her iki statik arazi modunda geri okuma ve örneklenmiş
+collision sonucunu doğruladı. Aşağıdaki akışın Python algoritmaları ve TCP
+protokolleri test edildi; gerçek motor/sensör/rover kabulü hâlâ bekler. Kaynak
+araştırması ve entegrasyon kararları
+[yıldızlı depo incelemesindedir](mars-starred-review.md).
 
 ## Kurulum ve yeni seviye
 
@@ -69,6 +71,15 @@ Bu servis motor köprüsünü zaten içerir. **Önce servis, sonra Unreal Play:*
 python -m mars_rover.nav_service --sensors Saved/Mars/jezero-sensors.json
 ```
 
+Bu komut katı JSON telemetrisi bekler. Kullanıcının 29 Ekim 2026'daki TCP
+kaydında doğrulanan Türkçe sayılı eski Blueprint çıktısı için, yalnızca Unreal
+üreticisinin bu biçimi kullandığı simülasyon koşusunda komuta
+`--telemetry-format unreal-tr-v1` eklenebilir. Mod üretici yerel ayarını
+otomatik denetlemez; ayar değişirse bazı sayılar yanlış yorumlanabilir.
+Bu geçici uyumluluk katmanı ve ham kayıt için
+[Windows test rehberindeki §4.8'e](mars-windows-full-test.md#48-rover-telemetrisi-ayrışmıyorsa-ham-tcp-tanısı)
+bakın. Gerçek ve yerel ayardan bağımsız JSON üretimi ayrı geliştirme gerektirir.
+
 Tarayıcıda <http://127.0.0.1:8766> açın. Haritadan bir nokta seçip **Hedefe git**
 düğmesine basın. Kuzey yukarı, doğu sağdır; koordinatlar yerel metredir.
 Kırmızı katman, eğim/basamak/sınır ve rover engel payı nedeniyle kapalı alanı
@@ -110,12 +121,44 @@ ayna uygulanmaz. Kamera optik eksenleri sağ/aşağı/ileri; depth eksenel Z'dir
 ışının uzunluğu değildir. Roll/pitch/yaw ve gerçek sensör montajı birlikte
 kullanılır. Kalibrasyon sonrası kamera boyutu değişirse akış reddedilir.
 
-20 Hz kontrol döngüsü, poz yaşı 0.3 s veya sensörün varış/capture yaşı 0.4 s
+20 Hz hedefli kontrol döngüsü, poz yaşı 0.3 s veya sensörün varış/capture yaşı 0.4 s
 sınırını geçtiğinde durur. Her iki sensörden harita içinde en az 20 sonlu
 nokta gerekir. En fazla 8 m sensör noktaları kullanılır. Bozuk paket ve
 bağlantı kapanması sensör sağlığını geçersiz kılar. Bu sayısal eşikler ilk
 simülasyon deneyi içindir; gerçek rover başarısı ölçülmeden fiziksel sınır
 olarak değerlendirilmez.
+
+Yoğun sensör işlemesi sırasında poz veya sensör verisi eskirse, hesaplanan
+hareket komutu veya yeni varış kararı reddedilir (`waiting_for_fresh_data`). Bir komut
+zaten üretilmişse, kaynak verinin zaman sınırı köprüdeki örnekleme sırasında
+da uygulanır. Paket kilit beklerken geçen süre tazelikten düşülür; stereo
+çıktısının yaşı iki girişten eski olanın zamanından başlar. Bunlar Python
+tarafındaki korumalardır; ağ tamamen koparsa veya işlem kapanırsa bağımsız
+Unreal motor watchdog'unun yerini tutmaz.
+
+`/mission/snapshot` ve `/mission/export` içindeki `control_timing` alanı
+servis başlangıcından beri kontrol çevrimlerinin duvar saati sürelerini ve
+reddedilen gecikmiş kararların sayısını gösterir. `sensor_health` içindeki
+`processing_s`, **son işlenen** LiDAR veya derinlik gözleminin yerel işleme
+süresidir. Sayaçlar gecikmenin kaynağını tek başına kanıtlamaz; boşta ve
+görev sırasında ayrı ölçülmelidir. Hedef yoksa `expired_decisions=0` olması
+hareket komutu korumasının canlı koşuda sınandığı anlamına gelmez. Döngü, işleme
+süresi dahil yaklaşık 50 ms aralığı hedefler; 50 ms aşılırsa başka thread'lere
+fırsat vermek için en az 1 ms bekler. Gerçek zamanlama işletim sistemine ve
+yüke bağlıdır; 20 Hz garanti edilmez. Sensörün yerel alım zamanı paket
+çözüldüğünde kaydedilir; işletim sistemi veya ağ tamponundaki önceki bekleme
+ayrıca ölçülmez.
+
+`telemetry_timing`, aynı TCP bağlantısında köprü tarafından çözülen telemetri
+nesnelerinin sayısını ve ardışık geçerli `t_ns` değerleri arasındaki 250 ms'yi
+aşan simülasyon zamanı boşluklarını sayar. Eksik/geçersiz, tekrar eden veya
+geriye giden zamanlar ayrıca sayılır; geçersiz değer ardındaki aralık
+bilinmediğinden boşluk sayısı tek başına eksiksiz kanıt değildir. Sayaçlar her
+yeni rover bağlantısında sıfırlanır. Bunları `/mission/events` içindeki poz
+boşluklarıyla karşılaştırmak, boşluğun kaynağını araştırmaya yardımcı olur;
+kaynaktaki gönderimi, işletim sistemi tamponunu ve ağ aktarımını tek tek
+ayırmaz. `max_parsed_interval_s` paket çözümleri arasındaki duvar saati
+süresidir; simülasyon zamanı değildir.
 
 ## Planlama, engeller ve sınırlar
 
@@ -196,7 +239,7 @@ soketlerini kullanır; karşı uç test fixture'ıdır.
 | Geometri planlayıcı | Yapıldı; çukur, eğim, NaN, footprint ve çapraz geçiş TDD testleri |
 | Mevcut LiDAR/NAVF protokolü | Yapıldı; parçalı TCP, zaman ve tam poz dönüşümü testleri |
 | Hedef seçimi ve dur/yeniden planla | Yapıldı; HTTP/TCP ve kinematik testler |
-| UE'de seviye/sensör kalibrasyonu | Betik hazır; gerçek plugin derleme, 520 çarpışma sorgusu ve gerçek sensör düzlemi deneyi **bekliyor** |
+| UE'de seviye/sensör kalibrasyonu | Kullanıcı UE 5.7.4'te iki mod için 520 örneklenmiş çarpışma sorgusunu geçti; gerçek sensör düzlemi ve kalibrasyonu **bekliyor** |
 | UE'de rover görevi | Gerçek 10–20 m düşük hızlı rota, koordinat yönleri, hedefte durma, engel ekleme, sensör kesme ve yeniden Play testi **bekliyor** |
 | Teker ölçeğinde gerçek Mars mesh'i | Kaynak seçimi ve eşkayıt bekliyor; rover stereo ürünleri/Landform yolu araştırma belgesinde |
 | Kullanıcının CAD/kontrol yazılımı, zemin fiziği | Sonraki aşama; şimdiki geliştirmeye bağımlılık değil |
@@ -218,3 +261,54 @@ Uydu ve rover görünümü arasında geçiş, ortak görev izi, ekran üzerinden
 seçimi ve canlı parametre paneli için [yeni geliştirme planı](mars-dual-view-plan.md)
 hazırlandı. Bunlar planlanan ek özelliklerdir; mevcut 2B arayüzde uygulanmış
 oldukları iddia edilmez.
+
+## A1: Sürekli gözlem ve görev geçmişi
+
+Bu ek, temel PR'ın üzerine açılan `codex/mars-mission-history` dalındadır.
+Birleştirilmeden önce A1 API'lerini denemek için repo kökünde:
+
+```bash
+git fetch origin
+git switch codex/mars-mission-history
+```
+
+Ardından yukarıdaki sensör yapılandırması ve servis başlatma adımları kullanılır.
+
+Görev yokken, manuel sürüşte ve varıştan sonra poz izlenir. Tamamlanan görevin
+başlangıcı, ilk/aktif planı ve kaydı korunur. Yeni Play/saat sıfırlaması eski
+hedefi iptal eder. Nominal 5 Hz yol izi yalnız gözlenen pozlardan gelir;
+mesafe bütün kabul edilen örnekler arasındaki XY kirişleri toplamıdır.
+0.25 s'den uzun boşluklar mesafeye eklenmez. Bu bir SLAM veya gerçek motor
+odometresi değildir. Sıçrama denetimi `dt <= 0.25 s` için
+`mesafe > 0.25 m + (2 m/s)*dt` deney eşiğini kullanır; aynı zamanda değişen
+poz ve aynı zaman damgası da sıçrama sayılır. Bu eşik rover kalibrasyonu değildir.
+
+Yeni salt okunur localhost yolları:
+
+| Yol | İçerik |
+|---|---|
+| `/mission/snapshot` | Güncel poz, veri yaşı, görev kimliği/başlangıcı, ilk/aktif plan, kalan mesafe, hız tahmini ve komutlar |
+| `/mission/trail?after_seq=0` | Oturumun nominal 5 Hz gözlenen izi; `mission_id=...` ile saklanan belirli görev seçilebilir |
+| `/mission/events?after_seq=0` | Görev, plan, veri boşluğu ve oturum olayları |
+| `/mission/export` | Saklanan görevler/izler/planlar/olaylar ve bellek sınırları; JSON dışa aktarımı |
+
+Bu yolların okunması hedef veya motor komutu yaratmaz. Zaman damgaları yeni
+API'de string nanosaniyedir. `pose_fresh` alım yaşını, `capture_clock_advancing`
+simülasyon zamanının ilerleyişini belirtir. Pause veya bayat veride eski hız
+yeni ölçüm gibi gösterilmez. Konum eskiyse `live_pose` son bilinen poz olabilir;
+istemci mutlaka tazelik alanlarını kontrol etmelidir.
+
+Varsayılan sınırlar: oturum/görev başına 4096 iz noktası, toplam 8 görev,
+256 olay ve görev başına 16 plan. İlk plan ayrıca korunur. Silinen kayıt
+sayıları ve cursor verisi eksikse `truncated=true` raporlanır; ilk kalan
+parça kesintiyle başlar. Bu kayıt **bellektedir**; işlem kapanınca kaybolur.
+İşlem sürerken örneğin PowerShell ile açıkça dışa aktarılabilir:
+
+```powershell
+Invoke-WebRequest http://127.0.0.1:8766/mission/export -OutFile Saved/Mars/mission-history.json
+```
+
+`Saved/Mars` klasörü bulunmalıdır. Otomatik JSONL/SQLite günlüğü, kayıttan
+kurtarma ve native kamera/HUD sonraki teslimlerdir. Eski 2B arayüz bu aşamada
+yeni bütün katmanları çizmez; API hazır olması kamera özelliği kabulü değildir.
+TDD kanıtları ve kalan kontroller [yeniden inceleme belgesindedir](mars-dual-view-review.md).

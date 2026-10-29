@@ -10,6 +10,7 @@ import codecs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
+import re
 import select
 import socket
 import threading
@@ -20,6 +21,32 @@ from .drive import Calibration, CommandState, number
 
 def _bad_constant(value):
     raise ValueError(f"Non-finite JSON value: {value}")
+
+
+def _complete_object_end(text):
+    """Find a complete top-level object without mistaking quoted braces for framing."""
+    if not text.startswith("{"):
+        return None
+    depth = 0
+    quoted = False
+    escaped = False
+    for index, char in enumerate(text):
+        if quoted:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                quoted = False
+        elif char == '"':
+            quoted = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+    return None
 
 
 class JsonObjectStream:
@@ -39,7 +66,9 @@ class JsonObjectStream:
                 return result
             try:
                 value, end = self.decoder.raw_decode(self.buffer)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as error:
+                if _complete_object_end(self.buffer) is not None:
+                    raise ValueError(f"Invalid telemetry JSON: {error.msg} at character {error.pos}") from error
                 if len(self.buffer) > 65536:
                     raise ValueError("Telemetry exceeded 64 KiB without a complete JSON object")
                 return result
@@ -51,11 +80,124 @@ class JsonObjectStream:
             result.append(value)
 
 
+_ROVER_NUMBER_FIELDS = ("time", "x", "y", "z", "roll", "pitch", "yaw", "vx", "vy", "vz", "wx", "wy", "wz")
+# Explicit tr-TR wire convention: periods group exactly three digits; comma
+# separates decimal digits. It is NOT a permissive replacement for JSON.
+_TR_NUMBER = r"-?(?:[1-9][0-9]{0,2}(?:\.[0-9]{3}){1,6}|0|[1-9][0-9]{0,18})(?:,[0-9]{1,9})?"
+_TR_FIELDS = [rf'"{key}"\s*:\s*(?P<{key}>{_TR_NUMBER})' for key in _ROVER_NUMBER_FIELDS]
+_TR_FRAME = re.compile(r"\{\s*" + r"\s*,\s*".join(_TR_FIELDS) +
+                       r'\s*,\s*"t_ns"\s*:\s*"(?P<t_ns>[0-9]{1,19})"\s*\}')
+
+
+class TurkishRoverTelemetryStream:
+    """Opt-in decoder for the observed UE tr-TR rover format, not general JSON.
+
+    Only the exact ordered rover schema is accepted. Numeric punctuation is
+    interpreted using tr-TR, and ambiguous dot-only frames are rejected.
+    Changing the producer's locale requires stopping and selecting a new format.
+    """
+
+    def __init__(self):
+        self.buffer = ""
+
+    def feed(self, chunk):
+        try:
+            self.buffer += chunk.decode("ascii")
+        except UnicodeDecodeError as error:
+            raise ValueError("unreal-tr-v1 telemetry must be ASCII") from error
+        result = []
+        while True:
+            self.buffer = self.buffer.lstrip(" \r\n\t\x00")
+            if not self.buffer:
+                return result
+            if not self.buffer.startswith("{"):
+                raise ValueError("unreal-tr-v1 telemetry must start with an object")
+            end = _complete_object_end(self.buffer)
+            if end is None:
+                if len(self.buffer) > 65536:
+                    raise ValueError("Telemetry exceeded 64 KiB without a complete object")
+                return result
+            if end > 65536:
+                raise ValueError("Telemetry object exceeded 64 KiB")
+            match = _TR_FRAME.fullmatch(self.buffer[:end])
+            if not match:
+                raise ValueError("Invalid unreal-tr-v1 telemetry schema or numeric format")
+            tokens = {key: match.group(key) for key in _ROVER_NUMBER_FIELDS}
+            if any("." in value for value in tokens.values()) and not any("," in value for value in tokens.values()):
+                raise ValueError("ambiguous dot-only telemetry; check producer locale")
+            stamp = match.group("t_ns")
+            if not 0 < int(stamp) <= 2**63 - 1:
+                raise ValueError("Invalid unreal-tr-v1 telemetry timestamp")
+            values = {key: float(value.replace(".", "").replace(",", ".")) for key, value in tokens.items()}
+            if any(not math.isfinite(value) for value in values.values()):
+                raise ValueError("Non-finite unreal-tr-v1 telemetry value")
+            values["t_ns"] = stamp
+            self.buffer = self.buffer[end:]
+            result.append(values)
+
+
+TELEMETRY_FORMATS = {"json": JsonObjectStream, "unreal-tr-v1": TurkishRoverTelemetryStream}
+TR_TELEMETRY_NOTICE = (
+    "unreal-tr-v1 assumes a Turkish-formatted Unreal producer. "
+    "Locale changes are not automatically detectable; use for simulation only."
+)
+
+
+class TelemetryTiming:
+    """Bounded per-connection counters for parsed telemetry capture timestamps."""
+
+    def __init__(self):
+        self.frames_parsed = 0
+        self.invalid_stamps = 0
+        self.duplicate_stamps = 0
+        self.backward_stamps = 0
+        self.capture_gaps_over_250ms = 0
+        self.max_capture_gap_s = None
+        self.max_parsed_interval_s = None
+        self._previous_stamp = self._previous_parsed_at = None
+
+    def observe(self, telemetry, parsed_at):
+        self.frames_parsed += 1
+        if self._previous_parsed_at is not None:
+            interval = max(0.0, parsed_at - self._previous_parsed_at)
+            self.max_parsed_interval_s = max(self.max_parsed_interval_s or 0.0, interval)
+        self._previous_parsed_at = parsed_at
+        raw = telemetry.get("t_ns")
+        text = str(raw).strip() if isinstance(raw, (str, int)) and not isinstance(raw, bool) else ""
+        if not text.isascii() or not text.isdigit() or len(text) > 19 or not 0 < int(text) <= 2**63 - 1:
+            self.invalid_stamps += 1
+            self._previous_stamp = None
+            return
+        stamp = int(text)
+        if self._previous_stamp is not None:
+            delta = stamp - self._previous_stamp
+            if delta == 0:
+                self.duplicate_stamps += 1
+            elif delta < 0:
+                self.backward_stamps += 1
+            else:
+                gap = delta / 1e9
+                self.max_capture_gap_s = max(self.max_capture_gap_s or 0.0, gap)
+                self.capture_gaps_over_250ms += int(delta > 250_000_000)
+        self._previous_stamp = stamp
+
+    def snapshot(self):
+        return {"frames_parsed": self.frames_parsed, "invalid_stamps": self.invalid_stamps,
+                "duplicate_stamps": self.duplicate_stamps, "backward_stamps": self.backward_stamps,
+                "capture_gaps_over_250ms": self.capture_gaps_over_250ms,
+                "max_capture_gap_s": self.max_capture_gap_s, "max_parsed_interval_s": self.max_parsed_interval_s}
+
+
 class BridgeServer:
-    def __init__(self, calibration, *, tcp_port=3003, http_port=8765, timeout_s=0.3, on_external_command=None):
+    def __init__(self, calibration, *, tcp_port=3003, http_port=8765, timeout_s=0.3, on_external_command=None,
+                 telemetry_format="json"):
+        if telemetry_format not in TELEMETRY_FORMATS:
+            raise ValueError("Unknown telemetry format")
+        self.telemetry_format = telemetry_format
         self.state = CommandState(calibration, timeout_s)
         self.telemetry = None
         self.telemetry_received_at = None
+        self.telemetry_timing = TelemetryTiming()
         self.last_error = None
         self.connection_id = 0
         self.on_external_command = on_external_command
@@ -151,7 +293,10 @@ class BridgeServer:
             return {
                 "connected": self.state.connected,
                 "connection_id": self.connection_id,
+                "telemetry_format": self.telemetry_format,
+                "telemetry_timing": self.telemetry_timing.snapshot(),
                 "wire_command": self.state.sample(),
+                "wheel_command_m_s": self.state.speeds.copy(),
                 "telemetry_unreal": telemetry,
                 "pose_local_m": pose,
                 "telemetry_age_s": None
@@ -178,10 +323,11 @@ class BridgeServer:
                 continue
             with peer:
                 peer.settimeout(0.2)
-                parser = JsonObjectStream()
+                parser = TELEMETRY_FORMATS[self.telemetry_format]()
                 with self.state.lock:
                     self.telemetry = None
                     self.telemetry_received_at = None
+                    self.telemetry_timing = TelemetryTiming()
                     self.last_error = None
                     self.connection_id += 1
                     self.state.connect()
@@ -203,6 +349,7 @@ class BridgeServer:
                                 with self.state.lock:
                                     self.telemetry = telemetry
                                     self.telemetry_received_at = time.monotonic()
+                                    self.telemetry_timing.observe(telemetry, self.telemetry_received_at)
                 except (OSError, ValueError, UnicodeError) as error:
                     self.last_error = str(error)
                 finally:
@@ -241,10 +388,16 @@ def main():
     parser.add_argument("--track", type=float, default=0.89, help="effective track in metres; calibrate for your rover")
     parser.add_argument("--wheel-scale", type=float, default=1.82, help="MARE Blueprint wheel input per m/s")
     parser.add_argument("--max-speed", type=float, default=0.5, help="maximum tyre speed in m/s")
+    parser.add_argument("--telemetry-format", choices=TELEMETRY_FORMATS, default="json",
+                        help="wire format; unreal-tr-v1 is explicit compatibility for a tr-TR UE producer")
     args = parser.parse_args()
     calibration = Calibration(args.track, args.wheel_scale, args.max_speed)
-    with BridgeServer(calibration, tcp_port=args.tcp_port, http_port=args.http_port, timeout_s=args.timeout) as bridge:
+    with BridgeServer(calibration, tcp_port=args.tcp_port, http_port=args.http_port, timeout_s=args.timeout,
+                      telemetry_format=args.telemetry_format) as bridge:
         print(f"Waiting for Unreal on 127.0.0.1:{bridge.tcp_port}; API http://127.0.0.1:{bridge.http_port}", flush=True)
+        print(f"Telemetry format: {args.telemetry_format}", flush=True)
+        if args.telemetry_format == "unreal-tr-v1":
+            print(TR_TELEMETRY_NOTICE, flush=True)
         print("Calibration is for upstream Leo_Raph; remeasure for your CAD rover/Mars gravity.", flush=True)
         try:
             while not bridge.ending.wait(0.5):

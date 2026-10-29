@@ -1,0 +1,41 @@
+{
+  "level": "/Game/Mars/JezeroQA04",
+  "status": "saved",
+  "error": null,
+  "mode": "simulation",
+  "heightmap_verified": true,
+  "collision_verified": true,
+  "gravity_m_s2": 3.71,
+  "extent_m": [
+    252.0,
+    252.0
+  ],
+  "editor_script_executed": true,
+  "gpu_render_verified": false,
+  "visual_qa_passed": false,
+  "photometry_validated": false,
+  "wheel_scale_obstacles_validated": false,
+  "atmosphere_scenario": {
+    "mie_extinction_per_km": 0.04093751038760929,
+    "mie_scattering_per_km": 0.03807188466047664,
+    "mie_absorption_per_km": 0.002865625727132648,
+    "sun_angular_diameter_deg": 0.34972306660388863,
+    "dust_optical_depth_880nm": 0.45,
+    "dust_single_scattering_albedo": 0.93,
+    "photometry_validated": false,
+    "model": "Grey RGB approximation to an 880 nm scenario opacity; no measured wavelength conversion or phase function"
+  },
+  "manifest_sha256": "aea08f2fbc305462a0b9c59f2566197fa33d08da3312cedb4c921e5e59230f88",
+  "navigation_sensor_config": null,
+  "collision": {
+    "verified": true,
+    "probe_point_count": 260,
+    "trace_count": 520,
+    "simple_and_complex": true,
+    "max_abs_position_error_m": 8.445705866222397e-05,
+    "numerical_tolerance_m": 0.002,
+    "all_triangles_verified": false,
+    "wheel_contact_physics_verified": false,
+    "coverage": "interior posts, representative seams, height extrema, largest adjacent height step and edge midpoints"
+  }
+}

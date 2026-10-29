@@ -12,6 +12,9 @@ import struct
 
 import numpy as np
 
+# LiDAR stores epoch seconds as a double; allow at most this rounding error
+# when comparing it with integer-nanosecond camera and pose timestamps.
+CAPTURE_CLOCK_TOLERANCE_NS = 1024
 LIDAR_HEADER = struct.Struct("<4sBBHQdffIIII")
 NAV_HEADER = struct.Struct("<4sBBBBHHQI")
 POINT_DTYPE = np.dtype(
@@ -129,7 +132,8 @@ def depth_points(depth_m, *, hfov_deg, stride=1):
     h, w = depth.shape
     fx = w / (2 * math.tan(math.radians(hfov_deg) / 2))
     # Pixel centres are u+0.5,v+0.5 in the edge-coordinate image convention.
-    rows, cols = np.mgrid[0:h:stride, 0:w:stride]
+    rows = np.arange(0, h, stride)[:, None]
+    cols = np.arange(0, w, stride)[None, :]
     z = depth[::stride, ::stride]
     points = np.stack(((cols - (w - 1) / 2) * z / fx, (rows - (h - 1) / 2) * z / fx, z), axis=-1).reshape(-1, 3)
     return points[np.isfinite(points).all(axis=1) & (points[:, 2] > 0)]
@@ -207,7 +211,7 @@ class PoseHistory:
 
     def at(self, stamp_ns):
         for pose in self.samples:
-            if abs(pose.stamp_ns - stamp_ns) <= 1024:  # f64 LIDR epoch precision
+            if abs(pose.stamp_ns - stamp_ns) <= CAPTURE_CLOCK_TOLERANCE_NS:
                 return Pose(stamp_ns, pose.matrix.copy())
         for a, b in zip(self.samples, list(self.samples)[1:]):
             if a.stamp_ns < stamp_ns < b.stamp_ns:

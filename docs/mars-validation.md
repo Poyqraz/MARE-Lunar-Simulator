@@ -29,7 +29,7 @@ and absolute report paths when launching from a relative project folder.
 
 ```text
 python -m pytest tests -q
-112 passed
+122 passed
 python -m ruff check mars_rover tests Content/Python/mars_*.py tools/unreal_mars_smoke.py tools/mars_fidelity_figure.py tools/mars_navigation_benchmark.py
 All checks passed!
 ```
@@ -134,6 +134,23 @@ false in exported config and offline reports. Partial missing/occluded returns
 do not certify a fully observed driving corridor, and the planner still relies
 on the known DEM prior. No claim of complete negative-obstacle detection or
 wheel-scale fidelity is made.
+
+## Reviewed mission-history increment (A1)
+
+The dual-view plan was rechecked against its recorded PR head. Its dependency
+order, memory versus durable storage, coordinate-frame naming and sampled
+distance semantics were clarified in [the follow-up review](mars-dual-view-review.md).
+The follow-up branch implements continuous observation and bounded mission
+history, not the native camera extension.
+
+Ten additional tests cover idle/terminal observation, frozen finished records,
+original-plan retention across replanning, Play/clock reset, pose gaps/teleports,
+paused/stale speed, canceled queued goals without invented endpoints, bounded
+archives/cursors, detached exports and real HTTP read-only/slow-reply behavior.
+The initial missing-feature and lock failures were observed before implementation;
+three further archive/cursor defects were reproduced and corrected. The complete
+suite now passes 122 tests. The four-route benchmark and Ruff checks also pass.
+No native Unreal camera, GPU, packaged-app or click-to-goal acceptance is claimed.
 
 New TDD coverage first failed for absent full-grid fidelity/collision tools,
 unvalidated dust scenario parameters, source XML byte preservation, and the

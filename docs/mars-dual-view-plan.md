@@ -1,8 +1,9 @@
 # Uydu–rover görev görünümü: inceleme ve geliştirme planı
 
-**Tarih:** 28 Ekim 2026, Türkiye. **Durum:** tasarım ve geliştirme planı;
-aşağıda önerilen yeni kamera, ekran seçimi ve görev kaydı henüz uygulanmadı.
-Bu belge mevcut çalışan Python temelini yeni özellikmiş gibi sunmaz.
+**Tarih:** 28 Ekim 2026, Türkiye. **Durum:** kamera ve ekran seçimi tasarımda;
+A1'in sürekli gözlem ve sınırlı bellek içi görev kaydı uygulandı. Otomatik disk
+kaydı ve native kamera geçişi henüz uygulanmadı. Yeniden inceleme, kanıtlar ve
+teslim sınırı [plan review belgesindedir](mars-dual-view-review.md).
 
 İncelenen [PR #1](https://github.com/Poyqraz/MARE-Lunar-Simulator/pull/1):
 `b3c27ccb8baca3c72ff039b77f0c65774e856210`, içerik ağacı
@@ -101,14 +102,16 @@ Mevcut ROS'suz kontrol korunur; ROS entegrasyonu bu özellik için önkoşul de�
 
 ## 4. Ortak görev kaydı ve telemetri
 
-Önerilen `MissionSession` sunucudaki tek görev kaydıdır. Görünümler bu kaydın
+`NavigationSession` içindeki `MissionHistory` sunucudaki tek görev kaydıdır. Görünümler bu kaydın
 istemcileri olur; kendi rota/hedef kopyalarını kontrol otoritesine dönüştürmez.
-İzleme her yeni geçerli telemetride çalışır; hareket kararı ayrı 20 Hz döngüdedir.
+İzleme aktif hedef olmasa da çalışır. Köprüden her kontrol çevriminde alınan
+son geçerli poz işlenir; ara paketlerin tümünün kaydı garanti edilmez.
+Hareket kararı mevcut 20 Hz döngüsünde ayrı bir adımdır.
 
 | Alan | Anlam / üretim |
 |---|---|
 | `session_id`, `mission_id`, `goal_revision` | Play oturumu, görev ve onaylanmış hedef sürümü; yeni kamera modu bunları değiştirmez |
-| `terrain_manifest_sha256`, `frame_id` | Kullanılan arazi ve yerel koordinat tanımı; eski haritalı istek reddedilir |
+| `terrain_manifest_sha256`, `coordinate_frame_id` | Arazi ve yerel koordinat tanımı; sensör kare kimliğinden farklıdır; zengin hedef API'si gelince eski haritalı istek reddedilecek |
 | `start_pose`, `goal`, `initial_plan` | Görevin ilk başlangıcı, onaylanmış hedefi ve başlangıç planı |
 | `active_plan`, `plan_revision`, `progress_index` | Güncel plan ve izleme ilerlemesi; yeniden planlanınca yeni sürüm |
 | `actual_trail` | Yalnız gerçek geçerli telemetri pozları; kamera hareketinden veya plan noktalarından üretilmez |
@@ -129,10 +132,16 @@ sıralama değerleri ayrı sayıdır. Simülasyon zamanı ve panelin duvar saati
 Geri giden saat, yeni Play veya teleport izde kesinti yaratır; iki uzak nokta
 kesintisiz sürülmüş gibi birleştirilmez.
 
-İz 5 Hz üst sınırla ve mesafe/yön eşiğiyle örneklenebilir; bu değerler deney
-ayarlarıdır. Bellek ve çizim sınırları tanımlanır; uzun oturumlarda parçalı
-JSONL/SQLite kayıt ayrı yazıcıyla yapılır. Kontrol döngüsü diski beklemez.
-Özetlenmiş çizim gerçek kayıt yerine geçmez. Durdurulan/bitirilen görevin izi
+İz nominal 5 Hz örneklenir; görevin ilk/son gözlenen noktası ayrıca korunur.
+Mesafe, kabul edilmiş poz örnekleri arasındaki XY kirişlerinin toplamıdır;
+kesintisiz gerçek yol uzunluğu veya gerçek motor odometresi değildir. 0.25 s'den
+uzun veri boşluğunun mesafesi eklenmez, kayıt eksik olarak işaretlenir.
+İlk başlangıç, hedef kabulünden sonraki ilk yeni geçerli gözlenen pozdur.
+Bu poz gelmeden iptal edilen göreve eski konumdan başlangıç/bitiş uydurulmaz.
+Bellek sınırları ve kayıptan etkilenen cursor'lar açıkça raporlanır.
+JSON dışa aktarımı uygulanmıştır; uzun oturumlarda otomatik JSONL/SQLite
+günlüğü ayrı teslimdir. Kontrol döngüsü diski beklemeyecek.
+Durdurulan/bitirilen görevin izi
 arşivlenir; aktif motor hedefinin silinmesi geçmişi silmez.
 
 ## 5. Unreal kamera ve görüntü mimarisi
@@ -142,8 +151,8 @@ görsel kamera rig'i, giriş/seçim ve HUD katmanını içerir. Küçük bağım
 eklenti, mevcut Blueprint rover'ının fizik grafiğini değiştirmeden kurulabilir.
 Önce PIE, ardından paketlenmiş uygulama kabul edilir. Şu an eklenti yoktur.
 
-`PlayerController` rover'ı sürmeye devam eder; kamera için başka pawn possess
-edilmez. Mevcut `SetViewTargetWithBlend` yaklaşımı [S8] ve kamera yerleştirme
+Rover'ın mevcut possession ilişkisi korunur; motor otoritesi Python köprüsüdür.
+Kamera için başka pawn possess edilmez. Mevcut `SetViewTargetWithBlend` yaklaşımı [S8] ve kamera yerleştirme
 mantığı referans alınır. Yeni rig ana oyun thread'inde kamerayı yönetir;
 HTTP yanıtları asenkron alınır. Kameralar rover'ın fizik bileşenleri dışında
 yaşar; kamera geçişinde constraint, kütle, teker veya sensör montajına dokunulmaz.
@@ -247,14 +256,16 @@ Adaptif davranışların kapsamı:
 
 İlk sürümde Python localhost servisi görev ve kontrol kaynağıdır; Unreal rig'i
 görüntü ve native ekran seçiminin kaynağıdır. Web paneli aynı API'yi kullanır.
-Mevcut portlar ve motor/sensör bağlantıları korunur. Yeni yollar aşağıdaki
-**önerilerdir; bugün çalışan endpoint listesi değildir**.
+Mevcut portlar ve motor/sensör bağlantıları korunur. A1'de `GET /mission/snapshot`,
+`/mission/trail`, `/mission/events` ve `/mission/export` uygulanmıştır.
+Aşağıdaki diğer yollar **henüz öneridir**.
 
 | Önerilen yol | Amaç |
 |---|---|
 | `GET /mission/snapshot` | Tutarlı küçük görev/poz/parametre/plan-sürümü özeti |
 | `GET /mission/trail?after_seq=...` | Son alınandan sonraki gerçek iz parçaları ve kesinti işaretleri |
 | `GET /mission/events?after_seq=...` | Başlat, durdur, varış, engel, yeniden planla ve bağlantı olayları |
+| `GET /mission/export` | Sınırlı bellek kaydının JSON kopyası; otomatik kalıcı günlük değildir |
 | `POST /mission/goals/preview` | Harita ve oturumla ilişkili, görevi değiştirmeyen hedef önizlemesi |
 | `POST /mission/goals` | İstek kimliği ve sürüm kontrolüyle onaylı hedef değişimi |
 | `GET /view/state`, `POST /view/request` | İstenen/uygulanmış görünüm ve tek viewport sahibinin komutları |
@@ -313,6 +324,11 @@ kabulü beklerken aşağıdaki geliştirmeler ayrı feature dalında küçük PR
 bölünmeli. Temel PR henüz birleşmediyse ilk yeni PR onun dalını base alabilir;
 bağımlılık açıkça yazılır. Bu planın eklenmesi işlevsel özelliklerin teslimi değildir.
 
+A0 native kabulü ile saf Python A1 birbirini beklemek zorunda değildir. A1'in
+CI testleri bağımsız geliştirilebilir; A2/A3/A6'nın çalışıyor kabulü gerçek
+Unreal kurulumu gerektirir. A1 bağımlı feature dalında uygulanmıştır; kamera
+paketi ve otomatik disk günlüğü bu teslimin parçası değildir.
+
 | Aşama | Önerilen dosya/alan | Teslim ve geçiş ölçütü |
 |---|---|---|
 | A0 — temel kabul | Mevcut `unreal_check`, `mars_setup`, sensör düzlem deneyi | UE 5.7 plugin derlemesi, height readback, 520 collision sorgusu ve gerçek sensör montaj/zaman testi; native sürüş altyapısı bozuksa kamera özelliğine başarı etiketi verilmez |
@@ -324,7 +340,8 @@ bağımlılık açıkça yazılır. Bu planın eklenmesi işlevsel özelliklerin
 | A6 — uçtan uca kabul | Yeni native kabul senaryosu + Windows/Linux Python CI | Aynı görevi tamamlayarak tekrarlı geçiş, engelde yeniden planlama, durdurma, yeniden Play ve uzun oturum testleri |
 | Sonraki genişleme | Cesium/global katman; Pixel Streaming; web görüntüsünden hedef | Düşey/yatay referans ve video/girdi koordinatları ayrıca kabul edilir; V1'in zorunlu bağımlılığı değildir |
 
-Yeni dosya adları mimari öneridir; bu commit'te mevcut değiller. Her iş
+`mars_rover/mission.py` artık uygulanmıştır; yeni kamera/picking dosyalarının
+adları mimari öneri olarak kalır. Her iş
 paketinde veri sözleşmesi ve başarısızlık testi önce yazılır, en küçük çalışan
 uygulama eklenir, sonra mevcut testlerle regresyon kontrolü yapılır. Bilinmeyen
 native derleme/GPU süresine dayanarak kesin takvim taahhüdü verilmez.

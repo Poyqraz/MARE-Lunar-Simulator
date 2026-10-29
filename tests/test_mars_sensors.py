@@ -52,6 +52,12 @@ def test_depth_is_planar_cm_not_ray_range_and_invalid_pixels_stay_unknown():
     assert np.linalg.norm(points[0]) > 2
 
 
+def test_depth_points_keep_pixel_geometry_and_invalid_returns_with_stride():
+    depth = np.array([[1.0, np.nan, 2.0], [0, 1, np.inf], [np.nan, -1, 4.0]])
+    points = sensors().depth_points(depth, hfov_deg=90, stride=2)
+    np.testing.assert_allclose(points, [[-2 / 3, -2 / 3, 1], [4 / 3, -4 / 3, 2], [8 / 3, 8 / 3, 4]])
+
+
 def test_bad_header_or_oversize_payload_cannot_allocate_arbitrary_memory():
     s = sensors()
     packet = bytearray(lidar_packet([[1, 2, 3]]))

@@ -5,13 +5,24 @@ separate gate from terrain planning. Ground-truth depth is labelled explicitly.
 """
 
 import math
+import copy
 import threading
 import time
 
 import numpy as np
 
 from .planning import NoRoute
-from .sensors import PoseHistory, depth_points, pose_from_telemetry, transform_matrix, transform_points
+from .mission import MissionHistory
+from .sensors import (
+    CAPTURE_CLOCK_TOLERANCE_NS,
+    PoseHistory,
+    depth_points,
+    pose_from_telemetry,
+    transform_matrix,
+    transform_points,
+)
+
+LATE_DATA_ERROR = "Pose or sensor data expired during control processing"
 
 
 class RouteFollower:
@@ -116,6 +127,13 @@ class NavigationSession:
         self.started_at = None
         self._last_motion = None
         self._motion_xy = None
+        self.mission = MissionHistory(grid.manifest_sha256)
+        self.connected = False
+        self.observer_error = None
+        self.sensor_observation_error = None
+        self.sensor_wait_details = {}
+        self._pose_received_at = self._unique_pose_at = None
+        self._late_decision = False
 
     def set_goal(self, goal):
         with self.lock:
@@ -123,22 +141,29 @@ class NavigationSession:
             row, col = self.grid.cell(goal)
             if self.grid.blocked[row, col]:
                 raise NoRoute("Requested goal is blocked; it was not silently moved")
+            self.mission.begin(goal)
             self.goal, self.follower = tuple(map(float, goal)), None
             self.state, self.error = "waiting_for_sensors", None
+            self.sensor_wait_details = {}
             self.started_at, self._last_motion, self._motion_xy = None, None, None
+            self.replans, self.plan_revision = 0, -1
 
     def stop(self):
         with self.lock:
+            self.mission.finish("stopped")
             self.goal, self.follower = None, None
             self.state = "idle"
+            self.sensor_wait_details = {}
 
-    def _reset_link(self):
+    def _reset_link(self, reason="new_connection"):
+        self.mission.new_session(reason)
         self.stop()
         self.history = PoseHistory()
         self.latest.clear()
         self.used.clear()
         self.health.clear()
         self.pose = None
+        self._pose_received_at = self._unique_pose_at = None
         self.state = "new_session_requires_goal"
 
     def feed_lidar(self, scan, *, now=None):
@@ -170,7 +195,8 @@ class NavigationSession:
                 self._feed(key, frame, now)
                 with self.lock:
                     if "left" in self.latest and "right" in self.latest:
-                        left, right = self.latest["left"][0], self.latest["right"][0]
+                        left, left_received = self.latest["left"]
+                        right, right_received = self.latest["right"]
                         if (
                             left.frame_id == right.frame_id
                             and left.stamp_ns == right.stamp_ns
@@ -178,14 +204,23 @@ class NavigationSession:
                         ):
                             depth = stereo_pair_depth(left, right, pair)
                             self.used["stereo_pair"] = left.frame_id, left.stamp_ns
-                            self._feed("stereo", depth, now)
+                            # A stereo result cannot be fresher than its older
+                            # input, including time spent computing disparity.
+                            self._feed("stereo", depth, min(left_received, right_received))
 
     def _feed(self, key, value, now):
+        received = time.monotonic() if now is None else now
         with self.lock:
             old = self.latest.get(key)
             if old and value.stamp_ns < old[0].stamp_ns:
                 return
-            self.latest[key] = value, time.monotonic() if now is None else now
+            self.latest[key] = value, received
+
+    def _capture_too_old(self, stamp_ns):
+        # Sensor and pose clocks are represented at different precisions. This
+        # allowance is at most 1.024 microseconds, not a new latency budget;
+        # independently require fresh arrival and pose times as before.
+        return self.pose.stamp_ns - stamp_ns > self.timeout * 1e9 + CAPTURE_CLOCK_TOLERANCE_NS
 
     def _consume(self):
         depth_key = self.depth_source
@@ -196,11 +231,13 @@ class NavigationSession:
             signature = frame.frame_id, frame.stamp_ns
             if self.used.get(key) == signature:
                 continue
+            processing_started = time.monotonic()
             # Wait for a bracketing pose, rather than using the rover's current
             # pose on an asynchronously returned scan/image.
             pose = self.history.at(frame.stamp_ns)
-            if self.pose.stamp_ns - frame.stamp_ns > self.timeout * 1e9:
-                self.health[key] = {"received_at": received, "valid_inside_points": 0, "capture_stale": True}
+            if self._capture_too_old(frame.stamp_ns):
+                self.health[key] = {"received_at": received, "valid_inside_points": 0,
+                                    "capture_stale": True, "stamp_ns": frame.stamp_ns}
                 continue
             settings = (
                 self.config["lidar"]
@@ -222,34 +259,132 @@ class NavigationSession:
                 points = points[3 * sigma_z * height_factor <= self.grid.limits.obstacle_height_m / 2]
             world = transform_points(points, matrix)
             report = self.grid.observe(world)
-            self.health[key] = {**report, "received_at": received, "stamp_ns": frame.stamp_ns}
+            self.health[key] = {**report, "received_at": received, "stamp_ns": frame.stamp_ns,
+                                "processing_s": max(0.0, time.monotonic() - processing_started)}
             self.used[key] = signature
 
-    def step(self, bridge_status, *, now=None):
-        now = time.monotonic() if now is None else now
+    def _observe_bridge(self, bridge_status, now):
+        connection = bridge_status.get("connection_id")
+        if self.connection_id not in (None, 0) and connection != self.connection_id:
+            self._reset_link()
+        self.connection_id = connection
+        self.connected = bool(bridge_status.get("connected"))
+        if not self.connected:
+            if connection not in (None, 0):
+                self.mission.finish("disconnected")
+                self.goal, self.follower = None, None
+            self.state = "disconnected"
+            return False
+        age = bridge_status.get("telemetry_age_s")
+        if type(age) not in (float, int) or not math.isfinite(age) or not 0 <= age <= 0.3:
+            self.observer_error = "No fresh pose telemetry"
+            if self.goal:
+                self.state = "waiting_for_pose"
+            return False
+        try:
+            pose = pose_from_telemetry(bridge_status.get("telemetry_unreal") or {})
+            previous = self.pose
+            if previous:
+                dt = (pose.stamp_ns - previous.stamp_ns) / 1e9
+                moved = math.dist(pose.xy_heading[:2], previous.xy_heading[:2])
+                if dt < 0:
+                    self._reset_link("clock_reset")
+                elif (dt == 0 and not np.allclose(pose.matrix, previous.matrix, atol=1e-6, rtol=0)) or (
+                    0 < dt <= 0.25 and moved > 0.25 + 2 * dt
+                ):
+                    self._reset_link("teleport")
+                elif dt > 0.25:
+                    # A missing interval is not a bracketing pose or a clear
+                    # corridor. Fresh sensor captures must re-establish health.
+                    self.history = PoseHistory()
+                    self.latest.clear()
+                    self.used.clear()
+                    self.health.clear()
+                    self.follower = None
+            if self.pose is None or pose.stamp_ns != self.pose.stamp_ns:
+                self._unique_pose_at = now
+            self.pose = pose
+            self.history.add(pose)
+            self.mission.observe(pose)
+            self._pose_received_at = now - age
+            self.observer_error = None
+            if self.state == "disconnected" and not self.goal:
+                self.state = "idle"
+            try:
+                self._consume()
+                self.sensor_observation_error = None
+            except (ValueError, KeyError, TypeError) as error:
+                self.sensor_observation_error = str(error)
+            return True
+        except (ValueError, KeyError, TypeError) as error:
+            self.observer_error = str(error)
+            if self.goal:
+                self.state = "waiting_for_pose"
+            return False
+
+    def step(self, bridge_status, *, now=None, wall_clock=None):
+        if now is None:
+            now = time.monotonic()
+            wall_clock = time.monotonic if wall_clock is None else wall_clock
         with self.lock:
-            connection = bridge_status.get("connection_id")
-            if self.connection_id not in (None, 0) and connection != self.connection_id:
-                self._reset_link()
-            self.connection_id = connection
-            if not bridge_status.get("connected"):
-                self.state = "disconnected"
-                return 0, 0
+            self._late_decision = False
+            self.sensor_wait_details = {}
+            previous_state = self.state
+            ready = self._observe_bridge(bridge_status, now)
+            command = self._drive(now) if ready else (0, 0)
+            if self.follower and self.pose:
+                self.mission.progress(self.follower.index, self.pose.xy_heading[:2])
+            terminal = self.state in ("arrived", "blocked", "stalled_or_timed_out")
+            if ready and self.goal and (command != (0, 0) or (terminal and self.state != previous_state)):
+                deadline = self.motion_deadline()
+                finished_at = wall_clock() if wall_clock is not None else now
+                if (type(finished_at) not in (float, int) or not math.isfinite(finished_at)
+                        or finished_at < now or deadline is None or deadline <= finished_at):
+                    if self.state == "arrived" and self.follower:
+                        self.follower.arrived = False
+                    self.state, self.error = "waiting_for_fresh_data", LATE_DATA_ERROR
+                    self._late_decision = True
+                    command = (0, 0)
+                elif self.error == LATE_DATA_ERROR:
+                    self.error = None
+            details = (
+                {"sensors": self.sensor_wait_details}
+                if self.state == "waiting_for_sensors" and self.sensor_wait_details
+                else None
+            )
+            self.mission.state(self.state, self.error, details=details)
+            return command
+
+    def motion_deadline(self):
+        """Latest monotonic time a command based on the current observations may be sent."""
+        with self.lock:
+            if not self.connected or self.pose is None:
+                return None
+            times = (self._pose_received_at, self._unique_pose_at)
+            if any(type(t) not in (int, float) or not math.isfinite(t) for t in times):
+                return None
+            deadlines = [t + 0.3 for t in times]
+            for key in ("lidar", self.depth_source):
+                report = self.health.get(key)
+                if not report or report.get("valid_inside_points", 0) < self.min_points:
+                    return None
+                received, stamp = report.get("received_at"), report.get("stamp_ns")
+                if (type(received) not in (int, float) or not math.isfinite(received)
+                        or type(stamp) is not int
+                        or self._capture_too_old(stamp)
+                        or stamp - self.pose.stamp_ns > CAPTURE_CLOCK_TOLERANCE_NS):
+                    return None
+                deadlines.append(received + self.timeout)
+            return min(deadlines)
+
+    def _drive(self, now):
+        with self.lock:
+            self.sensor_wait_details = {}
             if not self.goal:
                 return 0, 0
             if self.state in ("arrived", "blocked", "stalled_or_timed_out"):
                 return 0, 0
-            age = bridge_status.get("telemetry_age_s")
-            if age is None or age > 0.3:
-                self.state = "waiting_for_pose"
-                return 0, 0
             try:
-                pose = pose_from_telemetry(bridge_status.get("telemetry_unreal") or {})
-                if self.pose and pose.stamp_ns < self.pose.stamp_ns:
-                    self._reset_link()
-                    return 0, 0
-                self.pose = pose
-                self.history.add(pose)
                 if (
                     self.follower is None
                     and self.started_at is None
@@ -259,13 +394,8 @@ class NavigationSession:
                     self.state = "waiting_for_settle"
                     return 0, 0
                 self._consume()
-                ready = all(
-                    k in self.health
-                    and now - self.health[k]["received_at"] <= self.timeout
-                    and self.health[k]["valid_inside_points"] >= self.min_points
-                    for k in ("lidar", self.depth_source)
-                )
-                if not ready:
+                self.sensor_wait_details = self._sensor_wait_reasons(now)
+                if self.sensor_wait_details:
                     self.state = "waiting_for_sensors"
                     return 0, 0
                 xyh = self.pose.xy_heading
@@ -278,6 +408,7 @@ class NavigationSession:
                 if self.follower is None:
                     route = self.grid.plan(xyh[:2], self.goal)
                     self.follower = RouteFollower(route, speed_m_s=self.speed)
+                    self.mission.plan(route, self.grid.revision)
                     self.plan_revision, self.replans = self.grid.revision, self.replans + 1
                     self.state, self.error = "following", None
                     self.started_at = self.started_at or now
@@ -315,6 +446,35 @@ class NavigationSession:
                 self.state = "blocked" if isinstance(error, NoRoute) else "waiting_for_sensors"
                 return 0, 0
 
+    def _sensor_wait_reasons(self, now):
+        """Record why a decision stopped; do not infer it later from a snapshot."""
+        details = {}
+        for key in ("lidar", self.depth_source):
+            report = self.health.get(key)
+            if report is None:
+                details[key] = {"reasons": ["missing"]}
+                continue
+            reasons = []
+            age = now - report["received_at"]
+            stamp = report.get("stamp_ns")
+            capture_age_ns = self.pose.stamp_ns - stamp if type(stamp) is int else None
+            if age > self.timeout:
+                reasons.append("arrival_stale")
+            if report.get("capture_stale") or (stamp is not None and self._capture_too_old(int(stamp))):
+                reasons.append("capture_stale")
+            elif report["valid_inside_points"] < self.min_points:
+                reasons.append("insufficient_points")
+            if stamp is None:
+                reasons.append("capture_time_missing")
+            if reasons:
+                details[key] = {
+                    "reasons": reasons,
+                    "arrival_age_s": max(0.0, age),
+                    "capture_age_s": capture_age_ns / 1e9 if capture_age_ns is not None else None,
+                    "valid_inside_points": report["valid_inside_points"],
+                }
+        return details
+
     def status(self):
         with self.lock:
             return {
@@ -334,3 +494,57 @@ class NavigationSession:
                 "native_rover_verified": False,
                 "terrain_manifest_sha256": self.grid.manifest_sha256,
             }
+
+    def mission_snapshot(self, bridge_status=None, *, now=None):
+        now = time.monotonic() if now is None else now
+        with self.lock:
+            age = max(0.0, now - self._pose_received_at) if self._pose_received_at is not None else None
+            fresh = self.connected and age is not None and age <= 0.3 and self.observer_error is None
+            advancing = self._unique_pose_at is not None and now - self._unique_pose_at <= 0.3
+            health = {}
+            for key, report in self.health.items():
+                health[key] = {k: v for k, v in report.items() if k != "received_at"}
+                if "stamp_ns" in health[key]:
+                    health[key]["stamp_ns"] = str(health[key]["stamp_ns"])
+                health[key]["received_age_s"] = max(0.0, now - report["received_at"])
+            return copy.deepcopy(
+                {
+                    "schema_version": 1,
+                    "session_id": self.mission.session_id,
+                    "snapshot_seq": self.mission.revision,
+                    "coordinate_frame_id": "mars_local_east_north_up_metres",
+                    "terrain_manifest_sha256": self.grid.manifest_sha256,
+                    "live_pose": self.mission.latest,
+                    "pose_fresh": fresh,
+                    "pose_age_s": age,
+                    "capture_clock_advancing": advancing,
+                    "speed_estimate_m_s": self.mission.speed_estimate if fresh and advancing else None,
+                    "position_source": "simulation telemetry",
+                    "telemetry_format": (bridge_status or {}).get("telemetry_format"),
+                    "telemetry_timing": (bridge_status or {}).get("telemetry_timing"),
+                    "mission": self.mission.summary(),
+                    "state": self.state,
+                    "observer_error": self.observer_error,
+                    "sensor_observation_error": self.sensor_observation_error,
+                    "sensor_health": health,
+                    "sensor_wait_details": self.sensor_wait_details,
+                    "depth_source": self.depth_source,
+                    "map_revision": self.grid.revision,
+                    "wheel_command_m_s": (bridge_status or {}).get("wheel_command_m_s"),
+                    "wire_command": (bridge_status or {}).get("wire_command"),
+                    "unavailable": {
+                        "battery_percent": None,
+                        "motor_rpm": None,
+                        "motor_current_a": None,
+                        "motor_temperature_c": None,
+                    },
+                    "history_storage": "bounded memory; explicit export",
+                    "native_rover_verified": False,
+                    "micro_geometry_complete": False,
+                }
+            )
+
+    def mission_export(self):
+        with self.lock:
+            captured = self.mission.capture_export()
+        return copy.deepcopy(captured)

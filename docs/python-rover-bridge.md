@@ -27,6 +27,12 @@ Normal bir Windows Python 3.11/3.12 terminalinde, repo kökünde:
 python -m mars_rover.bridge --max-speed 0.15
 ```
 
+Varsayılan tel biçimi katı JSON'dur. Yalnız ham TCP kaydıyla Türkçe sayı
+biçimi doğrulanan simülasyon için `--telemetry-format unreal-tr-v1` seçeneği
+vardır; üreticinin yerel ayarının değişmediğini denetlemek gerekir. Sınırlama
+ve tanı adımları [Windows test rehberi §4.8](mars-windows-full-test.md#48-rover-telemetrisi-ayrışmıyorsa-ham-tcp-tanısı)
+içindedir. Bu uyumluluk modu üreticideki JSON sorununu kalıcı olarak çözmez.
+
 **Önce köprüyü başlatın, sonra Unreal'da Play yapın.** Rover TCP 3003'e
 bağlanır, yerel HTTP API 8765'te açılır. Referans rover'ın bağlantı ayarları
 korunur. Köprü yalnızca `127.0.0.1` üzerinden dinler.
@@ -69,8 +75,8 @@ olabilir. Hız sınırı aşılırsa dört hız birlikte ölçeklenerek oran kor
 Üst düzey ileri/dönüş komutları için `rover.twist(0.1, 0.0)` kullanılır;
 ilk değer m/s, ikincisi rad/s'dir. Pozitif dönüş sola doğrudur. Bu komut da
 kontrol döngüsü içinde düzenli yenilenmelidir; örneğin yukarıdaki `wheels`
-çağrısı yerine kullanılabilir. `/status` içinde `telemetry_unreal` ham UE
-verisidir; `pose_local_m` metre ve yerel harita yönelimini verir. Bunlar
+çağrısı yerine kullanılabilir. `/status` içinde `telemetry_unreal` ayrıştırılmış
+UE telemetrisidir; `pose_local_m` metre ve yerel harita yönelimini verir. Bunlar
 simülasyon pozudur, sensörden kestirilmiş SLAM konumu değildir.
 
 Köprü **çalışırken**, varsayılan 0.3 saniye boyunca yeni komut gelmezse sıfır

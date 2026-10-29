@@ -65,6 +65,7 @@ class CommandState:
         with self.lock:
             self.speeds = dict.fromkeys(WHEELS, 0.0)
             self.received_at = None
+            self.valid_until = None
 
     def connect(self):
         with self.lock:
@@ -76,29 +77,36 @@ class CommandState:
             self.connected = False
             self.stop()
 
-    def submit_wheels(self, speeds, *, now=None):
+    def submit_wheels(self, speeds, *, now=None, valid_until=None):
         with self.lock:
             try:
                 checked = validate_wheels(speeds, self.calibration)
+                now = number(time.monotonic() if now is None else now)
+                deadline = None if valid_until is None else number(valid_until)
+                if deadline is not None and deadline <= now:
+                    raise ValueError("Command source data has already expired")
             except ValueError:
                 self.stop()
                 raise
             if not self.connected:
+                self.stop()
                 raise ConnectionError("Unreal is not connected; start the bridge, then press Play")
             self.speeds = checked
-            self.received_at = time.monotonic() if now is None else now
+            self.received_at = now
+            self.valid_until = deadline
 
-    def submit_twist(self, v, w, *, now=None):
+    def submit_twist(self, v, w, *, now=None, valid_until=None):
         try:
             speeds = wheels_from_twist(v, w, self.calibration)
         except ValueError:
             self.stop()
             raise
-        self.submit_wheels(speeds, now=now)
+        self.submit_wheels(speeds, now=now, valid_until=valid_until)
 
     def sample(self, *, now=None):
         with self.lock:
             now = time.monotonic() if now is None else now
-            if self.received_at is None or now - self.received_at >= self.timeout_s or now < self.received_at:
+            if (self.received_at is None or now - self.received_at >= self.timeout_s or now < self.received_at
+                    or (self.valid_until is not None and now >= self.valid_until)):
                 self.stop()
             return wire_command(self.speeds, self.calibration)

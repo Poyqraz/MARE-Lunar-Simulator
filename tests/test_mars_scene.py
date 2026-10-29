@@ -1,7 +1,7 @@
 import importlib.util
 import json
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -40,7 +40,66 @@ def test_atmosphere_ground_radius_accounts_for_removed_height_datum():
     scene_module._lighting(engine, actors, manifest, scene_module.load_scene(), "simulation")
     component = actors.spawn_actor_from_class.return_value.get_component_by_class.return_value
     component.set_editor_property.assert_any_call("bottom_radius", pytest.approx(3393.6094179830114))
-    component.set_editor_property.assert_any_call("source_angle", pytest.approx(0.3497230666))
+    component.set_editor_property.assert_any_call("light_source_angle", pytest.approx(0.3497230666))
+
+
+@pytest.mark.parametrize("mode", ["simulation", "orbital_reference"])
+def test_lighting_uses_documented_ue57_editor_properties(mode):
+    """Reject unknown names, as native set_editor_property does (not MagicMock)."""
+    # Independent UE 5.7 API allowlists; references are in the native test runbook.
+    properties = {
+        "DirectionalLightComponent": {"atmosphere_sun_light", "light_source_angle"},
+        "SkyAtmosphereComponent": {
+            "bottom_radius", "atmosphere_height", "rayleigh_exponential_distribution",
+            "mie_exponential_distribution", "rayleigh_scattering_scale", "mie_scattering_scale",
+            "mie_absorption_scale", "mie_anisotropy", "other_absorption_scale",
+            "rayleigh_scattering", "mie_scattering", "mie_absorption",
+        },
+        "SkyLightComponent": {"real_time_capture"},
+        "PostProcessVolume": {"unbound", "settings"},
+        "PostProcessSettings": {
+            "override_auto_exposure_min_brightness", "override_auto_exposure_max_brightness",
+            "override_auto_exposure_bias", "auto_exposure_bias",
+            "auto_exposure_min_brightness", "auto_exposure_max_brightness",
+        },
+    }
+    values = {name: {} for name in properties}
+
+    def editor_object(name):
+        obj = MagicMock(name=name)
+
+        def set_property(key, value):
+            if key not in properties[name]:
+                raise AttributeError(f"{name}: unknown UE 5.7 editor property {key}")
+            values[name][key] = value
+
+        obj.set_editor_property.side_effect = set_property
+        return obj
+
+    engine, actors = MagicMock(), MagicMock()
+    components = {name: editor_object(name) for name in properties}
+    volume = components["PostProcessVolume"]
+    volume.get_editor_property.return_value = components["PostProcessSettings"]
+    actor_map = {engine.PostProcessVolume: volume}
+    for actor_name, component_name in (("DirectionalLight", "DirectionalLightComponent"),
+                                       ("SkyAtmosphere", "SkyAtmosphereComponent"),
+                                       ("SkyLight", "SkyLightComponent")):
+        actor = MagicMock(name=actor_name)
+        actor.get_component_by_class.side_effect = {getattr(engine, component_name): components[component_name]}.__getitem__
+        actor_map[getattr(engine, actor_name)] = actor
+    actors.spawn_actor_from_class.side_effect = lambda cls, *args, **kwargs: actor_map[cls]
+    scene = scene_module.load_scene()
+    scene_module._lighting(engine, actors, {"source": {}}, scene, mode)
+    if mode == "simulation":
+        assert values["DirectionalLightComponent"]["light_source_angle"] == pytest.approx(0.3497, abs=0.001)
+        assert values["SkyAtmosphereComponent"]["other_absorption_scale"] == 0
+    else:
+        assert values["DirectionalLightComponent"] == {}
+        assert values["SkyAtmosphereComponent"] == {}
+        assert values["SkyLightComponent"] == {}
+    exposure = scene["fixed_exposure_ev100"] if mode == "simulation" else scene["reference_exposure_ev100"]
+    assert values["PostProcessSettings"]["auto_exposure_min_brightness"] == exposure
+    assert values["PostProcessSettings"]["auto_exposure_max_brightness"] == exposure
 
 
 def test_invalid_scene_value_fails_before_creating_assets(tmp_path):
@@ -90,3 +149,148 @@ def test_texture_sample_connects_the_exposed_uv_pin():
     source, target = object(), object()
     module.connect_input(lib, source, target, "Coordinates")
     lib.connect_material_expressions.assert_called_once_with(source, "", target, "UVs")
+
+
+@pytest.mark.parametrize("reported_name", ["None", ""])
+def test_single_unnamed_input_uses_documented_first_input_selector(reported_name):
+    """UE 5.7.4 reported ['None'] for the reference graph's ComponentMask."""
+    spec = importlib.util.spec_from_file_location("material_under_test", PATH.with_name("mars_materials.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    lib = MagicMock()
+    lib.get_material_expression_input_names.return_value = [reported_name]
+    lib.connect_material_expressions.return_value = True
+    source, target = object(), object()
+    module.connect_input(lib, source, target, "Input")
+    lib.connect_material_expressions.assert_called_once_with(source, "", target, "")
+
+
+@pytest.mark.parametrize("pins", [["None", "FilterWidth"], ["", "FilterWidth"], ["FilterWidth"]])
+def test_unnamed_input_is_not_selected_when_other_inputs_make_it_ambiguous(pins):
+    spec = importlib.util.spec_from_file_location("material_under_test", PATH.with_name("mars_materials.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    lib = MagicMock()
+    lib.get_material_expression_input_names.return_value = pins
+    with pytest.raises(RuntimeError, match="Material input not exposed"):
+        module.connect_input(lib, object(), object(), "Input")
+    lib.connect_material_expressions.assert_not_called()
+
+
+def test_rejected_unnamed_input_connection_remains_a_failure():
+    spec = importlib.util.spec_from_file_location("material_under_test", PATH.with_name("mars_materials.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    lib = MagicMock()
+    lib.get_material_expression_input_names.return_value = ["None"]
+    lib.connect_material_expressions.return_value = False
+    with pytest.raises(RuntimeError, match="Cannot connect material input"):
+        module.connect_input(lib, object(), object(), "Input")
+    assert lib.connect_material_expressions.call_args.args[-1] == ""
+
+
+def test_orbital_material_connects_both_single_unnamed_masks_and_uvs(tmp_path):
+    """Exercise the whole orbital graph; only mask pin names are native observations."""
+    spec = importlib.util.spec_from_file_location("material_under_test", PATH.with_name("mars_materials.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    engine = MagicMock()
+    engine.EditorAssetLibrary.does_asset_exist.return_value = False
+    engine.EditorAssetLibrary.save_asset.return_value = True
+    texture_path = "/Game/Mars/Test_Assets/T_JezeroOrbitalReference"
+    engine.AssetImportTask.return_value.get_editor_property.return_value = [texture_path]
+    lib = engine.MaterialEditingLibrary
+    lib.connect_material_expressions.return_value = True
+    lib.connect_material_property.return_value = True
+    expressions, input_names = {}, {}
+    pins = {engine.MaterialExpressionWorldPosition: [], engine.MaterialExpressionComponentMask: ["None"],
+            engine.MaterialExpressionMultiply: ["A", "B"], engine.MaterialExpressionAdd: ["A", "B"],
+            engine.MaterialExpressionAppendVector: ["A", "B"],
+            engine.MaterialExpressionTextureSampleParameter2D: ["UVs", "MipValue"]}
+
+    def create_expression(material, expression_class):
+        expression = MagicMock()
+        expressions.setdefault(expression_class, []).append(expression)
+        input_names[expression] = pins[expression_class]
+        return expression
+
+    lib.create_material_expression.side_effect = create_expression
+    lib.get_material_expression_input_names.side_effect = lambda expression: input_names[expression]
+    manifest = {"imagery": {"filename": "ortho_reference.png"}, "grid": {"extent_m": [252, 252]}}
+    module.create_material(engine, "/Game/Mars/Test_Assets", "orbital_reference",
+                           tmp_path / "manifest.json", manifest, {})
+    position = expressions[engine.MaterialExpressionWorldPosition][0]
+    mask_x, mask_y = expressions[engine.MaterialExpressionComponentMask]
+    scale_x, scale_y = expressions[engine.MaterialExpressionMultiply]
+    offset_y = expressions[engine.MaterialExpressionAdd][0]
+    uv = expressions[engine.MaterialExpressionAppendVector][0]
+    sample = expressions[engine.MaterialExpressionTextureSampleParameter2D][0]
+    assert lib.connect_material_expressions.call_args_list == [
+        call(position, "", mask_x, ""), call(position, "", mask_y, ""),
+        call(mask_x, "", scale_x, "A"), call(mask_y, "", scale_y, "A"),
+        call(scale_y, "", offset_y, "A"), call(scale_x, "", uv, "A"),
+        call(offset_y, "", uv, "B"), call(uv, "", sample, "UVs"),
+    ]
+    # UE.x points west and UE.y north; these values map the survey image north-up.
+    mask_x.set_editor_property.assert_any_call("r", True)
+    mask_y.set_editor_property.assert_any_call("g", True)
+    scale_x.set_editor_property.assert_any_call("const_b", -1 / 25200)
+    scale_y.set_editor_property.assert_any_call("const_b", -1 / 25200)
+    offset_y.set_editor_property.assert_any_call("const_b", 1.0)
+    sample.set_editor_property.assert_any_call("texture", engine.load_asset.return_value)
+    engine.AssetToolsHelpers.get_asset_tools.return_value.create_asset.return_value.set_editor_property.assert_any_call(
+        "shading_model", engine.MaterialShadingModel.MSM_UNLIT)
+    lib.connect_material_property.assert_called_once_with(sample, "", engine.MaterialProperty.MP_EMISSIVE_COLOR)
+    engine.EditorAssetLibrary.save_asset.assert_any_call(texture_path)
+    engine.EditorAssetLibrary.save_asset.assert_any_call("/Game/Mars/Test_Assets/M_JezeroOrbitalReference")
+
+
+@pytest.mark.parametrize("position_pin", ["World Position", "Position"])
+def test_procedural_graph_connects_world_position_to_the_exposed_noise_pin(position_pin):
+    """The first pin list is from the user's failed UE 5.7.4 native import."""
+    spec = importlib.util.spec_from_file_location("material_under_test", PATH.with_name("mars_materials.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    engine = MagicMock()
+    engine.EditorAssetLibrary.does_asset_exist.return_value = False
+    engine.EditorAssetLibrary.save_asset.return_value = True
+    lib = engine.MaterialEditingLibrary
+    expressions = {}
+
+    def create_expression(material, expression_class):
+        expression = MagicMock()
+        expressions[expression_class] = expression
+        return expression
+
+    lib.create_material_expression.side_effect = create_expression
+    lib.get_material_expression_input_names.side_effect = lambda target: (
+        [position_pin, "FilterWidth"]
+        if target is expressions[engine.MaterialExpressionNoise] else ["A", "B", "Alpha"])
+    lib.connect_material_expressions.return_value = True
+    lib.connect_material_property.return_value = True
+    module.create_material(engine, "/Game/Mars/Test_Assets", "simulation", None, {}, scene_module.load_scene())
+    lib.connect_material_expressions.assert_any_call(
+        expressions[engine.MaterialExpressionWorldPosition], "",
+        expressions[engine.MaterialExpressionNoise], position_pin)
+
+
+def test_noise_position_cannot_fall_back_to_filter_width():
+    spec = importlib.util.spec_from_file_location("material_under_test", PATH.with_name("mars_materials.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    lib = MagicMock()
+    lib.get_material_expression_input_names.return_value = ["FilterWidth"]
+    with pytest.raises(RuntimeError, match="Material input not exposed"):
+        module.connect_input(lib, object(), object(), "Position")
+    lib.connect_material_expressions.assert_not_called()
+
+
+def test_material_connection_rejected_by_unreal_is_not_silenced():
+    spec = importlib.util.spec_from_file_location("material_under_test", PATH.with_name("mars_materials.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    lib = MagicMock()
+    lib.get_material_expression_input_names.return_value = ["World Position", "FilterWidth"]
+    lib.connect_material_expressions.return_value = False
+    with pytest.raises(RuntimeError, match="Cannot connect material input World Position"):
+        module.connect_input(lib, object(), object(), "Position")

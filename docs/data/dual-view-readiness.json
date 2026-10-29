@@ -2,7 +2,7 @@
   "schema_version": 1,
   "review_date_local": "2026-10-28",
   "timezone": "Europe/Istanbul",
-  "status": "design_only_not_implemented",
+  "status": "a1_bounded_history_implemented_native_views_planned",
   "repository": "Poyqraz/MARE-Lunar-Simulator",
   "pull_request": 1,
   "reviewed_head_sha": "b3c27ccb8baca3c72ff039b77f0c65774e856210",
@@ -24,73 +24,151 @@
     "observation_acquired": "2016-05-19",
     "observation_catalog": "https://www.uahirise.org/ESP_045994_1985",
     "derived_usgs_product_published": "2020-07-24",
-    "crop_extent_m": [252, 252],
+    "crop_extent_m": [
+      252,
+      252
+    ],
     "dem_post_spacing_m": 1,
-    "reference_image_dimensions_px": [1024, 1024],
+    "reference_image_dimensions_px": [
+      1024,
+      1024
+    ],
     "imagery_is_live": false,
     "overlay_pose_source": "simulation telemetry, not satellite detection or SLAM",
     "micro_geometry_complete": false
   },
   "review_findings": [
     {
-      "id": "R1", "priority": "P0", "path": "mars_rover/navigation.py", "symbol": "NavigationSession.step",
+      "id": "R1",
+      "priority": "P0",
+      "path": "mars_rover/navigation.py",
+      "symbol": "NavigationSession.step",
       "finding": "Idle/terminal returns precede pose ingestion; continuous observation required.",
-      "required_phase": "A1", "resolved": false
+      "required_phase": "A1",
+      "resolved": true,
+      "resolution_scope": "A1: continuous observation, short map lock and bounded memory history; no automatic disk journal"
     },
     {
-      "id": "R2", "priority": "P0", "path": "mars_rover/nav_service.py", "symbol": "Handler.do_GET /map",
+      "id": "R2",
+      "priority": "P0",
+      "path": "mars_rover/nav_service.py",
+      "symbol": "Handler.do_GET /map",
       "finding": "JSON/network reply under control lock; static slow-client latency risk, not a measured incident.",
-      "required_phase": "A1", "resolved": false
+      "required_phase": "A1",
+      "resolved": true,
+      "resolution_scope": "A1: continuous observation, short map lock and bounded memory history; no automatic disk journal"
     },
     {
-      "id": "R3", "priority": "P0", "path": "mars_rover/navigation.py", "symbol": "NavigationSession and RouteFollower",
+      "id": "R3",
+      "priority": "P0",
+      "path": "mars_rover/navigation.py",
+      "symbol": "NavigationSession and RouteFollower",
       "finding": "Missing mission identity, fixed start, actual trail, plan history and exposed progress.",
-      "required_phase": "A1", "resolved": false
+      "required_phase": "A1",
+      "resolved": true,
+      "resolution_scope": "A1: continuous observation, short map lock and bounded memory history; no automatic disk journal"
     },
     {
-      "id": "R4", "priority": "P0", "path": "Content/Python/rover_cameras.py", "symbol": "DASHBOARD_URL",
+      "id": "R4",
+      "priority": "P0",
+      "path": "Content/Python/rover_cameras.py",
+      "symbol": "DASHBOARD_URL",
       "finding": "GNC 5001 camera link is separate from ROS-free 8766; single camera authority required.",
-      "required_phase": "A2", "resolved": false
+      "required_phase": "A2",
+      "resolved": false
     },
     {
-      "id": "R5", "priority": "P1", "path": "Content/Python/rover_cameras.py", "symbol": "top and follow",
+      "id": "R5",
+      "priority": "P1",
+      "path": "Content/Python/rover_cameras.py",
+      "symbol": "top and follow",
       "finding": "8 m perspective top view and active rover camera are not orbital imagery or a raw navcam feed.",
-      "required_phase": "A2", "resolved": false
+      "required_phase": "A2",
+      "resolved": false
     },
     {
-      "id": "R6", "priority": "P0", "path": "Content/Python/mars_materials.py", "symbol": "create_material",
+      "id": "R6",
+      "priority": "P0",
+      "path": "Content/Python/mars_materials.py",
+      "symbol": "create_material",
       "finding": "World-build material modes must not be used for live view switching; sensor RGB would change.",
-      "required_phase": "A2", "resolved": false
+      "required_phase": "A2",
+      "resolved": false
     },
     {
-      "id": "R7", "priority": "P1", "path": "mars_rover/nav_service.py", "symbol": "HTTP API",
+      "id": "R7",
+      "priority": "P1",
+      "path": "mars_rover/nav_service.py",
+      "symbol": "HTTP API",
       "finding": "No native screen picking or browser live-camera endpoint in current 2D mission UI.",
-      "required_phase": "A3", "resolved": false
+      "required_phase": "A3",
+      "resolved": false
     },
     {
-      "id": "R8", "priority": "P1", "path": "mars_rover/bridge.py", "symbol": "BridgeServer.status",
+      "id": "R8",
+      "priority": "P1",
+      "path": "mars_rover/bridge.py",
+      "symbol": "BridgeServer.status",
       "finding": "Wire commands are not measured wheel RPM; battery/current/temperature channels are unestablished.",
-      "required_phase": "A4", "resolved": false
+      "required_phase": "A4",
+      "resolved": false
     },
     {
-      "id": "R9", "priority": "P1", "path": "Content/Python/mars_sensor_setup.py", "symbol": "configure_and_export",
+      "id": "R9",
+      "priority": "P1",
+      "path": "Content/Python/mars_sensor_setup.py",
+      "symbol": "configure_and_export",
       "finding": "Export actual center RGB id and calibration before serving the display stream.",
-      "required_phase": "A5", "resolved": false
+      "required_phase": "A5",
+      "resolved": false
     },
     {
-      "id": "R10", "priority": "P0", "path": "Content/Python/rover_cameras.py", "symbol": "editor camera tick",
+      "id": "R10",
+      "priority": "P0",
+      "path": "Content/Python/rover_cameras.py",
+      "symbol": "editor camera tick",
       "finding": "Editor-only camera requires runtime integration for packaged interaction.",
-      "required_phase": "A2", "resolved": false
+      "required_phase": "A2",
+      "resolved": false
     }
   ],
   "planned_phases": [
-    {"id": "A0", "name": "Native foundation acceptance", "implemented": false},
-    {"id": "A1", "name": "Continuous mission observation, trail and bounded snapshots", "implemented": false},
-    {"id": "A2", "name": "Single-owner native camera rig and transitions", "implemented": false},
-    {"id": "A3", "name": "Map/native view goal preview and picking", "implemented": false},
-    {"id": "A4", "name": "Shared overlays and telemetry HUD", "implemented": false},
-    {"id": "A5", "name": "Sensor frame display and adaptive view quality", "implemented": false},
-    {"id": "A6", "name": "End-to-end native and packaged acceptance", "implemented": false}
+    {
+      "id": "A0",
+      "name": "Native foundation acceptance",
+      "implemented": false
+    },
+    {
+      "id": "A1",
+      "name": "Continuous mission observation, trail and bounded snapshots",
+      "implemented": true,
+      "scope": "Bounded memory history and read-only APIs; explicit export, automatic persistence deferred"
+    },
+    {
+      "id": "A2",
+      "name": "Single-owner native camera rig and transitions",
+      "implemented": false
+    },
+    {
+      "id": "A3",
+      "name": "Map/native view goal preview and picking",
+      "implemented": false
+    },
+    {
+      "id": "A4",
+      "name": "Shared overlays and telemetry HUD",
+      "implemented": false
+    },
+    {
+      "id": "A5",
+      "name": "Sensor frame display and adaptive view quality",
+      "implemented": false
+    },
+    {
+      "id": "A6",
+      "name": "End-to-end native and packaged acceptance",
+      "implemented": false
+    }
   ],
   "invariants": [
     "View switches preserve mission id, goal, Play session and sensor configuration",
@@ -112,5 +190,12 @@
     "User CAD and real motor calibration",
     "Complete wheel-scale measured Mars geometry",
     "Live MRO video or flight-qualified autonomy"
-  ]
+  ],
+  "followup_reviewed_plan_head": "8b6243ec90afeac2f9b268763b0282d7b4df9883",
+  "current_local_validation": {
+    "tests_passed": 122,
+    "native_unreal_executed": false,
+    "disk_journal_implemented": false,
+    "runtime_cameras_implemented": false
+  }
 }

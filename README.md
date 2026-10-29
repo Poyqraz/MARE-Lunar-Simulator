@@ -17,7 +17,11 @@
 > completeness, sensor-derived localization or soil physics is claimed.
 > The [orbital/rover view development plan (Türkçe)](docs/mars-dual-view-plan.md)
 > reviews the current PR and specifies shared mission history, camera transitions,
-> picking, overlays and native acceptance. These additional features are planned.
+> picking, overlays and native acceptance. The [reviewed A1 increment](docs/mars-dual-view-review.md)
+> implements continuous observation, bounded actual trail/mission history and JSON APIs.
+> Native camera transitions and picking remain planned.
+> For a real Windows machine, follow the [UE 5.7 full-test runbook (Türkçe)](docs/mars-windows-full-test.md)
+> for downloads, native/GPU/sensor/rover checks, evidence and merge gates.
 > The original lunar simulator is documented below.
 
 [![arXiv](https://img.shields.io/badge/arXiv-2610.28465-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2610.28465)

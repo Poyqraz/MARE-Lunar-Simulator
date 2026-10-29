@@ -82,3 +82,30 @@ def test_small_observed_positive_and_negative_hazards_block_the_route():
     # A no-return is not evidence that an obstacle has gone away.
     grid.observe(np.full((10, 3), np.nan))
     assert grid.blocked[10, 10]
+
+
+def test_observation_preserves_edge_points_and_strict_hazard_thresholds():
+    p = planning()
+    grid = p.TerrainMap(np.zeros((6, 6)), 1, p.PlanningLimits(robot_radius_m=0))
+    points = np.array([
+        [1, 1, 0],
+        [2, 2, np.nextafter(0.15, np.inf)],
+        [2, 3, np.nextafter(-0.15, -np.inf)],
+        [3, 3, 0.15],
+        [3, 2, -0.15],
+        [5, 5, 0.25],
+        [0, 2, -0.25],
+        [np.nextafter(0.0, -np.inf), 3, 0.5],
+        [np.nextafter(5.0, np.inf), 1, 0.5],
+        [1, np.nan, 1],
+        [1, 1, np.nan],
+        [np.inf, 2, 2],
+    ])
+    first = grid.observe(points)
+    assert first["valid_inside_points"] == 7
+    assert first["positive_obstacles"] == first["negative_obstacles"] == 2
+    assert first["map_changed"] is True
+    assert grid.raw_blocked[2, 2] and grid.raw_blocked[3, 2]
+    assert not grid.raw_blocked[3, 3] and not grid.raw_blocked[2, 3]
+    second = grid.observe(points)
+    assert second["map_changed"] is False

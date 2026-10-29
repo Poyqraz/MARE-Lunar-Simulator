@@ -12,10 +12,12 @@ import json
 from pathlib import Path
 import socket
 import threading
+import time
+from urllib.parse import parse_qs, urlsplit
 
-from .bridge import BridgeServer
+from .bridge import BridgeServer, TELEMETRY_FORMATS, TR_TELEMETRY_NOTICE
 from .drive import Calibration
-from .navigation import NavigationSession
+from .navigation import LATE_DATA_ERROR, NavigationSession
 from .planning import TerrainMap
 from .sensors import LidarStream, NavStream
 
@@ -115,6 +117,7 @@ class NavigationService:
         min_points=20,
         depth_source="ground_truth",
         settle_s=2.0,
+        telemetry_format="json",
     ):
         self.session = NavigationSession(
             grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s
@@ -122,8 +125,12 @@ class NavigationService:
         self.ending = threading.Event()
         self.last_transport_error = None
         self.threads = []
+        self._timing_lock = threading.Lock()
+        self._timing = {"cycles": 0, "last_cycle_s": None, "max_cycle_s": 0.0,
+                        "cycles_over_50ms": 0, "cycles_over_250ms": 0, "expired_decisions": 0}
         self.bridge = BridgeServer(
-            Calibration(), tcp_port=tcp_port, http_port=bridge_http_port, on_external_command=self.session.stop
+            Calibration(), tcp_port=tcp_port, http_port=bridge_http_port, on_external_command=self.session.stop,
+            telemetry_format=telemetry_format,
         )
         self.lidar, self.camera, self.http = None, None, None
         try:
@@ -147,6 +154,20 @@ class NavigationService:
             self.session.health.pop(key, None)
             self.bridge.state.stop()
 
+    def control_timing(self):
+        """Read-only, process-lifetime wall-clock control-loop counters."""
+        with self._timing_lock:
+            return self._timing.copy()
+
+    def _record_control_timing(self, duration, expired):
+        with self._timing_lock:
+            self._timing["cycles"] += 1
+            self._timing["last_cycle_s"] = duration
+            self._timing["max_cycle_s"] = max(self._timing["max_cycle_s"], duration)
+            self._timing["cycles_over_50ms"] += int(duration > 0.05)
+            self._timing["cycles_over_250ms"] += int(duration > 0.25)
+            self._timing["expired_decisions"] += int(expired)
+
     def _handler(self):
         service = self
 
@@ -167,6 +188,41 @@ class NavigationService:
                 self.wfile.write(payload)
 
             def do_GET(self):
+                parsed = urlsplit(self.path)
+                if parsed.path in ("/mission/snapshot", "/mission/trail", "/mission/events", "/mission/export"):
+                    try:
+                        if len(self.path) > 1024:
+                            raise ValueError("Query exceeds 1024 characters")
+                        query = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=True)
+                        allowed = (
+                            {"after_seq", "mission_id"}
+                            if parsed.path == "/mission/trail"
+                            else ({"after_seq"} if parsed.path == "/mission/events" else set())
+                        )
+                        if set(query) - allowed or any(len(v) != 1 for v in query.values()):
+                            raise ValueError("Unknown or repeated query field")
+                        raw = query.get("after_seq", ["0"])[0]
+                        if not raw.isascii() or not raw.isdigit() or len(raw) > 16 or int(raw) > 2**53 - 1:
+                            raise ValueError("after_seq must be an integer in 0..2^53-1")
+                        if parsed.path == "/mission/snapshot":
+                            result = service.session.mission_snapshot(service.bridge.status())
+                        elif parsed.path == "/mission/export":
+                            result = service.session.mission_export()
+                        else:
+                            with service.session.lock:
+                                if parsed.path == "/mission/trail":
+                                    result = service.session.mission.trail(
+                                        after_seq=int(raw), mission_id=query.get("mission_id", [None])[0]
+                                    )
+                                else:
+                                    result = service.session.mission.event_page(after_seq=int(raw))
+                        if parsed.path in ("/mission/snapshot", "/mission/export"):
+                            result["control_timing"] = service.control_timing()
+                        return self.reply(200, result)
+                    except ValueError as error:
+                        return self.reply(400, {"error": str(error)})
+                    except KeyError:
+                        return self.reply(404, {"error": "Mission is not retained in bounded history"})
                 if self.path == "/":
                     return self.file_reply(Path(__file__).with_name("mission_control.html"), "text/html; charset=utf-8")
                 if self.path == "/terrain.png":
@@ -178,20 +234,20 @@ class NavigationService:
                     with service.session.lock:
                         grid = service.session.grid
                         h, w = grid.heights.shape
-                        return self.reply(
-                            200,
-                            {
-                                "width": w,
-                                "height": h,
-                                "resolution_m": grid.resolution_m,
-                                "extent_m": [(w - 1) * grid.resolution_m, (h - 1) * grid.resolution_m],
-                                "revision": grid.revision,
-                                "blocked": grid.blocked.astype(int).ravel().tolist(),
-                            },
-                        )
+                        blocked = grid.blocked.copy()
+                        result = {
+                            "width": w,
+                            "height": h,
+                            "resolution_m": grid.resolution_m,
+                            "extent_m": [(w - 1) * grid.resolution_m, (h - 1) * grid.resolution_m],
+                            "revision": grid.revision,
+                        }
+                    result["blocked"] = blocked.astype(int).ravel().tolist()
+                    return self.reply(200, result)
                 if self.path != "/status":
                     return self.reply(404, {"error": "Unknown endpoint"})
-                self.reply(200, {**service.session.status(), "transport_error": service.last_transport_error})
+                self.reply(200, {**service.session.status(), "transport_error": service.last_transport_error,
+                                 "control_timing": service.control_timing()})
 
             def file_reply(self, path, content_type):
                 if not path.is_file():
@@ -240,19 +296,43 @@ class NavigationService:
 
     def _control(self):
         while not self.ending.is_set():
+            started, expired = time.monotonic(), False
             try:
                 with self.session.lock:
                     active = self.session.goal is not None
-                    v, w = self.session.step(self.bridge.status())
+                    # The status age is sampled after this instant; using the
+                    # earlier instant makes reconstructed receive time conservative.
+                    snapshot_started = time.monotonic()
+                    v, w = self.session.step(self.bridge.status(), now=snapshot_started, wall_clock=time.monotonic)
                     if active:
                         if v == 0 and w == 0:
+                            expired = self.session._late_decision
                             self.bridge.state.stop()
                         else:
-                            self.bridge.state.submit_twist(v, w)
+                            with self.bridge.state.lock:
+                                deadline = self.session.motion_deadline()
+                                now = time.monotonic()
+                                if (not self.bridge.state.connected
+                                        or self.bridge.connection_id != self.session.connection_id
+                                        or deadline is None or deadline <= now):
+                                    expired = True
+                                    self.bridge.state.stop()
+                                    self.session.state = "waiting_for_fresh_data"
+                                    self.session.error = LATE_DATA_ERROR
+                                    self.session.mission.state(self.session.state, self.session.error)
+                                else:
+                                    self.bridge.state.submit_twist(v, w, now=now, valid_until=deadline)
+                                    self.session.error = None
+                                    self.session.mission.state(self.session.state, None)
             except Exception as error:
                 self.bridge.state.stop()
                 self.last_transport_error = str(error)
-            self.ending.wait(0.05)
+            finally:
+                duration = max(0.0, time.monotonic() - started)
+                self._record_control_timing(duration, expired)
+            # Keep the 50 ms target inclusive of work, with a short yield even
+            # after an overrun so the network/sensor threads can run.
+            self.ending.wait(max(0.001, 0.05 - duration))
         self.bridge.state.stop()
 
     def start(self):
@@ -292,15 +372,21 @@ def main(argv=None):
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--goal", nargs=2, type=float)
     parser.add_argument("--depth-source", choices=("ground_truth", "stereo"), default="ground_truth")
+    parser.add_argument("--telemetry-format", choices=TELEMETRY_FORMATS, default="json",
+                        help="wire format; unreal-tr-v1 is explicit compatibility for a tr-TR UE producer")
     args = parser.parse_args(argv)
     try:
         config = json.loads(args.sensors.read_text(encoding="utf-8"))
         grid = TerrainMap.from_bundle(args.manifest)
-        with NavigationService(grid, config, depth_source=args.depth_source) as service:
+        with NavigationService(grid, config, depth_source=args.depth_source,
+                               telemetry_format=args.telemetry_format) as service:
             if args.goal:
                 service.session.set_goal(args.goal)
             print("Navigation API http://127.0.0.1:8766; start Unreal Play after this line.", flush=True)
             print(f"Depth source: {args.depth_source}; native rover acceptance is still required.", flush=True)
+            print(f"Telemetry format: {args.telemetry_format}", flush=True)
+            if args.telemetry_format == "unreal-tr-v1":
+                print(TR_TELEMETRY_NOTICE, flush=True)
             try:
                 while not service.ending.wait(0.5):
                     pass
