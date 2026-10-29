@@ -36,6 +36,8 @@ def test_launcher_uses_argument_list_and_requires_verified_report(tmp_path, monk
     (0, None), (1, {"status": "saved", "heightmap_verified": True}),
     (0, {"status": "failed", "heightmap_verified": False}),
     (0, {"status": "saved", "heightmap_verified": True, "collision_verified": False}),
+    (0, {"status": "saved", "heightmap_verified": True, "collision_verified": True,
+         "error": "Target appeared during import"}),
 ])
 def test_process_exit_alone_cannot_report_success(tmp_path, monkeypatch, returncode, report):
     editor, root = setup_project(tmp_path)

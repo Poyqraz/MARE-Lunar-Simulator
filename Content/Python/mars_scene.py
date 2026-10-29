@@ -232,12 +232,51 @@ def build_environment(manifest_path, level_path, *, load_bundle, pending, rover_
 def _save_after_import(unreal, world, landscape, expected, result, pending, report_path, manifest):
     started = time.monotonic()
     token = object()
+    busy = False
+
+    def check_context():
+        current = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+        if current != world or unreal.EditorLevelLibrary.get_pie_worlds(False):
+            raise RuntimeError("Editor world changed or Play started during import; result NOT accepted")
+
+    def finish(outcome):
+        # Keep status='importing' until cleanup and the report are complete:
+        # the dedicated runner may quit the editor on a terminal status.
+        try:
+            handle = pending.get(token)
+            if handle is not None:
+                unreal.unregister_slate_post_tick_callback(handle)
+            if report_path:
+                completed = {**result, **outcome}
+                completed.pop("last_collision_error", None)
+                report = {k: v for k, v in completed.items() if k not in ("landscape", "rover")}
+                path = Path(report_path)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                temporary = path.with_suffix(path.suffix + ".tmp")
+                temporary.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+                temporary.replace(path)
+        except Exception as error:
+            outcome = {"status": "failed", "error": f"Could not finalize Mars import: {error}",
+                       "heightmap_verified": False, "collision_verified": False}
+        finally:
+            pending.pop(token, None)
+        result.update(outcome)
+        result.pop("last_collision_error", None)
+        if result["status"] == "saved":
+            unreal.log(f"Mars: heightmap and sampled collision verified; level saved: {result['level']}")
+        else:
+            unreal.log_error(f"Mars setup: {result['error']}")
 
     def tick(delta):
+        nonlocal busy
+        # Editor APIs (notably save_map) can pump Slate and re-enter this tick.
+        # Also ignore already queued ticks after completion/unregistration.
+        if busy or token not in pending or result["status"] != "importing":
+            return
+        busy = True
+        outcome = None
         try:
-            current = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
-            if current != world or unreal.EditorLevelLibrary.get_pie_worlds(False):
-                raise RuntimeError("Editor world changed or Play started during import; map NOT saved")
+            check_context()
             heights = unreal.DEMLandscapeLibrary.get_heightmap_data(landscape)
             if len(heights) == len(expected) and all(a == b for a, b in zip(heights, expected)):
                 from mars_collision import verify_landscape
@@ -251,26 +290,24 @@ def _save_after_import(unreal, world, landscape, expected, result, pending, repo
                     raise
                 if unreal.EditorAssetLibrary.does_asset_exist(result["level"]):
                     raise FileExistsError("Target appeared during import")
+                check_context()
                 if not unreal.EditorLoadingAndSavingUtils.save_map(world, result["level"]):
                     raise RuntimeError("Could not save Mars map")
-                result.update(status="saved", heightmap_verified=True, collision_verified=True,
-                              collision=collision)
-                result.pop("last_collision_error", None)
-                unreal.log(f"Mars: heightmap and sampled collision verified; level saved: {result['level']}")
+                check_context()
+                outcome = {"status": "saved", "error": None, "heightmap_verified": True,
+                           "collision_verified": True, "collision": collision}
             elif time.monotonic() - started > 60:
                 raise RuntimeError("Heightmap did not read back within 60 seconds; map NOT saved")
             else:
                 return
         except Exception as error:  # Unreal failures must not escape a Slate callback.
-            result.update(status="failed", error=str(error))
-            unreal.log_error(f"Mars setup: {error}")
+            outcome = {"status": "failed", "error": str(error),
+                       "heightmap_verified": False, "collision_verified": False}
         finally:
-            if result["status"] != "importing":
-                unreal.unregister_slate_post_tick_callback(pending.pop(token))
-                if report_path:
-                    report = {k: v for k, v in result.items() if k not in ("landscape", "rover")}
-                    path = Path(report_path)
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+            try:
+                if outcome is not None:
+                    finish(outcome)
+            finally:
+                busy = False
 
     pending[token] = unreal.register_slate_post_tick_callback(tick)

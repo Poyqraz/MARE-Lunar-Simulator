@@ -80,7 +80,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe tools/mars_navigation_benchmark.py --output generated/native-preflight.json
 ```
 
-Beklenen mevcut test sayısı **128** ve dört başarılı offline rotadır.
+Beklenen mevcut test sayısı **142** ve dört başarılı offline rotadır.
 `generated/native-preflight.json` varsa yeni çıktı adı seç. Venv'i aktive
 etmek veya PowerShell execution policy değiştirmek zorunlu değildir.
 **Unreal'ın gömülü Python'una pip/NumPy/rasterio/OpenCV kurulmaz.**
@@ -220,6 +220,57 @@ job = mars_setup.build(level_path="/Game/Mars/JezeroQA03", report_path=r"C:/work
 
 4.1'deki durum sorgusunu kullan. `importing` ise sadece sorguyu tekrar et;
 kurulumu tekrar başlatma. İlk hata varsa onu ve varsa yeni JSON'u sakla.
+
+### 4.3. QA03: iç içe Slate callback'i ve tutarsız rapor
+
+29 Ekim 2026 QA03 log'unda sahne oluşturma tamamlandı ve harita kaydı başladı.
+Kayıt sürerken `Target appeared during import`, ardından kayıt başarı mesajı
+ve `pending.pop(token)` üzerinde `KeyError` görüldü. JSON `failed` ve iki
+doğrulama bayrağı `false` iken bellekteki `job`, `saved` / `true` / `true`
+ile eski hata metnini birlikte taşıyordu. Bu çelişkili koşu **kabul edilmez**;
+mevcut JSON elle başarılıya çevrilmez.
+
+Log sırasıyla tutarlı yeniden giriş senaryosu testte üretildi: editor API
+çağrısı bitmeden aynı Slate callback'i yeniden çağrılıyor. Düzeltme:
+
+- Meşgul callback'e yeniden giriş ve tamamlandıktan sonra kuyruktan gelen
+  callback çağrıları işlem yapmaz.
+- Doğrulama, harita kaydı ve rapor sonlandırması bir kez çalışır; callback
+  kaydı tek sefer kaldırılır. Tek import kilidi rapor sonlandırılana kadar
+  korunur. Gerçekten başka bir hedef oluştuğunda mevcut
+  `Target appeared during import` koruması çalışmaya devam eder.
+- JSON önce `.json.tmp` dosyasına yazılıp nihai ada atomik taşınır. Terminal
+  `saved`/`failed` durumu, callback temizliği ve rapor yazımı tamamlandıktan
+  sonra görünür olur; smoke runner erken çıkamaz. Başarıda `error=None` olur.
+- Rapor I/O hatası başarı yayımlamaz. Dünya/Play durumu kayıt öncesi ve sonrası
+  yeniden kontrol edilir; değişen bağlam kabul edilmez. Kayıt sırasında dünya
+  değişirse diskte kısmi/tamamlanmış bir map kalabilir; bu kabul sonucu değildir.
+- `unreal_check`, `saved` ve iki `true` bayrağı bulunsa bile `error` alanı dolu
+  bir raporu reddeder.
+
+TDD'de önce 10 başarısız / 6 başarılı ilgili test görüldü. Bağlam değişikliği
+incelemesinde dört ek regresyon üretildi ve kapatıldı; sonlandırma boyunca
+tek import kilidinin korunması da önce başarısız testle denetlendi. Son durumda 20 ilgili
+test başarılıdır. Bunlar iç içe height/collision/save çağrıları, geç callback,
+geciken import/collision, gerçek hedef çakışması, başarısız save, rapor I/O ve
+smoke kabul sözleşmesini modeller; burada native motor çalıştırılmaz.
+
+QA03'te önceki materyal ve güneş API hataları tekrar görülmedi. Ancak tutarlı
+yükseklik/collision raporu, GPU görünümü ve rover/sensör kabulü yeni gerçek
+koşu gelene kadar bekler. Kaynak Mars verisi ve sayısal toleranslar değiştirilmez.
+
+4.1'deki git güncellemesini editör kapalıyken uygula, sonra Play kapalı ve
+bekleyen değişiklikler kontrol edilip kaydedilmişken yeni isimle çalıştır:
+
+```python
+import mars_setup
+job = None
+job = mars_setup.build(level_path="/Game/Mars/JezeroQA04", report_path=r"C:/work/MARE-Lunar-Simulator/Saved/Mars/jezero-qa04.json")
+```
+
+Durum sorgusu ve JSON **aynı** `saved`, iki `true`, `error=null` sonucunu
+taşımalıdır. `importing` iken yalnız durum sorgusunu tekrarla. Eski QA03
+seviyesi/raporu korunabilir; üzerine yazarak önceki kanıt değiştirilmez.
 
 ## 5. Otomatik native yükseklik ve collision testi
 
