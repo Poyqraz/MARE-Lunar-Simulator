@@ -80,7 +80,7 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe tools/mars_navigation_benchmark.py --output generated/native-preflight.json
 ```
 
-Beklenen mevcut test sayısı **149** ve dört başarılı offline rotadır.
+Beklenen mevcut test sayısı **154** ve dört başarılı offline rotadır.
 `generated/native-preflight.json` varsa yeni çıktı adı seç. Venv'i aktive
 etmek veya PowerShell execution policy değiştirmek zorunlu değildir.
 **Unreal'ın gömülü Python'una pip/NumPy/rasterio/OpenCV kurulmaz.**
@@ -371,6 +371,35 @@ QA03 referans kurulum ve görüntüleme smoke testi geçmiştir; kesin görünt�
 yer hizası, sensör kalibrasyonu, uzun GPU performans koşusu, rover hareketi
 ve paketli uygulama kabulü beklemektedir.
 
+### 4.7. İlk rover kurulumu: LiDAR eksenleri
+
+29 Ekim 2026'da kullanıcının `JezeroFullTest01` log'unda rover aktörü ve
+simülasyon sahnesi oluşturuldu, ancak `configure_and_export()` LiDAR'ın
+seçtiği montaj bileşeninde `Sensor axes are not an orthonormal rigid basis`
+hatasıyla, seviye doğrulanıp kaydedilmeden durdu. Bileşen adı ve vektörler
+eski hata mesajında bulunmadığından, bu koşunun kesin nedeni bilinmez. Aynı
+log daha sonra başlıksız dünya için Play başlatıldığını gösterir; bu, sensör
+veya rover hareketi kabulü değildir. Yarım sahne üzerinde tekrar Play yapma.
+
+TDD incelemesi ayrıca iki koruma eksikliği ortaya çıkardı: iki birim vektör
+birbirine yeterince dik olmasa da eski kontrol geçirebiliyordu ve LiDAR
+montajı doğrulanmadan bazı sensör ayarları değiştiriliyordu. Güncel kod
+vektör uzunluğunu, dikliğini ve sonlu konumu denetler; montajlar ve rapor
+hesaplanmadan sensör ayarlarına dokunmaz. Hata, bileşen adı ile ham ileri/yukarı
+vektörlerini içerir. Testler bunları modeller; **kullanıcının gerçek LiDAR
+hatasının nedeni ve çözümü henüz doğrulanmış değildir**. Tolerans gevşetilmez,
+vektörler sessizce normalize edilmez ve gerçek ölçüm yerine tahmin yazılmaz.
+TDD'de önce 4 başarısız / 4 başarılı ilgili test, düzeltmeden sonra 8 başarılı
+ilgili test ve 154 başarılı tam Python testi görüldü; bunlar native test değildir.
+
+Mevcut başlıksız dünya açıksa önce Play'i durdurun; yeniden başlatmadan veya
+haritayı değiştirmeden `Mars_Rover_Reference` aktöründeki LiDAR'ın takip
+ettiği bileşeni, ileri/yukarı vektörlerini, dünya konumunu ve ölçeğini yalnız
+okuyarak kaydedin. Çıktı yoksa önce editör dünyasındaki aktör listesini
+kontrol edin. Bu kanıt, bozuk dönüşüm mü, henüz güncellenmemiş bileşen mi,
+başka bir geometrik durum mu olduğunu değerlendirmek için gereklidir. Eski
+başarısız `JezeroFullTest01_Assets` klasörü ve kullanıcı çalışmaları silinmez.
+
 ## 5. Otomatik native yükseklik ve collision testi
 
 Önce editor'daki çalışmayı kaydet ve editor'ı kapat. Repo kökündeki PowerShell:
@@ -576,7 +605,7 @@ otomatik kalıcı günlük varmış gibi davranma.
 
 | Grup | Kapanış koşulu |
 |---|---|
-| Python/CI | 149 test + lint + dört rota raporu başarılı; güncel CI'yı kontrol et |
+| Python/CI | 154 test + lint + dört rota raporu başarılı; güncel CI'yı kontrol et |
 | Native import/collision | Her iki modda saved + verified raporları |
 | GPU görünüm | Gerçek DX12/SM6 adaptörü, shader/asset hatası yok, ekran kanıtı |
 | GPU LiDAR / depth | Etkin GPU modu ve taze gerçek paketler; niceliksel kalibrasyon ayrı kaydedilmiş |

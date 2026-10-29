@@ -20,11 +20,17 @@ def _dot(a, b):
 
 def map_frame(component, *, optical=False):
     f, u, p = component.get_forward_vector(), component.get_up_vector(), component.get_world_location()
+    name = component.get_name() if hasattr(component, "get_name") else type(component).__name__
+    f_world, u_world, p_world = [f.x, f.y, f.z], [u.x, u.y, u.z], [p.x, p.y, p.z]
+    if any(not math.isfinite(v) for v in (*f_world, *u_world, *p_world)):
+        raise ValueError(f"Sensor transform contains non-finite values (component={name})")
     forward, up = [-f.x, f.y, f.z], [-u.x, u.y, u.z]
     left = _cross(up, forward)
     axes = [[-v for v in left], [-v for v in up], forward] if optical else [forward, left, up]
-    if any(not math.isclose(_dot(a, a), 1, abs_tol=1e-5) for a in axes):
-        raise ValueError("Sensor axes are not an orthonormal rigid basis")
+    if (any(not math.isclose(_dot(a, a), 1, rel_tol=0, abs_tol=1e-5) for a in axes) or
+            any(abs(_dot(axes[i], axes[j])) > 1e-5 for i in range(3) for j in range(i))):
+        raise ValueError(f"Sensor axes are not an orthonormal rigid basis (component={name}, "
+                         f"forward={f_world}, up={u_world}, forward_dot_up={_dot(forward, up)})")
     return [[axes[0][i], axes[1][i], axes[2][i], [-p.x / 100, p.y / 100, p.z / 100][i]] for i in range(3)] + [
         [0, 0, 0, 1]
     ]
@@ -105,25 +111,7 @@ def configure_and_export(unreal, rover, manifest_path, output):
     baseline = parallel_baseline(left_frame, right_frame)
     follow = str(lidar.get_editor_property("follow_component_name"))
     mount = lidar if follow.lower() in ("none", "") else find(follow)
-    # Mutate only this new level's placed rover, with Play stopped.
-    for component, values in [
-        (
-            streamer,
-            {
-                "server_ip": "127.0.0.1",
-                "server_port": 3004,
-                "send_hz": 5.0,
-                "stream_center_depth": True,
-                "limit_auto_exposure": True,
-                "lock_exposure": False,
-                "min_ev100": 13.0,
-                "max_ev100": 13.0,
-            },
-        ),
-        (lidar, {"server_ip": "127.0.0.1", "server_port": 3007, "scan_rate_hz": 10.0}),
-    ]:
-        for key, value in values.items():
-            component.set_editor_property(key, value)
+    # Resolve and validate all mounts before changing component settings.
     report = {
         "schema_version": 1,
         "source": "unreal_editor_components",
@@ -159,6 +147,25 @@ def configure_and_export(unreal, rover, manifest_path, output):
         "native_sensor_stream_verified": False,
         "native_rover_motion_verified": False,
     }
+    # Mutate only this new level's placed rover, with Play stopped.
+    for component, values in [
+        (
+            streamer,
+            {
+                "server_ip": "127.0.0.1",
+                "server_port": 3004,
+                "send_hz": 5.0,
+                "stream_center_depth": True,
+                "limit_auto_exposure": True,
+                "lock_exposure": False,
+                "min_ev100": 13.0,
+                "max_ev100": 13.0,
+            },
+        ),
+        (lidar, {"server_ip": "127.0.0.1", "server_port": 3007, "scan_rate_hz": 10.0}),
+    ]:
+        for key, value in values.items():
+            component.set_editor_property(key, value)
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("x", encoding="utf-8", newline="\n") as handle:
         json.dump(report, handle, indent=2, allow_nan=False)
