@@ -40,10 +40,12 @@ class CameraFrame:
     format: int
     pixels: np.ndarray
 
-    def depth_m(self):
+    def depth_m(self, *, stride=1):
         if self.format != 2:
             raise ValueError("Colour packets are not depth")
-        depth = self.pixels.astype("float64") / 100
+        if type(stride) is not int or stride < 1:
+            raise ValueError("Depth sampling stride must be a positive integer")
+        depth = self.pixels[::stride, ::stride].astype("float64") / 100
         depth[(~np.isfinite(depth)) | (depth <= 0) | (depth >= 1e5)] = np.nan
         return depth
 

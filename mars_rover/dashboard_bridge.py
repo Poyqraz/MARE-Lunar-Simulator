@@ -245,15 +245,19 @@ class LiveFeeds:
         if cached and cached[0] == signature:
             data = cached[1]
         else:
+            # Bound display encoding work without modifying the full-resolution
+            # frame consumed by navigation or the capture timestamp.
+            h, w = frame.pixels.shape[:2]
+            stride = max(1, math.ceil(w / 320), math.ceil(h / 240))
             if name == "depth_gt":
-                metres = frame.depth_m()
+                metres = frame.depth_m(stride=stride)
                 valid = np.isfinite(metres)
                 t = np.clip(np.where(valid, metres, 0) / 8.0, 0, 1)
                 rgb = np.stack([np.clip(1.5 - abs(4 * t - k), 0, 1) for k in (3, 2, 1)], axis=-1)
                 rgb[~valid] = 0
                 pixels = np.uint8(rgb * 255)
             elif name.startswith("cam_"):
-                pixels = frame.pixels[:, :, [2, 1, 0]]  # BGRA -> RGB
+                pixels = frame.pixels[::stride, ::stride, [2, 1, 0]]  # BGRA -> RGB
             else:
                 return None
             buffer = io.BytesIO()

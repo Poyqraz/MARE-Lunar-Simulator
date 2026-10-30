@@ -15,6 +15,9 @@ is relative to the rover-body origin; neither is a calibrated terrain analysis.
 The displayed pose update rate is the browser's rate, not raw telemetry rate.
 The local 3D view is sampled ground-truth depth, not an independently
 validated hazard classification. Missing or expired data is not free space.
+Camera JPEG previews are subsampled to a maximum of 320 by 240 pixels (for
+example, 640 by 480 becomes 320 by 240); full-resolution sensor frames remain
+available to navigation. Sampling can hide small features in the preview.
 The central RGB camera ID defaults to 0 when absent from the exported sensor
 configuration; verify it in Unreal before trusting the camera and projected
 path alignment. The projected 0.65 m route width is a reference assumption,
@@ -27,3 +30,12 @@ snapshots, lights, node restart and the original obstacle-avoidance switch are
 disabled until implemented against this backend. The interface and motor
 behavior with it open still require native UE 5.7.4 and browser acceptance;
 Python unit tests alone do not establish visual alignment or performance.
+
+An initial native dashboard-open drive on UE 5.7.4 reached neither its goal nor
+the 0.25 m arrival threshold before the 30 s test stop. The history recorded
+stale captures, observer pose gaps, and multiple replans. A near-goal replan
+sent the rover toward the centre of its current grid cell, behind its actual
+position; the planner now bypasses that centre only when the direct connection
+to the next waypoint passes the existing collision checks. The reduced preview
+encoding is a resource mitigation, not proof that the observed lag is fixed.
+Native repeat testing and a dashboard-closed comparison are required.

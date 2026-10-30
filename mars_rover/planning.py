@@ -163,6 +163,11 @@ class TerrainMap:
                     cells.append(parent[cells[-1]])
                 route = [(col * r, row * r) for row, col in reversed(cells)]
                 route = [start, *route, goal]
+                # The first grid centre can be behind an off-centre rover.
+                # Bypass it only if the exact connection to the next point is
+                # clear under the same inflated-map and corner checks.
+                if route[1] != start and self.segment_clear(start, route[2]):
+                    del route[1]
                 route = [p for i, p in enumerate(route) if i == 0 or p != route[i - 1]]
                 if not all(self.segment_clear(a, b) for a, b in zip(route, route[1:])):
                     raise NoRoute("Exact start/goal connection intersects a blocked cell")

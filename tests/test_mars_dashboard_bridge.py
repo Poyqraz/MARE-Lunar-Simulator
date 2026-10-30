@@ -55,6 +55,23 @@ def test_display_has_bounded_history_and_exact_image_stamp():
     assert feeds.frame("cam_central", 200).stamp_ns == 200
 
 
+def test_large_preview_is_reduced_without_changing_navigation_frame():
+    from mars_rover.dashboard_bridge import LiveFeeds
+
+    feeds = LiveFeeds(config(), clock=lambda: 1.0)
+    bgra = np.full((480, 640, 4), [0, 0, 255, 255], dtype=np.uint8)
+    rgb_frame = CameraFrame(0, 1, 100, 1, bgra)
+    depth_frame = CameraFrame(4, 1, 100, 2, np.full((480, 640), 200.0, dtype=np.float32))
+    feeds.camera(rgb_frame)
+    feeds.camera(depth_frame)
+    for name in ("cam_central", "depth_gt"):
+        payload, stamp = feeds.image(name, with_stamp=True)
+        assert Image.open(io.BytesIO(payload)).size == (320, 240)
+        assert stamp == "100"
+    assert feeds.frame("cam_central").pixels.shape == (480, 640, 4)
+    assert feeds.frame("depth_gt").depth_m().shape == (480, 640)
+
+
 def test_measured_center_id_selects_only_its_rgb_feed():
     from mars_rover.dashboard_bridge import LiveFeeds
 
