@@ -10,7 +10,10 @@ and ROS are not required by the adapter.
 The orbital background is a static HiRISE reference, not a live satellite feed.
 The terrain map is the existing DEM; positions and route come from simulation
 telemetry and the active planner. The LiDAR display is downsampled for display
-only. The local 3D view is sampled ground-truth depth, not an independently
+only. Its height colours use a scan-based estimate of ground, and its range
+is relative to the rover-body origin; neither is a calibrated terrain analysis.
+The displayed pose update rate is the browser's rate, not raw telemetry rate.
+The local 3D view is sampled ground-truth depth, not an independently
 validated hazard classification. Missing or expired data is not free space.
 The central RGB camera ID defaults to 0 when absent from the exported sensor
 configuration; verify it in Unreal before trusting the camera and projected

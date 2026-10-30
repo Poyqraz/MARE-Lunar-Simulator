@@ -2,13 +2,13 @@
  * Lidar 3D view — shared by the overview (5001) and the 3D map (5005).
  *
  * Renders the 'lidar' feed (points in the rover frame: x forward, y left,
- * z up, metres, origin at the sensor) on a plain 2D canvas — no WebGL, so it
+ * z up, metres, origin at the rover body) on a plain 2D canvas — no WebGL, so it
  * never competes with Unreal for the GPU.
  *
  *   - perspective camera that frames the scan: FIT / CHASE / TOP / SIDE views,
  *     drag = orbit, right-drag or shift-drag = pan, wheel = zoom,
  *     double-click = fit again
- *   - colour by height above the local ground or by range, scaled to the
+ *   - colour by height above a scan-based ground estimate or by body-origin range, scaled to the
  *     2nd..98th percentile so a few far or high points do not wash it out;
  *     legend with the scale
  *   - range rings with labels, the scan's field-of-view wedge, rover marker
@@ -79,8 +79,8 @@
       '<button data-view="top" title="From above">TOP</button>' +
       '<button data-view="side" title="From the right side (forward points right)">SIDE</button>' +
       '<span class="sep"></span>' +
-      '<button data-color="height" title="Colour by height above the local ground">HEIGHT</button>' +
-      '<button data-color="range" title="Colour by distance from the sensor">RANGE</button>' +
+      '<button data-color="height" title="Colour by height above the scan-estimated ground; display only">HEIGHT</button>' +
+      '<button data-color="range" title="Colour by distance from the rover body origin">RANGE</button>' +
       '</div>' +
       '<div class="lv-legend" style="display:none"><div class="t"></div><div class="bar"></div>' +
       '<div class="ends"><span class="lo"></span><span class="hi"></span></div></div>';
@@ -250,7 +250,7 @@
           ctx.fillRect(out[4 * k] - s / 2, out[4 * k + 1] - s / 2, s, s);
         }
         legend.style.display = '';
-        legend.querySelector('.t').textContent = colorMode === 'range' ? 'range from sensor' : 'height above ground';
+        legend.querySelector('.t').textContent = colorMode === 'range' ? 'range from rover origin' : 'height above estimated ground';
         legend.querySelector('.lo').textContent = `${lo.toFixed(1)} m`;
         legend.querySelector('.hi').textContent = `${hi.toFixed(1)} m`;
       }
