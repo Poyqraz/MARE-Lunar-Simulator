@@ -181,6 +181,10 @@ def test_dashboard_endpoints_are_local_and_use_timestamped_observations():
         with s.session.lock:
             s.session.pose = pose
             s.session.history.add(pose)
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(base + f"/dashboard/path-overlay?stamp={stamp}")
+        assert error.value.code == 404 and json.load(error.value)["error"] == "No planned route"
+        with s.session.lock:
             s.session.follower = RouteFollower([(5, 5), (9, 5)])
         with urllib.request.urlopen(base + f"/dashboard/path-overlay?stamp={stamp}") as response:
             assert json.load(response)["center"][-1] == pytest.approx([0.5, 2 / 3])
@@ -245,3 +249,68 @@ def test_derived_view_is_discarded_if_camera_disconnects_during_processing(monke
         with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(url)
         assert error.value.code == 404
+
+
+@pytest.mark.parametrize("error_type", [ConnectionAbortedError, ConnectionResetError, BrokenPipeError])
+@pytest.mark.parametrize("response", ["json", "file", "binary", "headers"])
+def test_client_disconnect_during_response_does_not_change_mission(error_type, response, tmp_path):
+    from mars_rover.nav_service import NavigationService
+    from mars_rover.planning import PlanningLimits, TerrainMap
+
+    cfg = {"schema_version": 1, "manifest_sha256": None, **config()}
+    grid = TerrainMap(np.zeros((10, 10)), 1, PlanningLimits(robot_radius_m=0))
+    service = NavigationService(grid, cfg, tcp_port=0, bridge_http_port=0, http_port=0, lidar_port=0, camera_port=0)
+    try:
+        service.session.set_goal((5, 5))
+        handler = object.__new__(service._handler())
+        handler.close_connection = False
+        handler.send_response = lambda code: None
+        handler.send_header = lambda key, value: None
+        handler.end_headers = lambda: None
+
+        class ClosedClient:
+            def write(self, data):
+                raise error_type("client disconnected")
+
+        handler.wfile = ClosedClient()
+        if response == "headers":
+            def fail_headers():
+                raise error_type("client disconnected")
+
+            handler.end_headers = fail_headers
+        if response == "json" or response == "headers":
+            handler.reply(404, {"error": "No planned route"})
+        elif response == "binary":
+            handler.binary_reply(b"image", "image/jpeg", stamp="100")
+        else:
+            file = tmp_path / "asset.txt"
+            file.write_text("sample")
+            handler.file_reply(file, "text/plain")
+        assert handler.close_connection
+        assert service.session.goal == (5.0, 5.0)
+    finally:
+        service.close()
+
+
+def test_unrelated_response_write_failure_is_not_hidden():
+    from mars_rover.nav_service import NavigationService
+    from mars_rover.planning import PlanningLimits, TerrainMap
+
+    cfg = {"schema_version": 1, "manifest_sha256": None, **config()}
+    grid = TerrainMap(np.zeros((10, 10)), 1, PlanningLimits(robot_radius_m=0))
+    service = NavigationService(grid, cfg, tcp_port=0, bridge_http_port=0, http_port=0, lidar_port=0, camera_port=0)
+    try:
+        handler = object.__new__(service._handler())
+        handler.send_response = lambda code: None
+        handler.send_header = lambda key, value: None
+        handler.end_headers = lambda: None
+
+        class BadWriter:
+            def write(self, data):
+                raise OSError("unrelated I/O failure")
+
+        handler.wfile = BadWriter()
+        with pytest.raises(OSError, match="unrelated I/O"):
+            handler.reply(200, {"ok": True})
+    finally:
+        service.close()

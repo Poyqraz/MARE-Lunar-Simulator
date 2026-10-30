@@ -39,3 +39,9 @@ position; the planner now bypasses that centre only when the direct connection
 to the next waypoint passes the existing collision checks. The reduced preview
 encoding is a resource mitigation, not proof that the observed lag is fixed.
 Native repeat testing and a dashboard-closed comparison are required.
+
+The camera route overlay is requested only for an active plan; an unavailable
+plan or missing capture is still a normal 404. If an HTTP client disconnects
+while a response is being written, that response is abandoned without changing
+the vehicle mission. The dashboard reports a terminal mission's saved error
+when available, and otherwise shows the original blocked/timeout state.

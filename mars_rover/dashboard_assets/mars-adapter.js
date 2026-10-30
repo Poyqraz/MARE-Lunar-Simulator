@@ -83,7 +83,8 @@
       } else dispatch('odom_lost');
       const m = s.mission;
       dispatch('mission', {state: missionState(s.state), goal: m && m.goal,
-                           reason: s.observer_error || s.sensor_observation_error || ''});
+                           reason: (m && m.error) || s.observer_error || s.sensor_observation_error ||
+                                   (['blocked', 'stalled_or_timed_out'].includes(s.state) ? s.state : '')});
       dispatch('global_path_update', {path: route(m && m.active_plan), first: route(m && m.initial_plan),
                                       replans: m ? Math.max(0, m.plan_revision - 1) : 0});
       if (m && m.mission_id) {
@@ -120,7 +121,9 @@
           seen.set(name, captured); dispatch('feed', {id: name, image});
         } catch (_) { /* A missing image does not disconnect the pose or command service. */ }
       }));
-      if (seen.has('cam_central')) {
+      const activePlan = s && s.mission && !s.mission.closed && Array.isArray(s.mission.active_plan)
+                         && s.mission.active_plan.length > 0;
+      if (seen.has('cam_central') && activePlan) {
         try {
           const response = await fetch('/dashboard/path-overlay?stamp=' + encodeURIComponent(seen.get('cam_central')),
                                        {cache: 'no-store'});

@@ -196,13 +196,25 @@ class NavigationService:
             def log_message(self, *args):
                 pass
 
+            def send_payload(self, code, payload, content_type, *, stamp=None, no_store=False):
+                try:
+                    self.send_response(code)
+                    self.send_header("Content-Type", content_type)
+                    self.send_header("Content-Length", str(len(payload)))
+                    if no_store:
+                        self.send_header("Cache-Control", "no-store")
+                    if stamp is not None:
+                        self.send_header("X-Capture-Stamp-Ns", stamp)
+                    self.end_headers()
+                    self.wfile.write(payload)
+                except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                    # A client can leave while a reply is being prepared. This
+                    # only ends its HTTP response; it must not affect a mission.
+                    self.close_connection = True
+
             def reply(self, code, value):
                 payload = json.dumps(value, allow_nan=False).encode()
-                self.send_response(code)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
+                return self.send_payload(code, payload, "application/json")
 
             def do_GET(self):
                 parsed = urlsplit(self.path)
@@ -345,11 +357,7 @@ class NavigationService:
                 if not path.is_file():
                     return self.reply(404, {"error": "Asset not available"})
                 payload = path.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
+                return self.send_payload(200, payload, content_type)
 
             def requested_frame(self, name, query_string):
                 if not query_string:
@@ -364,14 +372,7 @@ class NavigationService:
                 return service.feeds.frame(name, int(raw[0]))
 
             def binary_reply(self, payload, content_type, *, stamp=None):
-                self.send_response(200)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(len(payload)))
-                self.send_header("Cache-Control", "no-store")
-                if stamp is not None:
-                    self.send_header("X-Capture-Stamp-Ns", stamp)
-                self.end_headers()
-                self.wfile.write(payload)
+                return self.send_payload(200, payload, content_type, stamp=stamp, no_store=True)
 
             def do_POST(self):
                 if self.path not in ("/goal", "/stop", "/dashboard/viewport"):
