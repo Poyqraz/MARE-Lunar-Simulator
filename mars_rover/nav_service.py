@@ -267,6 +267,8 @@ class NavigationService:
                         else:
                             view = local_depth_view(service.session.grid, pose.matrix, config["to_body"],
                                                     config["hfov_deg"], frame.depth_m())
+                        if service.feeds.frame(name, frame.stamp_ns) is not frame:
+                            raise ValueError("Frame expired or sensor disconnected during processing")
                         view["stamp_ns"] = str(frame.stamp_ns)
                         return self.reply(200, view)
                     except (ValueError, KeyError, TypeError) as error:

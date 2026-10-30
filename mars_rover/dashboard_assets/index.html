@@ -800,7 +800,7 @@ $('btn-avoid').onclick = () => {
 };
 $('btn-stop').onclick = () => {
   socket.emit('stop_rover', {});
-  addLocal('WARN', 'ALL STOP commanded.');
+  addLocal('WARN', 'ALL STOP requested.');
 };
 $('btn-camrst').onclick = e => {
   socket.emit('restart_cameras', {});

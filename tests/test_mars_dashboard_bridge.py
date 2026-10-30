@@ -188,3 +188,29 @@ def test_editor_viewport_link_does_not_control_the_vehicle():
         with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(request)
         assert error.value.code == 400 and s.session.goal is None
+
+
+def test_derived_view_is_discarded_if_camera_disconnects_during_processing(monkeypatch):
+    import mars_rover.nav_service as service_module
+    from mars_rover.planning import PlanningLimits, TerrainMap
+    from mars_rover.sensors import pose_from_telemetry
+
+    cfg = {"schema_version": 1, "manifest_sha256": None, **config()}
+    grid = TerrainMap(np.zeros((10, 10)), 1, PlanningLimits(robot_radius_m=0))
+    stamp = 1700000000000000000
+    with service_module.NavigationService(grid, cfg, tcp_port=0, bridge_http_port=0,
+                                          http_port=0, lidar_port=0, camera_port=0) as s:
+        pose = pose_from_telemetry(dict(x=-500, y=500, z=0, roll=0, pitch=0, yaw=180, t_ns=str(stamp)))
+        with s.session.lock:
+            s.session.history.add(pose)
+        s.feeds.camera(CameraFrame(4, 1, stamp, 2, np.full((48, 64), 200, dtype=np.float32)))
+
+        def disconnect_during_view(*args, **kwargs):
+            s.feeds.clear_camera()
+            return {"display_only": True}
+
+        monkeypatch.setattr(service_module, "local_depth_view", disconnect_during_view)
+        url = f"http://127.0.0.1:{s.http.server_port}/dashboard/local-dem?stamp={stamp}"
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(url)
+        assert error.value.code == 404
