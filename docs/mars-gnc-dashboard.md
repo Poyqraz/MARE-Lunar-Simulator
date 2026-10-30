@@ -45,3 +45,11 @@ plan or missing capture is still a normal 404. If an HTTP client disconnects
 while a response is being written, that response is abandoned without changing
 the vehicle mission. The dashboard reports a terminal mission's saved error
 when available, and otherwise shows the original blocked/timeout state.
+
+For a native mission observation, `python tools/record_mars_mission.py --seconds 150`
+polls the local mission status and periodically writes two unique, atomic JSON
+checkpoints under `Saved/Mars`. It stops monitoring when a new/current active
+mission closes, or after the time limit. It only reads the mission snapshot and
+export endpoints: it never sends a goal or a stop command, including on timeout.
+If the service becomes unavailable, the files retain the last successful
+checkpoint; events after that checkpoint cannot be recovered from those files.
