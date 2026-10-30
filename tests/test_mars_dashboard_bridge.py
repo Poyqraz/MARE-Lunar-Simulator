@@ -55,6 +55,20 @@ def test_display_has_bounded_history_and_exact_image_stamp():
     assert feeds.frame("cam_central", 200).stamp_ns == 200
 
 
+def test_measured_center_id_selects_only_its_rgb_feed():
+    from mars_rover.dashboard_bridge import LiveFeeds
+
+    cfg = config()
+    cfg["depth"]["color_camera_id"] = 7
+    feeds = LiveFeeds(cfg, clock=lambda: 1.0)
+    pixels = np.zeros((8, 8, 4), dtype=np.uint8)
+    feeds.camera(CameraFrame(0, 1, 100, 1, pixels))
+    assert feeds.frame("cam_central") is None
+    feeds.camera(CameraFrame(7, 1, 101, 1, pixels))
+    assert feeds.frame("cam_central").camera_id == 7
+    assert feeds.status()["center_id_source"] == "measured"
+
+
 def test_lidar_applies_measured_mount_and_filters_invalid_points():
     from mars_rover.dashboard_bridge import LiveFeeds
 
