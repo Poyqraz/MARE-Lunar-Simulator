@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Mars Jezero — Mission Control</title>
+<script src="/dashboard-assets/theme.js"></script>
+<link rel="stylesheet" href="/dashboard-assets/base.css">
+<script src="/dashboard-assets/mars-adapter.js"></script>
+<script src="/dashboard-assets/alerts.js"></script>
+<script src="/dashboard-assets/three-r128.min.js"></script>
+<script src="/dashboard-assets/local_dem.js"></script>
+<script src="/dashboard-assets/feed_legends.js"></script>
+<script src="/dashboard-assets/nav_overlay.js"></script>
+<script src="/dashboard-assets/dash_common.js"></script>
+<script src="/dashboard-assets/lidar_view.js"></script>
+<style>
+
+  body { font-size: calc(13px * var(--fs, 1)); overflow: hidden; display: grid; grid-template-rows: calc(46px * var(--fs, 1)) 1fr 190px; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 6px; }
+
+  /* ============ HEADER ============ */
+  header { gap: 18px; padding: 0 14px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+
+  .clock { text-align: center; }
+  .clock .lbl { color: var(--dim); font-size: calc(9px * var(--fs, 1)); letter-spacing: 2px; }
+  .clock .val { color: var(--cyan); font-size: calc(16px * var(--fs, 1)); letter-spacing: 1px; }
+
+  .lights { display: flex; gap: 14px; }
+  .light { text-align: center; font-size: calc(9px * var(--fs, 1)); letter-spacing: 1px; color: var(--dim); }
+  .light .dot {
+    width: 11px; height: 11px; border-radius: 50%; margin: 0 auto 3px;
+    background: #333; border: 1px solid #222; transition: background .3s;
+  }
+  .light .dot.ok    { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .light .dot.stale { background: var(--amber);  box-shadow: 0 0 8px var(--amber); }
+  .light .dot.dead  { background: #402028; }
+
+  /* ============ MAIN GRID ============ */
+  main > * { min-width: 0; }
+  main { display: grid; grid-template-columns: 29% minmax(0, 1fr) 27%; gap: 6px; min-height: 0; }
+  .col { display: flex; flex-direction: column; gap: 6px; min-height: 0; min-width: 0; }
+
+  .panel-title .age { margin-left: auto; color: var(--dim); font-size: calc(9px * var(--fs, 1)); }
+
+  /* ============ CAMERA FEEDS ============ */
+  /* every row needs an explicit track: an implicit (auto) row grows to the
+     image's natural size and squeezes the others to nothing */
+  /* --cam-rows is set by layoutFeeds() from the rows that still show a feed */
+  #cams { flex: 1; display: grid; grid-template-rows: var(--cam-rows, 1.5fr 1fr 1fr 1fr); gap: 6px; min-height: 0; }
+  /* grid-template-rows pins the single row to the track height from #cams;
+     without it the row is implicit-auto and collapses to the image's
+     intrinsic height, so feeds overflow and overlap the row below. */
+  .cam-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); gap: 6px; min-height: 0; }
+  /* feeds switched off in VIEWS, and rows left with none */
+  #cams .feed.off, #cams .cam-row.empty { display: none !important; }
+  .feed { position: relative; background: var(--view, #10151c); min-height: 0; overflow: hidden; }
+  .feed img {
+    width: 100%; height: 100%; object-fit: contain; display: block;
+    image-rendering: auto;
+  }
+  .feed .nosig {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    color: var(--view-text, #4d6580); font-size: calc(12px * var(--fs, 1)); letter-spacing: 4px;
+    background: repeating-linear-gradient(0deg, var(--view, #10151c) 0 2px, var(--view2, #161d28) 2px 4px);
+  }
+
+  /* ============ MAP ============ */
+  #map-panel { flex: 1; }
+  #map-body { flex: 1; display: flex; gap: 8px; padding: 8px; min-height: 0; }
+  #map-wrap { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+  /* #map-stack is invisible: its translate+scale is the map's place on screen.
+     The canvases cover the whole view at the display's resolution and are
+     redrawn with that placement, so zoom never enlarges pixels. */
+  #map-stack { position: absolute; inset: 0; margin: auto; transform-origin: 0 0; visibility: hidden; pointer-events: none; }
+  #map-wrap > canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  #mapCanvas  { z-index: 1; }
+  #odomCanvas { z-index: 2; cursor: crosshair; }
+  #planning {
+    display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    z-index: 5; padding: 8px 20px; color: var(--cyan); border: 1px solid var(--cyan);
+    background: rgba(4,10,16,.9); letter-spacing: 2px; font-size: calc(12px * var(--fs, 1));
+    box-shadow: 0 0 18px rgba(79,195,247,.3); pointer-events: none;
+  }
+  #cbar { width: 46px; flex: 0 0 auto; display: none; flex-direction: column; }
+  #cbarCanvas { flex: 1; min-height: 0; border: 1px solid var(--line); width: 100%; }
+  #map-hint { padding: 3px 10px; color: var(--dim); font-size: calc(10px * var(--fs, 1)); border-top: 1px solid var(--line);
+              display: flex; gap: 14px; }
+  #map-hint b { color: var(--cyan); font-weight: normal; }
+  /* mission timeline: the planner's states over time, under the map */
+  #mtl { border-top: 1px solid var(--line); padding: 4px 10px 5px; flex: 0 0 auto; }
+  #mtl-head { display: flex; align-items: center; gap: 12px; font-size: calc(9px * var(--fs, 1));
+              letter-spacing: 1px; color: var(--dim); }
+  #mtl-head .ttl { letter-spacing: 2px; }
+  #mtl-head b { color: var(--text); font-weight: normal; }
+  #mtl-head b.ok { color: var(--accent); } #mtl-head b.bad { color: var(--red); }
+  #mtl-clear { margin-left: auto; }
+  #mtl-track { position: relative; height: 18px; margin-top: 4px; background: var(--view);
+               border: 1px solid var(--line); border-radius: 2px; overflow: hidden; }
+  #mtl-track .empty { position: absolute; inset: 0; display: flex; align-items: center; padding-left: 8px;
+                      color: var(--view-text); font-size: calc(9px * var(--fs, 1)); letter-spacing: 1px; }
+  .mtl-seg { position: absolute; top: 4px; bottom: 4px; min-width: 2px; border-radius: 1px; }
+  .mtl-seg.planning { background: var(--amber); }
+  .mtl-seg.replan { background: repeating-linear-gradient(90deg, var(--amber) 0 3px, transparent 3px 5px); }
+  .mtl-seg.waiting { background: repeating-linear-gradient(90deg, var(--red) 0 3px, transparent 3px 5px); }
+  .mtl-seg.driving { background: var(--cyan); }
+  .mtl-goal { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); }
+  .mtl-mk { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%;
+            border: 2px solid var(--view); box-sizing: content-box; cursor: default; }
+  .mtl-mk.reached { background: var(--accent); }
+  .mtl-mk.aborted { background: var(--red); border-radius: 2px; transform: rotate(45deg); }
+  .mtl-mk.cancelled { background: var(--dim); border-radius: 2px; }
+  .mtl-session { position: absolute; top: 0; bottom: 0; border-left: 1px dashed var(--dim); }
+  #mtl-axis { display: flex; justify-content: space-between; gap: 10px; margin-top: 3px; color: var(--dim);
+              font-size: calc(8px * var(--fs, 1)); letter-spacing: 1px; }
+  #mtl-key { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #mtl-key .k { display: inline-block; width: 9px; height: 6px; margin: 0 3px 0 8px; vertical-align: middle; }
+  #mtl-key .k.planning { background: var(--amber); } #mtl-key .k.driving { background: var(--cyan); }
+  #mtl-key .k.reached { background: var(--accent); border-radius: 50%; width: 6px; }
+  #mtl-key .k.aborted { background: var(--red); width: 6px; transform: rotate(45deg); }
+  #mtl-key .k.cancelled { background: var(--dim); width: 6px; }
+  #mtl-key .k.session { border-left: 1px dashed var(--dim); width: 1px; height: 9px; }
+  #map-hint .sw { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 4px; }
+
+  /* ============ LIDAR + TELEMETRY ============ */
+  #lidar-panel { flex: 1.4; }
+  #lidarView { flex: 1; min-height: 0; position: relative; }
+  #dem-panel   { flex: 1.1; }
+  #tele-panel  { flex: 0 0 auto; }
+  /* two columns of readouts, so the lidar and DEM views above get the height */
+  #tele { flex: 1; padding: 6px 12px; overflow-y: auto; display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 18px; align-content: start; }
+  #tele .tl.wide { grid-column: 1 / -1; }
+  .tl { display: flex; justify-content: space-between; padding: 3px 0;
+        border-bottom: 1px dashed var(--grid); }
+  .tl .k { color: var(--dim); letter-spacing: 1px; font-size: calc(11px * var(--fs, 1)); }
+  .tl .v { color: var(--accent); font-size: calc(13px * var(--fs, 1)); }
+  .tl .v.cy { color: var(--cyan); }
+
+  #cmd-bar { display: flex; gap: 6px; padding: 8px 10px 2px; }
+  #cmd-bar button {
+    flex: 1; font-family: var(--mono); font-size: calc(10px * var(--fs, 1)); letter-spacing: 1px;
+    padding: 7px 4px; cursor: pointer; border-radius: 3px;
+    background: var(--panel2); border: 1px solid var(--line); color: var(--text);
+  }
+  #cmd-bar button:hover { border-color: var(--accent); color: var(--accent); }
+  #cmd-bar button.lit { border-color: var(--amber); color: var(--amber);
+                        box-shadow: 0 0 8px rgba(255,180,84,.25); }
+  #light-ctl { flex: 1.3; display: flex; align-items: center; gap: 4px; padding: 0 4px; border-radius: 3px;
+               background: var(--panel2); border: 1px solid var(--line); color: var(--amber);
+               font-family: var(--mono); font-size: calc(10px * var(--fs, 1)); }
+  #light-ctl input { flex: 1; min-width: 40px; accent-color: var(--amber); }
+  #light-val { min-width: 3.2em; text-align: right; color: var(--text); }
+  #btn-stop { border-color: #5a2230 !important; color: var(--red) !important; }
+  #btn-avoid.off { color: var(--dim); }
+  #btn-view.off { color: var(--dim); }
+  #btn-stop:hover { background: #2a1018 !important; box-shadow: 0 0 10px rgba(255,85,102,.3); }
+
+  /* ============ CONSOLE ============ */
+  footer.panel { min-height: 0; }
+  #console-bar { display: flex; gap: 8px; align-items: center; }
+  #console-bar button {
+    background: none; border: 1px solid var(--line); color: var(--dim);
+    font-family: var(--mono); font-size: calc(9px * var(--fs, 1)); letter-spacing: 1px;
+    padding: 2px 8px; cursor: pointer; border-radius: 2px;
+  }
+  #console-bar button.on { color: var(--accent); border-color: var(--accent); }
+  #console-bar input, #console-bar select {
+    background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 2px;
+    font-family: var(--mono); font-size: calc(10px * var(--fs, 1)); padding: 2px 6px; letter-spacing: 0;
+  }
+  #console-bar input { width: 180px; }
+  #console-bar select { max-width: 220px; }
+  #log {
+    flex: 1; overflow-y: auto; padding: 4px 10px; font-size: calc(11.5px * var(--fs, 1)); line-height: 1.5;
+  }
+  #log .row { white-space: pre-wrap; word-break: break-word; }
+  #log .t   { color: var(--dim); }
+  #log .n   { color: var(--cyan); }
+  #log .INFO  { color: var(--text); }
+  #log .WARN  { color: var(--amber); }
+  #log .ERROR, #log .FATAL { color: var(--red); }
+
+  /* ============ VIEW TABS ============ */
+  .viewtabs { display: flex; gap: 4px; margin-left: 12px; }
+  .viewtabs button {
+    background: none; border: 1px solid var(--line); color: var(--dim);
+    font-family: var(--mono); font-size: calc(9px * var(--fs, 1)); letter-spacing: 1px;
+    padding: 4px 10px; cursor: pointer; border-radius: 3px; white-space: nowrap;
+  }
+  .viewtabs button:hover { color: var(--text); border-color: var(--dim); }
+  .viewtabs button.on {
+    color: var(--accent); border-color: var(--accent);
+    box-shadow: 0 0 8px rgba(53,224,181,.2);
+  }
+  /* Focused views: hide the other columns and let the chosen one fill. The 3D
+     views also hide the telemetry panel. */
+  main[data-view="cams"]  { grid-template-columns: 1fr; }
+  main[data-view="cams"]  #col-map, main[data-view="cams"]  #col-right { display: none; }
+  /* full width: the selected feeds in a grid (layoutFeeds()
+     picks the columns that give the largest tiles) */
+  main[data-view="cams"]  #cams { grid-template-columns: repeat(var(--cam-cols, 3), minmax(0, 1fr));
+                                  grid-template-rows: repeat(var(--cam-grid-rows, 3), minmax(0, 1fr)); }
+  main[data-view="cams"]  .cam-row { display: contents; }
+  /* click a feed to enlarge it to the whole tab (as on the camera wall); click
+     again or press Esc to return */
+  main[data-view="cams"]  #cams .feed { cursor: zoom-in; }
+  main[data-view="cams"]  #cams[data-focus] { grid-template-columns: minmax(0, 1fr);
+                                              grid-template-rows: minmax(0, 1fr); }
+  main[data-view="cams"]  #cams[data-focus] .feed { display: none; }
+  main[data-view="cams"]  #cams[data-focus] .feed.focus { display: block; cursor: zoom-out; }
+  main[data-view="map"]   { grid-template-columns: 1fr; }
+  main[data-view="map"]   #col-cams, main[data-view="map"]  #col-right { display: none; }
+  main[data-view="dem"]   { grid-template-columns: 1fr; }
+  main[data-view="dem"]   #col-cams, main[data-view="dem"]  #col-map,
+  main[data-view="dem"]   #lidar-panel, main[data-view="dem"] #tele-panel { display: none; }
+  main[data-view="dem"]   #dem-panel { flex: 1; }
+  main[data-view="lidar"] { grid-template-columns: 1fr; }
+  main[data-view="lidar"] #col-cams, main[data-view="lidar"] #col-map,
+  main[data-view="lidar"] #dem-panel, main[data-view="lidar"] #tele-panel { display: none; }
+  main[data-view="lidar"] #lidar-panel { flex: 1; }
+
+  /* ============ HEADER ACTIONS + SYSTEM PANEL ============ */
+  .hbtn {
+    background: none; border: 1px solid var(--line); color: var(--dim);
+    font-family: var(--mono); font-size: calc(9px * var(--fs, 1)); letter-spacing: 1px;
+    padding: 5px 9px; cursor: pointer; border-radius: 3px; white-space: nowrap;
+  }
+  .hbtn:hover { color: var(--text); border-color: var(--dim); }
+  .hbtn.on { color: var(--accent); border-color: var(--accent); }
+  #btn-rec.rec { color: var(--red); border-color: var(--red); animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity: .55; } }
+  /* ROVER selector: the rover the stack drives, and Unreal's (from its camera link) */
+  #rover-ctl { display: flex; align-items: center; gap: 6px; font-size: calc(9px * var(--fs, 1));
+               letter-spacing: 1px; color: var(--dim); white-space: nowrap; }
+  #rover-ctl { text-decoration: none; }
+  #rover-name { color: var(--text); font-weight: normal; font-size: calc(10px * var(--fs, 1)); }
+  #rover-unreal { padding: 2px 6px; border: 1px solid var(--line); border-radius: 3px; }
+  #rover-unreal.ok { color: var(--accent); border-color: var(--accent); }
+  #rover-unreal.bad { color: var(--amber); border-color: var(--amber); animation: blink 1.2s infinite; }
+  /* ============ MISSION + ATTITUDE ============ */
+  .badge { font-size: calc(10px * var(--fs, 1)); letter-spacing: 1px; padding: 1px 7px; border-radius: 3px;
+           border: 1px solid currentColor; }
+  .badge.idle, .badge.unknown { color: var(--dim); }
+  .badge.planning { color: var(--cyan); }
+  .badge.waiting { color: var(--amber); }
+  .badge.driving { color: var(--accent); }
+  .badge.reached { color: #7ee07e; }
+  .badge.aborted { color: var(--red); }
+  .badge.cancelled { color: var(--amber); }
+  .tiltbar { flex: 1; height: 8px; margin: 4px 10px 0; background: var(--grid); border-radius: 4px;
+             position: relative; overflow: hidden; }
+  #t-tiltfill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--accent);
+                transition: width .3s, background .3s; }
+  #t-tiltlim { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--red); display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <a href="/" id="menu-link" title="Open the simpler map"
+     style="color:var(--dim);text-decoration:none;font-size:calc(11px * var(--fs, 1));letter-spacing:1px;
+            border:1px solid var(--line);padding:6px 11px;border-radius:4px;white-space:nowrap">◀ MENU</a>
+  <div class="brand">MARE · MARS JEZERO<small>GNC OVERVIEW · PYTHON ADAPTER · SIMULATION</small></div>
+  <div class="clock"><div class="lbl">MET</div><div class="val" id="met">T+ 00:00:00</div></div>
+  <div class="clock"><div class="lbl">UTC</div><div class="val" id="utc">--:--:--</div></div>
+  <div class="viewtabs">
+    <button data-view="all" class="on">OVERVIEW</button>
+    <button data-view="cams">CAMERAS</button>
+    <button data-view="map">MAP</button>
+    <button data-view="dem">TERRAIN 3D</button>
+    <button data-view="lidar">LIDAR 3D</button>
+  </div>
+  <div class="spacer"></div>
+  <a id="rover-ctl" href="#" title="Reference rover; the user's vehicle is not yet calibrated">
+    ROVER <b id="rover-name">—</b><span id="rover-unreal">Unreal: —</span>
+  </a>
+  <div class="lights">
+    <div class="light"><div class="dot" id="li-link"></div>LINK</div>
+    <div class="light"><div class="dot" id="li-odom"></div>ODOM</div>
+    <div class="light"><div class="dot" id="li-cam"></div>NAVCAM</div>
+    <div class="light"><div class="dot" id="li-depth"></div>DEPTH</div>
+    <div class="light"><div class="dot" id="li-lidar"></div>LIDAR</div>
+  </div>
+  <button class="hbtn" id="btn-snap" disabled title="Not connected in the Python adapter">⤓ SNAPSHOT</button>
+  <button class="hbtn" id="btn-rec" disabled title="ROS bag recording is not connected">● REC</button>
+  <button class="hbtn" id="btn-sys" disabled title="ROS system screen is not connected">SYSTEM ↗</button>
+</header>
+
+
+<main data-view="all">
+  <!-- ============ LEFT: CAMERAS ============ -->
+  <div class="col" id="col-cams">
+    <div class="panel" style="flex:1">
+      <div class="panel-title"><span class="tag">▣</span>CAMERAS
+        <span class="age"><button id="btn-feeds" title="Select the camera views to display" style="background:none;border:1px solid var(--line);color:var(--dim);font-family:var(--mono);font-size:calc(9px * var(--fs, 1));padding:1px 7px;cursor:pointer;margin-right:4px">VIEWS ▾</button><button id="btn-camrst" disabled title="Not connected in the Python adapter" style="background:none;border:1px solid var(--line);color:var(--dim);font-family:var(--mono);font-size:calc(9px * var(--fs, 1));padding:1px 7px;cursor:pointer">⟳ RESTART NODE</button></span>
+      </div>
+      <div id="cams">
+        <div class="cam-row" style="grid-template-columns:1fr">
+          <div class="feed" id="f-cam_central" title="Central ID 0 assumed when absent from sensor config; projected ribbon uses a 0.65 m reference width"><div class="nosig">CENTRAL — NO SIGNAL</div><img></div>
+        </div>
+        <div class="cam-row">
+          <div class="feed" id="f-cam_left"><div class="nosig">LEFT — NO SIGNAL</div><img></div>
+          <div class="feed" id="f-cam_right"><div class="nosig">RIGHT — NO SIGNAL</div><img></div>
+          <div class="feed" id="f-cam_rear"><div class="nosig">REAR — NO SIGNAL</div><img></div>
+        </div>
+        <div class="cam-row" style="grid-template-columns:1fr 1fr 1fr">
+          <div class="feed" id="f-depth"><div class="nosig">STEREO DEPTH</div><img></div>
+          <div class="feed" id="f-depth_gt"><div class="nosig">GROUND TRUTH DEPTH</div><img></div>
+          <div class="feed" id="f-mask"><div class="nosig">SEGMENTATION</div><img></div>
+        </div>
+        <div class="cam-row" style="grid-template-columns:1fr 1fr 1fr">
+          <div class="feed" id="f-shadow"><div class="nosig">SHADOW MASK</div><img></div>
+          <div class="feed" id="f-events"><div class="nosig">EVENT CAM</div><img></div>
+          <div class="feed" id="f-spad"><div class="nosig">SPAD CAM</div><img></div>
+        </div>
+        <div class="cam-row">
+          <div class="feed" id="f-rear_mask" data-default-off><div class="nosig">REAR SEGMENTATION</div><img></div>
+          <div class="feed" id="f-rear_shadow" data-default-off><div class="nosig">REAR SHADOW MASK</div><img></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CENTER: MAP ============ -->
+  <div class="col" id="col-map">
+    <div class="panel" id="map-panel">
+      <div class="panel-title"><span class="tag">◈</span><span title="Click: send the rover a goal · Wheel: zoom · Drag: pan">GLOBAL MAP</span>
+        <span class="age" style="display:flex;gap:6px">
+          <button id="btn-follow" style="background:none;border:1px solid var(--line);color:var(--dim);font-family:var(--mono);font-size:calc(9px * var(--fs, 1));padding:1px 7px;cursor:pointer">FOLLOW ROVER</button>
+          <button id="btn-layer" title="Switch between measured DEM and the static HiRISE reference" style="background:none;border:1px solid var(--line);color:var(--dim);font-family:var(--mono);font-size:calc(9px * var(--fs, 1));padding:1px 7px;cursor:pointer">DEM</button>
+          <button id="btn-zoomreset" style="background:none;border:1px solid var(--line);color:var(--dim);font-family:var(--mono);font-size:calc(9px * var(--fs, 1));padding:1px 7px;cursor:pointer">RESET VIEW</button>
+          <button id="btn-map" style="background:none;border:1px solid var(--line);color:var(--dim);font-family:var(--mono);font-size:calc(9px * var(--fs, 1));padding:1px 7px;cursor:pointer">RELOAD MAP</button>
+        </span>
+      </div>
+      <div id="map-body">
+        <div id="map-wrap">
+          <div id="map-stack"></div>
+          <canvas id="mapCanvas"></canvas>
+          <canvas id="odomCanvas"></canvas>
+          <div id="planning">COMPUTING TRAVERSE…</div>
+        </div>
+        <div id="cbar">
+          <div style="font-size:calc(9px * var(--fs, 1));color:var(--dim);text-align:center;padding:2px">ELEV</div>
+          <canvas id="cbarCanvas"></canvas>
+        </div>
+      </div>
+      <div id="map-hint">
+        <span><b class="sw" style="background:#ff6b7d"></b>PLANNED (dashed once re-planned)</span>
+        <span><b class="sw" style="background:#ffa94d"></b>RE-PLANNED</span>
+        <span><b class="sw" style="background:#59b0ff"></b>DRIVEN</span>
+        <span><b style="color:#33d6a6">➤</b> ROVER + HEADING</span>
+        <span><b style="color:#ffbe5c">✕</b> GOAL</span>
+        <span><b style="color:#9fcbf2">◢</b> CAMERA FOV</span>
+        <span><b style="color:#ff6b7d">■</b> LOCAL OBSTACLES</span>
+        <span><b style="color:#ffd166">■</b> LIDAR OBSTACLES</span>
+        <span><b>⇕</b> WHEEL ZOOM · DRAG PAN</span>
+      </div>
+      <div id="mtl">
+        <div id="mtl-head">
+          <span class="ttl" title="Events use Unreal simulation capture timestamps">MISSION TIMELINE · SIM TIME</span><span id="mtl-sum"></span>
+          <button id="mtl-clear" disabled style="background:none;border:1px solid var(--line);color:var(--dim);font-family:var(--mono);font-size:calc(9px * var(--fs, 1));padding:1px 7px;cursor:pointer" title="Mission history cannot be cleared from this view">CLEAR</button>
+        </div>
+        <div id="mtl-track"></div>
+        <div id="mtl-axis"><span id="mtl-start"></span><span id="mtl-key">
+          <i class="k planning"></i>planning <i class="k driving"></i>driving
+          <i class="k reached"></i>reached <i class="k aborted"></i>aborted <i class="k cancelled"></i>cancelled
+          <i class="k session"></i>new session</span><span id="mtl-end"></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ RIGHT: LIDAR 3D + LOCAL DEM + TELEMETRY ============ -->
+  <div class="col" id="col-right">
+    <div class="panel" id="lidar-panel">
+      <div class="panel-title"><span class="tag">◎</span>LIDAR · ROVER FRAME<span class="age" id="lidar-info"></span></div>
+      <div id="lidarView"></div>
+    </div>
+    <div class="panel" id="dem-panel">
+      <div class="panel-title"><span class="tag">▦</span><span title="Sampled Unreal ground-truth depth, capture-time pose; heights relative to DEM; display only">LOCAL DEPTH · GROUND TRUTH</span><span class="age" id="dem-info"></span></div>
+      <div class="feed" style="flex:1;position:relative" id="demView"><div class="nosig" id="dem-nosig">AWAITING LOCAL MAPPING</div></div>
+    </div>
+    <div class="panel" id="tele-panel">
+      <div class="panel-title"><span class="tag">▤</span>TELEMETRY &amp; COMMANDS</div>
+      <div id="cmd-bar">
+        <button id="btn-lon" disabled title="Not connected in the Python adapter">☀ LIGHTS ON</button>
+        <button id="btn-loff" disabled title="Not connected in the Python adapter">● LIGHTS OFF</button>
+        <label id="light-ctl" title="Not connected in the Python adapter">☀<input type="range" id="light-level" min="0" max="100" step="5" value="100" disabled><span id="light-val">—</span></label>
+        <button id="btn-stop">■ ALL STOP</button>
+        <button id="btn-view" disabled title="Viewport camera link is not yet connected">🎥 VIEW —</button>
+        <button id="btn-avoid" disabled title="The sensor safety gate is not switchable from this dashboard">⛰ AVOID —</button>
+      </div>
+      <div id="tele">
+        <div class="tl"><span class="k">MISSION</span><span class="v"><span class="badge unknown" id="t-mstate">—</span></span></div>
+        <div class="tl"><span class="k">DIST · ETA</span><span class="v cy" id="t-meta">—</span></div>
+        <div class="tl"><span class="k">POSITION X</span><span class="v" id="t-x">—</span></div>
+        <div class="tl"><span class="k">POSITION Y</span><span class="v" id="t-y">—</span></div>
+        <div class="tl"><span class="k">ALTITUDE Z</span><span class="v" id="t-z">—</span></div>
+        <div class="tl"><span class="k">HEADING</span><span class="v cy" id="t-yaw">—</span></div>
+        <div class="tl"><span class="k">GROUND SPEED</span><span class="v cy" id="t-spd">—</span></div>
+        <div class="tl"><span class="k">ODOM RATE</span><span class="v" id="t-hz">—</span></div>
+        <div class="tl"><span class="k">LIDAR POINTS</span><span class="v" id="t-pts">—</span></div>
+        <div class="tl"><span class="k">ROLL / PITCH</span><span class="v cy" id="t-att">—</span></div>
+        <div class="tl wide"><span class="k">TILT</span><span class="tiltbar"><span id="t-tiltfill"></span><span id="t-tiltlim"></span></span><span class="v" id="t-tilt">—</span></div>
+        <div class="tl"><span class="k">LAST GOAL</span><span class="v cy" id="t-goal">—</span></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ============ CONSOLE ============ -->
+<footer class="panel">
+  <div class="panel-title" id="console-bar">
+    <span class="tag">≡</span>PYTHON ADAPTER LOG
+    <span style="flex:1"></span>
+    <input id="log-text" placeholder="Filter text…" spellcheck="false">
+    <select id="log-node" title="Only one node's messages"><option value="">all nodes</option></select>
+    <button data-f="ALL" class="on">ALL</button>
+    <button data-f="WARN" id="lf-warn" title="Warnings and errors">WARN+</button>
+    <button data-f="ERROR" id="lf-err" title="Errors only">ERR</button>
+    <button id="btn-pause" title="Hold new messages; they are kept and shown on resume">PAUSE</button>
+    <button id="btn-clear">CLEAR</button>
+  </div>
+  <div id="log"></div>
+</footer>
+
+<script>
+const socket = io();
+GNCAlerts.attach(socket);
+const $ = id => document.getElementById(id);
+socket.on('command_error', message => {
+  $('planning').style.display = 'none';
+  addLocal('ERROR', message);
+});
+
+/* ---------------- clocks ---------------- */
+const t0 = Date.now();
+setInterval(() => {
+  const s = Math.floor((Date.now() - t0) / 1000);
+  const hh = String(Math.floor(s/3600)).padStart(2,'0');
+  const mm = String(Math.floor(s%3600/60)).padStart(2,'0');
+  const ss = String(s%60).padStart(2,'0');
+  $('met').textContent = `T+ ${hh}:${mm}:${ss}`;
+  $('utc').textContent = new Date().toISOString().substr(11,8);
+}, 500);
+
+/* ---------------- status lights ---------------- */
+const lastSeen = { link:0, odom:0, cam:0, depth:0, lidar:0 };
+socket.on('connect',    () => { lastSeen.link = Date.now(); addLocal('INFO', 'Uplink established.'); });
+socket.on('disconnect', () => { lastSeen.link = 0; addLocal('ERROR', 'Uplink lost.'); });
+setInterval(() => {
+  const now = Date.now();
+  const set = (id, t, freshMs) => {
+    const d = $(id); d.className = 'dot' +
+      (t === 0 ? ' dead' : now - t < freshMs ? ' ok' : now - t < freshMs*4 ? ' stale' : ' dead');
+  };
+  if (socket.connected) lastSeen.link = now;
+  set('li-link',  lastSeen.link,  3000);
+  set('li-odom',  lastSeen.odom,  2000);
+  set('li-cam',   lastSeen.cam,   4000);
+  set('li-depth', lastSeen.depth, 4000);
+  set('li-lidar', lastSeen.lidar, 4000);
+}, 700);
+
+/* ---------------- camera feeds ---------------- */
+socket.on('feed', msg => {
+  const box = $('f-' + msg.id);
+  if (!box) return;
+  box.querySelector('.nosig').style.display = 'none';
+  showJpeg(box.querySelector('img'), msg.image);
+  if (msg.id.startsWith('cam_')) lastSeen.cam = Date.now();
+  if (msg.id === 'depth_gt') lastSeen.depth = Date.now();
+});
+socket.on('feed_lost', id => {
+  const box = $('f-' + id);
+  if (box) { box.querySelector('.nosig').style.display = ''; box.querySelector('img').removeAttribute('src'); }
+  if (id === 'depth_gt') lastSeen.depth = 0;
+});
+
+/* ---------------- telemetry ---------------- */
+let odomTimes = [];
+socket.on('odom_update', m => {
+  lastSeen.odom = Date.now();
+  odomTimes.push(Date.now());
+  odomTimes = odomTimes.filter(t => Date.now() - t < 3000);
+  $('t-x').textContent   = m.x.toFixed(2) + ' m';
+  $('t-y').textContent   = m.y.toFixed(2) + ' m';
+  $('t-z').textContent   = m.z.toFixed(2) + ' m';
+  $('t-yaw').textContent = m.yaw.toFixed(1) + '°';
+  $('t-spd').textContent = Number.isFinite(m.speed) ? m.speed.toFixed(2) + ' m/s' : '—';
+  $('t-hz').textContent  = (odomTimes.length / 3).toFixed(1) + ' Hz';
+  if (m.roll !== undefined) {
+    $('t-att').textContent = `${m.roll.toFixed(1)}° / ${m.pitch.toFixed(1)}°`;
+    const lim = m.tilt_limit || 15, frac = Math.min(1, m.tilt / lim);
+    const fill = $('t-tiltfill');
+    fill.style.width = (frac * 100 * 0.85) + '%';           /* the limit sits at 85 % */
+    fill.style.background = frac < 0.6 ? 'var(--accent)' : frac < 1 ? 'var(--amber)' : 'var(--red)';
+    $('t-tiltlim').style.display = 'block'; $('t-tiltlim').style.left = '85%';
+    $('t-tilt').textContent = `${m.tilt.toFixed(1)}° / ${lim.toFixed(0)}°`;
+  }
+  currentPose = m;
+  if (Number.isFinite(m.speed)) { speedHist.push(m.speed); if (speedHist.length > 20) speedHist.shift(); }
+  updateMissionEta();
+  if (following) followRover();
+  drawOverlay();
+});
+socket.on('odom_lost', () => {
+  currentPose = null; speedHist.length = 0;
+  lastSeen.odom = 0;
+  ['t-x', 't-y', 't-z', 't-yaw', 't-spd', 't-hz'].forEach(id => { $(id).textContent = '—'; });
+  drawOverlay();
+});
+
+/* ---------------- mission state (planner) ---------------- */
+let mission = { state: 'unknown', goal: null, reason: '' };
+const speedHist = [];
+socket.on('mission', m => {
+  const changed = m.state !== mission.state;
+  mission = m;
+  const b = $('t-mstate');
+  b.className = 'badge ' + (m.state || 'unknown');
+  b.textContent = (m.state || '—').toUpperCase();
+  b.title = m.reason || '';
+  if (m.goal) $('t-goal').textContent = `${m.goal[0].toFixed(0)}, ${m.goal[1].toFixed(0)} m`;
+  if (m.state !== 'planning') $('planning').style.display = 'none';
+  if (changed && m.state !== 'unknown')
+    addLocal(m.state === 'aborted' ? 'ERROR' : m.state === 'cancelled' ? 'WARN' : 'INFO',
+             `Mission ${m.state}${m.reason ? ': ' + m.reason : ''}.`);
+  updateMissionEta(); drawOverlay();
+});
+function updateMissionEta() {
+  const active = mission.goal && ['planning', 'driving'].includes(mission.state);
+  if (!active || !currentPose) { $('t-meta').textContent = '—'; return; }
+  const d = Math.hypot(mission.goal[0] - currentPose.x, mission.goal[1] - currentPose.y);
+  const v = speedHist.length ? speedHist.reduce((a, b) => a + b, 0) / speedHist.length : 0;
+  const eta = v > 0.02 ? d / v : null;
+  $('t-meta').textContent = `${d.toFixed(1)} m · ` +
+    (eta === null ? '—' : eta < 90 ? `${eta.toFixed(0)} s` : `${(eta / 60).toFixed(1)} min`);
+}
+
+/* ---------------- feed health + node states ---------------- */
+const FEED_NAMES = {
+  odom: 'odometry', imu: 'IMU', cam_central: 'navcam central', cam_left: 'navcam left',
+  cam_right: 'navcam right', cam_rear: 'rear camera', depth: 'stereo depth', depth_gt: 'ground-truth depth', mask: 'segmentation',
+  shadow: 'shadow mask', rear_mask: 'rear segmentation', rear_shadow: 'rear shadow mask', events: 'event camera',
+  spad: 'SPAD camera', lidar: 'lidar', local_dem: 'local DEM',
+};
+const ageClass = a => a === null || a === undefined ? 'none' : a < 3 ? 'ok' : a < 10 ? 'stale' : 'dead';
+let bag = { recording: false };
+socket.on('health', h => {
+  const f = h.feeds || {};
+  const light = (id, keys) => {
+    const ages = keys.map(k => f[k] ? f[k].age : null).filter(a => a !== null);
+    const age = ages.length ? Math.min(...ages) : null;
+    const cls = ageClass(age);
+    $(id).className = 'dot ' + (cls === 'none' ? 'dead' : cls);
+    $(id).parentNode.title = keys.map(k => `${FEED_NAMES[k] || k}: ` +
+      (f[k] ? `${f[k].hz} Hz, ${f[k].age}s ago` : 'no data')).join('\n');
+  };
+  light('li-odom', ['odom']); light('li-cam', ['cam_central', 'cam_left', 'cam_right']);
+  light('li-depth', ['depth_gt']); light('li-lidar', ['lidar']);
+
+
+  bag = h.bag || bag;
+  const rec = $('btn-rec');
+  rec.classList.toggle('rec', !!bag.recording);
+  const mbytes = b => b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round((b || 0) / 1e6) + ' MB';
+  rec.textContent = bag.recording
+    ? `■ STOP ${String(Math.floor(bag.elapsed / 60)).padStart(2, '0')}:${String(bag.elapsed % 60).padStart(2, '0')} · ${mbytes(bag.size)}`
+    : '● REC';
+  rec.title = (bag.recording ? `Recording ${bag.name}: ${bag.topic_count} topics, ${mbytes(bag.rate)}/s` +
+               (bag.warnings && bag.warnings.length ? ` · ${bag.warnings.join(' · ')}` : '')
+             : `Record a rosbag with the ${(bag.preset || 'navigation').toUpperCase()} preset`) +
+              ' — presets, names, notes and the recorded bags are in the BAGS window (menu, port 5007)';
+});
+/* ---------------- mission timeline ----------------
+   The planner's state changes since the dashboard started (or CLEAR), on a time
+   axis under the map: bars while planning (striped: replanning) and driving,
+   a white tick per goal sent, markers where a goal was reached, aborted or
+   cancelled, dashed lines at new Unreal Play sessions. Hover for details. */
+const MTL_KEEP = 400;
+const MTL_BAR = { planning: 'planning', replan: 'replanning', driving: 'driving', waiting: 'waiting for data' };
+const MTL_END = { reached: 'reached', aborted: 'aborted', cancelled: 'cancelled' };
+let mtl = [], mtlSkew = 0;          /* mtlSkew: browser clock minus server clock (s) */
+const hms = t => new Date(t * 1000).toISOString().substr(11, 8);      /* UTC, like the header and the log */
+const xyText = p => p ? `(${p[0].toFixed(1)}, ${p[1].toFixed(1)})` : '—';
+const durText = s => s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.floor(s / 60)} min ${Math.round(s % 60)} s`
+                                                    : `${Math.floor(s / 3600)} h ${Math.round(s % 3600 / 60)} min`;
+function renderTimeline() {
+  const track = $('mtl-track');
+  if (!mtl.length) {
+    track.innerHTML = '<span class="empty">No mission events yet: click the map to send a goal.</span>';
+    $('mtl-sum').textContent = ''; $('mtl-start').textContent = ''; $('mtl-end').textContent = '';
+    return;
+  }
+  const now = Math.max(Date.now() / 1000 - mtlSkew, mtl[mtl.length - 1].t);
+  const t0 = mtl[0].t, span = Math.max(60, now - t0);
+  const at = t => (100 * (t - t0) / span).toFixed(3) + '%';
+  const n = { goals: 0, reached: 0, aborted: 0, cancelled: 0, replan: 0 };
+  let html = '';
+  mtl.forEach((e, i) => {
+    const end = i + 1 < mtl.length ? mtl[i + 1].t : now;
+    if (MTL_BAR[e.kind]) {
+      html += `<div class="mtl-seg ${e.kind}" style="left:${at(e.t)};width:${(100 * (end - e.t) / span).toFixed(3)}%" ` +
+              `title="${hms(e.t)} · ${MTL_BAR[e.kind]} to ${xyText(e.goal)} · ${durText(end - e.t)}"></div>`;
+    }
+    if (e.kind === 'planning') {
+      n.goals++;
+      html += `<div class="mtl-goal" style="left:${at(e.t)}" ` +
+              `title="${hms(e.t)} · goal ${n.goals} sent: ${xyText(e.goal)} · rover at ${xyText(e.pos)}"></div>`;
+    }
+    if (e.kind === 'replan') n.replan++;
+    if (MTL_END[e.kind]) {
+      n[e.kind]++;
+      html += `<div class="mtl-mk ${e.kind}" style="left:${at(e.t)}" title="${hms(e.t)} · goal ${xyText(e.goal)} ` +
+              `${MTL_END[e.kind]}${e.reason ? ': ' + escHtml(e.reason) : ''} · rover at ${xyText(e.pos)}"></div>`;
+    }
+    if (e.kind === 'session') {
+      html += `<div class="mtl-session" style="left:${at(e.t)}" title="${hms(e.t)} · new Unreal Play session"></div>`;
+    }
+  });
+  track.innerHTML = html;
+  $('mtl-sum').innerHTML = `<b>${n.goals}</b> goal${n.goals === 1 ? '' : 's'} · <b class="ok">${n.reached}</b> reached · ` +
+    `<b class="bad">${n.aborted}</b> aborted · <b>${n.cancelled}</b> cancelled · <b>${n.replan}</b> replan${n.replan === 1 ? '' : 's'}`;
+  $('mtl-start').textContent = hms(t0);
+  $('mtl-end').textContent = `now (${durText(now - t0)})`;
+}
+socket.on('timeline', list => { mtl = (list || []).slice(-MTL_KEEP); renderTimeline(); });
+socket.on('timeline_event', e => {
+  mtlSkew = Date.now() / 1000 - e.t;                    /* the event just happened on the server */
+  mtl.push(e); if (mtl.length > MTL_KEEP) mtl.shift();
+  renderTimeline();
+});
+$('mtl-clear').onclick = () => socket.emit('timeline_clear');
+setInterval(() => { if (!document.hidden && mtl.length) renderTimeline(); }, 1000);
+renderTimeline();
+
+/* SYSTEM: feed rates, lifecycle nodes and the ROS 2 topics live in their own window (5006). */
+$('btn-sys').onclick = () => window.open(`http://${window.location.hostname || 'localhost'}:5006/`, 'gnc_system');
+$('btn-snap').onclick = () => { window.location.href = '/snapshot.zip'; addLocal('INFO', 'Snapshot downloaded.'); };
+$('btn-rec').onclick = () => socket.emit('bag', { action: bag.recording ? 'stop' : 'start' });
+
+/* ---------------- console ----------------
+   Every message is kept (the last LOG_KEEP) and the view is that buffer through
+   the filters: severity, node and text. Changing a filter re-renders it, so
+   nothing hidden by a filter is lost. PAUSE holds new rows (counted on RESUME). */
+const LOG_KEEP = 2000;
+const LVL = { INFO: 1, WARN: 2, ERROR: 3, FATAL: 3 };
+const logDiv = $('log');
+let logBuf = [], logFilter = 'ALL', logNode = '', logText = '', paused = false, held = 0;
+const lvlOf = l => LVL[l] || 1;
+const passes = e => (logFilter === 'ALL' || lvlOf(e.level) >= (logFilter === 'WARN' ? 2 : 3)) &&
+                    (!logNode || e.node === logNode) &&
+                    (!logText || (e.node + ' ' + e.text).toLowerCase().includes(logText));
+function rowHtml(e) {
+  const ts = new Date((e.stamp || Date.now() / 1000) * 1000).toISOString().substr(11, 8);
+  const lv = escHtml(e.level);
+  return `<div class="row"><span class="t">${ts}</span> <span class="${lv}">${lv.padEnd(5)}</span> ` +
+         `<span class="n">[${escHtml(e.node)}]</span> <span class="${lv}">${escHtml(e.text)}</span></div>`;
+}
+function renderLog() {
+  const shown = logBuf.filter(passes);
+  logDiv.innerHTML = shown.length ? shown.slice(-600).map(rowHtml).join('')
+    : `<div class="row t">${logBuf.length ? 'no message matches the filters' : 'no messages yet'}</div>`;
+  logDiv.scrollTop = logDiv.scrollHeight;
+  updateLogBar();
+}
+function updateLogBar() {
+  const w = logBuf.filter(e => lvlOf(e.level) >= 2).length, er = logBuf.filter(e => lvlOf(e.level) >= 3).length;
+  $('lf-warn').textContent = `WARN+ ${w}`; $('lf-err').textContent = `ERR ${er}`;
+  $('btn-pause').textContent = paused ? (held ? `RESUME (${held} new)` : 'RESUME') : 'PAUSE';
+  const nodes = [...new Set(logBuf.map(e => e.node))].sort(), sel = $('log-node');
+  if (sel.options.length - 1 !== nodes.length) {
+    sel.innerHTML = '<option value="">all nodes</option>' +
+      nodes.map(n => `<option value="${escHtml(n)}"${n === logNode ? ' selected' : ''}>${escHtml(n)}</option>`).join('');
+  }
+}
+function addRow(level, node, text, stamp) {
+  const e = { level: String(level || 'INFO'), node: String(node || '?'), text: String(text), stamp };
+  logBuf.push(e);
+  if (logBuf.length > LOG_KEEP) logBuf.splice(0, logBuf.length - LOG_KEEP);
+  if (paused) { held++; updateLogBar(); return; }
+  if (!passes(e)) { updateLogBar(); return; }
+  const atBottom = logDiv.scrollHeight - logDiv.scrollTop - logDiv.clientHeight < 40;
+  if (logDiv.firstChild && !logDiv.firstChild.querySelector('.n')) logDiv.innerHTML = '';   /* the placeholder */
+  logDiv.insertAdjacentHTML('beforeend', rowHtml(e));
+  while (logDiv.childNodes.length > 600) logDiv.removeChild(logDiv.firstChild);
+  if (atBottom) logDiv.scrollTop = logDiv.scrollHeight;
+  updateLogBar();
+}
+const addLocal = (lvl, txt) => addRow(lvl, 'console', txt, Date.now() / 1000);
+socket.on('log', m => addRow(m.level, m.node, m.text, m.stamp));
+
+document.querySelectorAll('#console-bar button[data-f]').forEach(b =>
+  b.onclick = () => {
+    logFilter = b.dataset.f;
+    document.querySelectorAll('#console-bar button[data-f]').forEach(x => x.classList.toggle('on', x === b));
+    try { localStorage.setItem('log_level', logFilter); } catch (e) {}
+    renderLog();
+  });
+try {     /* the severity filter chosen last time in this window */
+  const lv = localStorage.getItem('log_level');
+  const b = lv && document.querySelector(`#console-bar button[data-f="${lv}"]`);
+  if (b) { logFilter = lv; document.querySelectorAll('#console-bar button[data-f]').forEach(x => x.classList.toggle('on', x === b)); }
+} catch (e) {}
+$('log-node').onchange = e => { logNode = e.target.value; renderLog(); };
+$('log-text').oninput = e => { logText = e.target.value.trim().toLowerCase(); renderLog(); };
+$('btn-pause').onclick = e => {
+  paused = !paused; e.target.classList.toggle('on', paused);
+  if (!paused) { held = 0; renderLog(); } else updateLogBar();
+};
+$('btn-clear').onclick = () => { logBuf = []; held = 0; renderLog(); };
+renderLog();
+
+/* ---------------- lidar: 3D view (shared, lidar_view.js) ---------------- */
+const lidarView = LidarView($('lidarView'), { info: $('lidar-info') });
+socket.on('lidar', m => {
+  lastSeen.lidar = m.count > 0 ? Date.now() : 0;
+  $('t-pts').textContent = m.count;
+  lidarView.update(m);
+});
+
+/* ---------------- local DEM (shared view, local_dem.js) ---------------- */
+const demView = LocalDemView($('demView'), { info: $('dem-info'), nosig: $('dem-nosig') });
+socket.on('local_dem', m => demView.update(m));
+socket.on('local_dem_lost', () => demView.clear());
+socket.on('local_dem_lidar', m => demView.updateLidar(m));
+FeedLegends.attach(socket, { depth: [$('f-depth'), $('f-depth_gt')], mask: [$('f-mask'), $('f-rear_mask')],
+                             shadow: [$('f-shadow'), $('f-rear_shadow')] });
+NavOverlay.attach(socket, [$('f-cam_central')]);
+
+/* ---------------- rover command buttons ---------------- */
+$('btn-lon').onclick = () => {
+  socket.emit('headlights', { on: true });
+  $('btn-lon').classList.add('lit'); $('btn-loff').classList.remove('lit');
+  addLocal('INFO', 'Headlights ON commanded.');
+};
+/* Lights are intentionally disabled until a non-driving control is integrated. */
+$('btn-loff').onclick = () => {
+  socket.emit('headlights', { on: false });
+  $('btn-loff').classList.add('lit'); $('btn-lon').classList.remove('lit');
+  addLocal('INFO', 'Headlights OFF commanded.');
+};
+/* lidar obstacle avoidance switch: shows the planner's parameter, also when
+   changed elsewhere (ros2 param set); null = planner not reachable */
+let avoidOn = null;
+function showAvoid(on) {
+  avoidOn = on;
+  const b = $('btn-avoid');
+  b.textContent = on === null ? '⛰ AVOID —' : (on ? '⛰ AVOID ON' : '⛰ AVOID OFF');
+  b.classList.toggle('lit', on === true);
+  b.classList.toggle('off', on !== true);
+}
+socket.on('avoidance', m => showAvoid(m.on === undefined ? null : m.on));
+/* Unreal viewport camera: requested here, applied by Unreal (rover_cameras.py polls
+   the dashboard); the button shows Unreal's applied mode, or that it is not linked */
+let viewMode = 'follow';
+function showView(m) {
+  viewMode = m.mode || 'follow';
+  const b = $('btn-view');
+  b.disabled = !m.linked;
+  const label = { follow: 'FOLLOW', orbit: 'ORBIT', top: 'TOP' }[viewMode] || 'FOLLOW';
+  if (!m.linked) {
+    b.textContent = `🎥 ${label} (Unreal not linked)`;
+  } else if (m.applied === 'idle') {
+    b.textContent = `🎥 ${label} (not playing)`;
+  } else if (m.applied && m.applied !== viewMode) {
+    b.textContent = `🎥 ${label}…`;
+  } else {
+    b.textContent = `🎥 ${label}`;
+  }
+  b.classList.toggle('lit', !!m.linked && viewMode !== 'follow');
+  b.classList.toggle('off', !m.linked);
+}
+socket.on('viewport_camera', showView);
+
+/* The rover the stack drives (chosen on the menu, rovers.py) and Unreal's rover in Play */
+$('rover-ctl').removeAttribute('href');
+function showRover(r) {
+  $('rover-name').textContent = r.label;
+  const chip = $('rover-unreal');
+  chip.className = '';
+  if (r.busy) { chip.textContent = 'switching…'; }
+  else if (!r.unreal_linked) { chip.textContent = 'Unreal: not linked'; chip.title = ''; }
+  else if (!r.unreal) { chip.textContent = 'Unreal: not playing'; chip.title = ''; }
+  else if (r.match) { chip.textContent = `Unreal: ${r.unreal_label} ✓`; chip.className = 'ok'; chip.title = ''; }
+  else {
+    chip.textContent = `Unreal: ${r.unreal_label} ≠`; chip.className = 'bad';
+    chip.title = `Unreal plays ${r.unreal_label}: open ${r.level} for ${r.label}, or select ${r.unreal_label} on the menu`;
+  }
+}
+socket.on('rover', showRover);
+$('btn-view').onclick = () => {
+  const next = { follow: 'orbit', orbit: 'top', top: 'follow' }[viewMode] || 'follow';   /* cycles */
+  socket.emit('viewport_camera', { mode: next });
+  addLocal('INFO', `Unreal viewport: ${next} camera requested.`);
+};
+$('btn-avoid').onclick = () => {
+  if (avoidOn === null) { addLocal('WARN', 'Obstacle avoidance state unknown: is the planner running?'); return; }
+  socket.emit('obstacle_avoidance', { on: !avoidOn });
+  addLocal('INFO', `Lidar obstacle avoidance ${avoidOn ? 'OFF' : 'ON'} requested.`);
+};
+$('btn-stop').onclick = () => {
+  socket.emit('stop_rover', {});
+  addLocal('WARN', 'ALL STOP commanded.');
+};
+$('btn-camrst').onclick = e => {
+  socket.emit('restart_cameras', {});
+  addLocal('INFO', 'Camera node restart requested.');
+  e.target.disabled = true; e.target.textContent = '⟳ RESTARTING…';
+  setTimeout(() => { e.target.disabled = false; e.target.textContent = '⟳ RESTART NODE'; }, 30000);
+};
+
+/* ---------------- map (elevation + paths + goal) ---------------- */
+const mapCanvas = $('mapCanvas'),  mapCtx  = mapCanvas.getContext('2d');
+const odomCanvas = $('odomCanvas'), odomCtx = odomCanvas.getContext('2d');
+const mapStack = $('map-stack');           /* invisible: the map's placement (zoom + pan) */
+const cbCanvas = $('cbarCanvas'),   cbCtx   = cbCanvas.getContext('2d');
+let mapRes = 1, mapW = 0, mapH = 0;
+const mapX = x => x / mapRes * mapW / Math.max(1, mapW - 1);
+const mapY = y => mapH - y / mapRes * mapH / Math.max(1, mapH - 1);
+let ROVER_WIDTH_M = 0.96;          /* the dashboard's rover_width_m (config), per rover */
+socket.on('config', c => { if (c && c.rover_width_m) ROVER_WIDTH_M = c.rover_width_m; });
+const MAX_ZOOM = 150;
+let currentPose = null, globalPath = [], drivenPath = [];
+let firstPath = [], replans = 0;      /* the route first planned for this goal, and re-plans since */
+let lidarObs = [];                    /* planner's lidar obstacles, flat [x0, y0, x1, y1, ...] (odom) */
+let elevMin = '0', elevMax = '0';
+/* the elevation image at one pixel per map cell, drawn into the view on each redraw */
+const elevCanvas = document.createElement('canvas'), elevCtx = elevCanvas.getContext('2d');
+const orbitalImage = new Image(); orbitalImage.src = '/terrain.png';
+let mapLayer = 'dem';
+orbitalImage.onload = () => { if (mapLayer === 'orbital') drawOverlay(); };
+$('btn-layer').onclick = () => {
+  if (!orbitalImage.complete || !orbitalImage.naturalWidth) { addLocal('WARN', 'HiRISE reference unavailable.'); return; }
+  mapLayer = mapLayer === 'dem' ? 'orbital' : 'dem';
+  $('btn-layer').textContent = mapLayer === 'dem' ? 'DEM' : 'HiRISE · STATIC';
+  drawOverlay();
+};
+let localObs = null;               /* latest local obstacles + camera FOV (odom frame) */
+socket.on('local_obstacles', m => { localObs = m; drawOverlay(); });
+
+function viridis(t) {
+  t = Math.max(0, Math.min(1, t));
+  const s = [[0,68,1,84],[.25,59,82,139],[.5,33,145,140],[.75,94,201,98],[1,253,231,37]];
+  for (let i = 0; i < s.length-1; i++) if (t >= s[i][0] && t <= s[i+1][0]) {
+    const u = (t - s[i][0]) / (s[i+1][0] - s[i][0]);
+    return [0,1,2].map(k => Math.round(s[i][k+1] + u * (s[i+1][k+1] - s[i][k+1])));
+  }
+  return [253,231,37];
+}
+
+/* Relief shading of the elevation grid (row 0 = south), lit from the upper left of the drawn map at 45°
+   with the relief exaggerated twice: craters and slopes show at any zoom, whatever the elevation range.
+   Returns 0-1 per cell; cells without data, and their neighbours' differences, count as flat. */
+function hillshade(z) {
+  const out = new Float32Array(z.length), ex = 2 / mapRes, e = Math.PI / 4;
+  const lx = -Math.cos(e) / Math.SQRT2, ly = Math.cos(e) / Math.SQRT2, lz = Math.sin(e);  // +y = north = up
+  const at = (x, y, v) => {
+    x = Math.min(mapW - 1, Math.max(0, x)); y = Math.min(mapH - 1, Math.max(0, y));
+    const w = z[y * mapW + x]; return w >= 9999 ? v : w;
+  };
+  for (let y = 0; y < mapH; y++) for (let x = 0; x < mapW; x++) {
+    const v = z[y * mapW + x];
+    if (v >= 9999) { out[y * mapW + x] = 1; continue; }
+    const dx = (at(x + 1, y, v) - at(x - 1, y, v)) / 2 * ex, dy = (at(x, y + 1, v) - at(x, y - 1, v)) / 2 * ex;
+    out[y * mapW + x] = Math.max(0, Math.min(1, (-dx * lx - dy * ly + lz) / Math.sqrt(dx * dx + dy * dy + 1)));
+  }
+  return out;
+}
+
+socket.on('map_update', m => {
+  if (m.data_u16 !== undefined) {           /* uint16-quantised, binary; 65535 = no data */
+    const q = new Uint16Array(m.data_u16);
+    m.data = new Float32Array(q.length);
+    for (let i = 0; i < q.length; i++) m.data[i] = q[i] === 65535 ? 9999 : m.lo + q[i] * m.scale;
+  }
+  mapW = m.width; mapH = m.height; mapRes = m.resolution;
+  elevCanvas.width = mapW; elevCanvas.height = mapH;
+  fitMapStack();
+
+  const img = elevCtx.createImageData(mapW, mapH);
+  let lo = Infinity, hi = -Infinity;
+  for (const v of m.data) if (v < 9999) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  const ok = hi !== -Infinity, span = (hi - lo) || 1;
+  if (ok) { elevMin = lo.toFixed(1); elevMax = hi.toFixed(1); }
+  const shade = ok ? hillshade(m.data) : null;
+  for (let i = 0; i < m.data.length; i++) {
+    const x = i % mapW, y = (i / mapW) | 0;
+    const o = (((mapH - 1 - y) * mapW) + x) * 4;
+    if (m.data[i] >= 9999 || !ok) { img.data[o+3] = 255; continue; }
+    const c = viridis(Math.floor((m.data[i]-lo)/span*20)/20), k = 0.35 + 0.65 * shade[i];
+    img.data[o] = c[0] * k; img.data[o+1] = c[1] * k; img.data[o+2] = c[2] * k; img.data[o+3] = 255;
+  }
+  elevCtx.putImageData(img, 0, 0);
+  drawColorbar(ok); drawOverlay();
+  addLocal('INFO', `Elevation map loaded: ${mapW}×${mapH} @ ${mapRes} m/px.`);
+});
+
+/* The canvases match the view box at the display's pixel density. */
+function sizeCanvases() {
+  const wrap = $('map-wrap'), dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(wrap.clientWidth * dpr)), h = Math.max(1, Math.round(wrap.clientHeight * dpr));
+  for (const c of [mapCanvas, odomCanvas]) if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+}
+
+/* Where the map is on screen: the stack's origin in the view (CSS px) and CSS px per map cell. */
+function mapPlacement() {
+  const r = mapStack.getBoundingClientRect(), w = $('map-wrap').getBoundingClientRect();
+  return { ox: r.left - w.left, oy: r.top - w.top, s: r.width / mapW };
+}
+
+function fitMapStack() {
+  const wrap = $('map-wrap'), stack = $('map-stack');
+  sizeCanvases();
+  if (!mapW) return;
+  const s = Math.min(wrap.clientWidth / mapW, wrap.clientHeight / mapH);
+  stack.style.width  = (mapW * s) + 'px';
+  stack.style.height = (mapH * s) + 'px';
+}
+window.addEventListener('resize', () => {
+  fitMapStack(); drawColorbar(mapW > 0);
+  if (following) followRover(); else drawOverlay();   /* the box changed size: re-centre on the rover */
+});
+
+function drawColorbar(show) {
+  $('cbar').style.display = show ? 'flex' : 'none';
+  if (!show) return;
+  cbCanvas.width = cbCanvas.clientWidth; cbCanvas.height = cbCanvas.clientHeight;
+  const n = 20, h = cbCanvas.height / n;
+  for (let i = 0; i < n; i++) {
+    const c = viridis((n - 1 - i) / (n - 1));
+    cbCtx.fillStyle = `rgb(${c[0]},${c[1]},${c[2]})`;
+    cbCtx.fillRect(0, i * h, cbCanvas.width, Math.ceil(h));
+  }
+  cbCtx.fillStyle = '#fff'; cbCtx.font = '9px monospace';
+  cbCtx.fillText(elevMax, 3, 10);
+  cbCtx.fillText(elevMin, 3, cbCanvas.height - 4);
+}
+
+function drawOverlay() {
+  if (!mapW) return;
+  sizeCanvases();
+  const dpr = window.devicePixelRatio || 1, place = mapPlacement();
+  const a = dpr * place.s, ox = dpr * place.ox, oy = dpr * place.oy;   /* map cell -> canvas pixel */
+
+  mapCtx.setTransform(1, 0, 0, 1, 0, 0);
+  mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+  mapCtx.setTransform(a, 0, 0, a, ox, oy);
+  mapCtx.imageSmoothingEnabled = a < 1;          /* smooth when shrunk, crisp cells when zoomed */
+  mapCtx.drawImage(mapLayer === 'orbital' && orbitalImage.naturalWidth ? orbitalImage : elevCanvas, 0, 0, mapW, mapH);
+
+  odomCtx.setTransform(1, 0, 0, 1, 0, 0);
+  odomCtx.clearRect(0, 0, odomCanvas.width, odomCanvas.height);
+  odomCtx.setTransform(a, 0, 0, a, ox, oy);
+  /* symbol sizes are in screen (CSS) pixels: k is one screen pixel in map
+     cells, so markers keep their on-screen size at any zoom */
+  const k = 1 / place.s;
+
+  odomCtx.save();
+  odomCtx.strokeStyle = 'rgba(255,255,255,.12)'; odomCtx.setLineDash([4*k, 6*k]); odomCtx.lineWidth = k;
+  odomCtx.fillStyle = 'rgba(255,255,255,.45)'; odomCtx.font = `${13*k}px monospace`;
+  const step = 200 / mapRes;
+  for (let i = 0; i <= mapW; i += step) {
+    odomCtx.beginPath(); odomCtx.moveTo(i,0); odomCtx.lineTo(i,mapH); odomCtx.stroke();
+    odomCtx.fillText(Math.round(i*mapRes), i+4*k, mapH-6*k);
+  }
+  for (let j = 0; j <= mapH; j += step) {
+    odomCtx.beginPath(); odomCtx.moveTo(0,j); odomCtx.lineTo(mapW,j); odomCtx.stroke();
+    const v = Math.round((mapH-j)*mapRes);
+    if (v) odomCtx.fillText(v, 4*k, j-4*k);
+  }
+  odomCtx.restore();
+
+  const path = (pts, color, dash) => {
+    if (!pts.length) return;
+    odomCtx.save();
+    odomCtx.beginPath(); odomCtx.strokeStyle = color; odomCtx.lineWidth = 3*k;
+    if (dash) odomCtx.setLineDash([8*k, 6*k]);
+    pts.forEach((p, i) => {
+      const x = mapX(p.x), y = mapY(p.y);
+      i && !p.break_before ? odomCtx.lineTo(x, y) : odomCtx.moveTo(x, y);
+    });
+    odomCtx.stroke();
+    odomCtx.restore();
+  };
+  if (replans > 0) {                    /* the original route, dashed, under the re-planned one */
+    path(firstPath, 'rgba(255,107,125,.75)', true);
+    path(globalPath, '#ffa94d');
+  } else {
+    path(globalPath, '#ff6b7d');
+  }
+  path(drivenPath, '#59b0ff');
+
+  /* the planner's lidar obstacles (rocks it avoids) */
+  if (lidarObs.length) {
+    odomCtx.fillStyle = '#ffd166';
+    const s = Math.max(0.15 / mapRes, 2.5*k);
+    for (let i = 0; i < lidarObs.length; i += 2)
+      odomCtx.fillRect(lidarObs[i]/mapRes - s/2, mapH - lidarObs[i+1]/mapRes - s/2, s, s);
+  }
+
+  /* camera FOV wedge and local obstacles (from the local DEM) */
+  if (localObs && localObs.fov) {
+    const f = localObs.fov, X = v => v / mapRes, Y = v => mapH - v / mapRes;
+    odomCtx.beginPath(); odomCtx.moveTo(X(f.x), Y(f.y));
+    for (let i = 0; i <= 16; i++) {
+      const a = f.yaw - f.hfov / 2 + f.hfov * i / 16;
+      odomCtx.lineTo(X(f.x + f.range * Math.cos(a)), Y(f.y + f.range * Math.sin(a)));
+    }
+    odomCtx.closePath();
+    odomCtx.fillStyle = 'rgba(159,203,242,.22)'; odomCtx.fill();
+    odomCtx.strokeStyle = 'rgba(159,203,242,.8)'; odomCtx.lineWidth = 1.5*k; odomCtx.stroke();
+    odomCtx.fillStyle = '#ff6b7d';
+    const p = localObs.pts, s = Math.max(0.1, 2.5*k);      /* at least a DEM cell, visible zoomed out */
+    for (let i = 0; i < p.length; i += 2) odomCtx.fillRect(X(p[i]) - s / 2, Y(p[i + 1]) - s / 2, s, s);
+  }
+
+  /* active goal */
+  if (mission.goal) {
+    const gx = mapX(mission.goal[0]), gy = mapY(mission.goal[1]), r = 7*k;
+    odomCtx.strokeStyle = '#ffbe5c'; odomCtx.lineWidth = 3*k; odomCtx.lineCap = 'round';
+    odomCtx.beginPath(); odomCtx.moveTo(gx - r, gy - r); odomCtx.lineTo(gx + r, gy + r);
+    odomCtx.moveTo(gx + r, gy - r); odomCtx.lineTo(gx - r, gy + r); odomCtx.stroke();
+  }
+
+  if (currentPose) {
+    /* the usual on-screen size, growing to the rover's real footprint when
+       zoomed in (the body circle is then the rover's width) */
+    const kr = Math.max(k, ROVER_WIDTH_M / 2 / mapRes / 6);
+    const x = mapX(currentPose.x), y = mapY(currentPose.y);
+    if (currentPose.yaw !== undefined) {
+      // Heading arrow. Screen y is down, world +y is up, so the y term is
+      // negated, as for the paths above (y = mapH - y_world). Odom's heading is
+      // REP-103, so yaw is the travel direction.
+      const a = currentPose.yaw * Math.PI / 180;
+      const dx = Math.cos(a), dy = -Math.sin(a);
+      const L = 26*kr, hl = 12*kr, hw = 7*kr;    // shaft length, head length, head half-width
+      const tx = x + dx*L,        ty = y + dy*L;        // arrow tip
+      const bx = x + dx*(L - hl), by = y + dy*(L - hl); // base of the head
+      const px = -dy, py = dx;                          // unit perpendicular
+      odomCtx.strokeStyle = '#33d6a6'; odomCtx.fillStyle = '#33d6a6';
+      odomCtx.lineWidth = 3*kr; odomCtx.lineCap = 'round';
+      odomCtx.beginPath(); odomCtx.moveTo(x, y); odomCtx.lineTo(bx, by); odomCtx.stroke();
+      odomCtx.beginPath();
+      odomCtx.moveTo(tx, ty);
+      odomCtx.lineTo(bx + px*hw, by + py*hw);
+      odomCtx.lineTo(bx - px*hw, by - py*hw);
+      odomCtx.closePath(); odomCtx.fill();
+    }
+    // Rover body marker, drawn on top of the arrow's tail.
+    odomCtx.beginPath(); odomCtx.arc(x, y, 6*kr, 0, 7);
+    odomCtx.fillStyle = '#33d6a6'; odomCtx.fill();
+    odomCtx.strokeStyle = '#fff'; odomCtx.lineWidth = 2*kr; odomCtx.stroke();
+  }
+}
+
+socket.on('global_path_update', m => {
+  $('planning').style.display = 'none';
+  globalPath = m.path; firstPath = m.first || []; replans = m.replans || 0;
+  drawOverlay();
+});
+socket.on('lidar_obstacles', m => { lidarObs = m.pts || []; drawOverlay(); });
+socket.on('trajectory_update',  m => {
+  drivenPath = m.path;
+  if (!m.path.length) {                 // session reset (Unreal Play/Stop): wipe stale goal
+    globalPath = []; firstPath = []; replans = 0; lidarObs = [];
+    $('t-goal').textContent = '—'; $('planning').style.display = 'none';
+    addLocal('INFO', 'New session detected (Unreal Play/Stop) — map cleared.');
+  }
+  drawOverlay();
+});
+
+/* ---------------- map zoom + pan ----------------
+   #map-stack has transform-origin 0 0, so its getBoundingClientRect() reflects
+   the live translate+scale. Zooming toward the cursor then reduces to a single
+   pan nudge: tx += (cursorX - rectLeft) * (1 - scaleRatio). A click sets a goal;
+   a drag (moved past a threshold) pans instead, so both share the left button. */
+let vz = 1, vtx = 0, vty = 0;
+function applyView() {
+  mapStack.style.transform = `translate(${vtx}px, ${vty}px) scale(${vz})`;
+  drawOverlay();                       /* symbol sizes depend on the zoom */
+}
+function resetView() { vz = 1; vtx = 0; vty = 0; applyView(); }
+
+$('map-wrap').addEventListener('wheel', e => {
+  if (!mapW) return;
+  e.preventDefault();
+  const r = mapStack.getBoundingClientRect();
+  const f = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  let nz = Math.min(MAX_ZOOM, Math.max(1, vz * f));
+  if (following) { vz = nz; followRover(); return; }   /* zoom about the rover, still following */
+  following = false; $('btn-follow').style.color = ''; try { localStorage.setItem('map_follow', '0'); } catch (e) {}
+  const k = nz / vz;
+  vtx += (e.clientX - r.left) * (1 - k);
+  vty += (e.clientY - r.top)  * (1 - k);
+  vz = nz;
+  if (vz <= 1.0001) resetView(); else applyView();   // snap back to centered fit at 1x
+}, { passive: false });
+
+let dragStart = null, panStart = null, dragged = false;
+odomCanvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  dragStart = { x: e.clientX, y: e.clientY };
+  panStart  = { tx: vtx, ty: vty };
+  dragged = false;
+});
+window.addEventListener('mousemove', e => {
+  if (!dragStart) return;
+  const dx = e.clientX - dragStart.x, dy = e.clientY - dragStart.y;
+  if (!dragged && (Math.abs(dx) > 3 || Math.abs(dy) > 3)) {
+    dragged = true; odomCanvas.style.cursor = 'grabbing';
+  }
+  if (dragged) {
+    vtx = panStart.tx + dx; vty = panStart.ty + dy; applyView();
+    following = false; $('btn-follow').style.color = ''; try { localStorage.setItem('map_follow', '0'); } catch (e) {}
+  }
+});
+window.addEventListener('mouseup', e => {
+  if (!dragStart) return;
+  const wasDrag = dragged;
+  dragStart = null; odomCanvas.style.cursor = 'crosshair';
+  if (wasDrag) return;                       // panned, not a goal click
+  const r = mapStack.getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right ||
+      e.clientY < r.top  || e.clientY > r.bottom) return;
+  const gx = (e.clientX - r.left) / r.width * (mapW - 1) * mapRes;
+  const gy = (1 - (e.clientY - r.top) / r.height) * (mapH - 1) * mapRes;
+  $('planning').style.display = 'block';
+  $('t-goal').textContent = `${gx.toFixed(0)}, ${gy.toFixed(0)} m`;
+  addLocal('INFO', `Goal requested: (${gx.toFixed(1)}, ${gy.toFixed(1)}) m.`);
+  socket.emit('send_goal', { x: gx, y: gy });
+});
+
+$('btn-zoomreset').onclick = () => { following = false; $('btn-follow').style.color = ''; try { localStorage.setItem('map_follow', '0'); } catch (e) {} resetView(); };
+
+/* FOLLOW ROVER: zoom in and keep the rover centred as it drives */
+let following = false;
+function followRover() {
+  if (!mapW || !currentPose) return;
+  const wrap = $('map-wrap').getBoundingClientRect();
+  const k = parseFloat(mapStack.style.width) / mapW;          /* stack css px per map px */
+  const px = mapX(currentPose.x) * k, py = mapY(currentPose.y) * k;
+  /* the stack is centred in the wrap (margin:auto); offsetLeft/Top ignore the transform */
+  vtx = wrap.width / 2 - mapStack.offsetLeft - px * vz;
+  vty = wrap.height / 2 - mapStack.offsetTop - py * vz;
+  applyView(); drawOverlay();
+}
+$('btn-follow').onclick = () => {
+  following = !following;
+  $('btn-follow').style.color = following ? 'var(--accent)' : '';
+  try { localStorage.setItem('map_follow', following ? '1' : '0'); } catch (e) {}
+  if (following) { vz = Math.max(vz, 24); followRover(); }
+};
+try {     /* FOLLOW ROVER stays on across reloads; it starts with the first pose */
+  if (localStorage.getItem('map_follow') === '1') {
+    following = true; $('btn-follow').style.color = 'var(--accent)'; vz = Math.max(vz, 24);
+  }
+} catch (e) {}
+$('btn-map').onclick = () => socket.emit('refresh_map', {});
+
+/* ---------------- view switcher ----------------
+   Tabs flip <main data-view>; CSS hides the other columns and expands the
+   chosen panel. After the layout reflows, the heavy canvases (map / DEM / lidar)
+   must resize to their new box, so redraw them once on the next frame. The
+   choice is remembered across refreshes. */
+const mainEl = document.querySelector('main');
+
+/* CAMERAS tab: click a feed to enlarge it, click again or Esc to return. */
+const camsEl = $('cams');
+function focusFeed(feed) {
+  camsEl.querySelectorAll('.feed').forEach(f => f.classList.toggle('focus', f === feed));
+  if (feed) camsEl.dataset.focus = feed.id; else delete camsEl.dataset.focus;
+  requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));  /* legends follow */
+}
+camsEl.querySelectorAll('.feed').forEach(feed => {
+  if (!feed.title) feed.title = feed.querySelector('.nosig').textContent.replace(/ — NO SIGNAL$/, '');
+  feed.addEventListener('click', () => {
+    if (mainEl.dataset.view !== 'cams') return;
+    focusFeed(camsEl.dataset.focus === feed.id ? null : feed);
+  });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && camsEl.dataset.focus) focusFeed(null);
+});
+
+/* VIEWS: choose which feeds are shown (remembered across refreshes). Rows left
+   empty collapse in the overview column; the CAMERAS tab regrids the rest. */
+const feedEls = [...camsEl.querySelectorAll('.feed')];
+let feedSel = {};
+
+function layoutFeeds() {
+  feedEls.forEach(f => f.classList.toggle('off', !feedSel[f.id]));
+  if (camsEl.dataset.focus && !feedSel[camsEl.dataset.focus]) focusFeed(null);
+  const rows = [];
+  camsEl.querySelectorAll('.cam-row').forEach((row, i) => {
+    const n = [...row.querySelectorAll('.feed')].filter(f => feedSel[f.id]).length;
+    row.classList.toggle('empty', n === 0);
+    if (n) { row.style.gridTemplateColumns = `repeat(${n}, minmax(0, 1fr))`;
+             rows.push(i === 0 ? '1.5fr' : '1fr'); }        /* the central navcam row is taller */
+  });
+  camsEl.style.setProperty('--cam-rows', rows.join(' '));
+  /* CAMERAS tab: the column count giving the largest 4:3 tiles */
+  const n = feedEls.filter(f => feedSel[f.id]).length;
+  const W = camsEl.clientWidth || 1200, H = camsEl.clientHeight || 700;
+  let best = { s: 0, cols: 1 };
+  for (let cols = 1; cols <= n; cols++) {
+    const r = Math.ceil(n / cols);
+    const s = Math.min((W - 6 * (cols - 1)) / cols, ((H - 6 * (r - 1)) / r) * 4 / 3);
+    if (s > best.s) best = { s, cols };
+  }
+  camsEl.style.setProperty('--cam-cols', best.cols);
+  camsEl.style.setProperty('--cam-grid-rows', Math.ceil(n / best.cols));
+}
+
+ViewPicker.attach({
+  button: $('btn-feeds'), storageKey: 'mc_feeds',
+  items: feedEls.map(f => ({ key: f.id, label: f.title, on: !('defaultOff' in f.dataset) })),
+  onChange: sel => {
+    feedSel = sel;
+    layoutFeeds();
+    requestAnimationFrame(() => window.dispatchEvent(new Event('resize')));   /* legends follow */
+  },
+});
+window.addEventListener('resize', layoutFeeds);
+
+function setView(v) {
+  if (v !== 'cams' && camsEl.dataset.focus) focusFeed(null);
+  mainEl.dataset.view = v;
+  layoutFeeds();                                /* camera grid for the new box */
+  document.querySelectorAll('.viewtabs button')
+          .forEach(b => b.classList.toggle('on', b.dataset.view === v));
+  try { localStorage.setItem('mc_view', v); } catch (e) {}
+  requestAnimationFrame(() => {
+    if (mapW) { fitMapStack(); drawColorbar(mapW > 0); if (following) followRover(); }
+    demView.redraw();
+    lidarView.redraw();
+    window.dispatchEvent(new Event('resize'));   /* feed legends follow the new tile size */
+  });
+}
+document.querySelectorAll('.viewtabs button')
+        .forEach(b => b.onclick = () => setView(b.dataset.view));
+try {
+  const saved = localStorage.getItem('mc_view');
+  if (saved && saved !== 'all') setView(saved);
+} catch (e) {}
+</script>
+</body>
+</html>
+
