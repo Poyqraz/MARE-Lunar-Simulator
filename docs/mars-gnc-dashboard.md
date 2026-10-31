@@ -137,3 +137,22 @@ Those checks are a screen, not proof that the rover was stationary for the
 entire capture interval. Current collision and current pose do not reconstruct
 the old moving scan or necessarily match the GPU-rendered surface; this probe
 does not classify obstacles or change navigation.
+
+One native idle PIE run on `JezeroRover_5c8b3fa632eb` compared 48 dashboard
+LiDAR points at 3–8 m with complex collision. All hit `Landscape_0`; none of
+the sampled vertical differences was greater than 9 mm in magnitude or below
+-0.15 m. The current scene body's pose differed from the latest telemetry pose
+by about 0.000017 m and 0.0017 degrees; the live sensor-to-body matrix matched
+the configuration to floating-point precision. The scan timestamp was 0.10 s
+behind that telemetry. These are rounded/downsampled display points at a
+stationary pose, at a different location and in a differently named level from
+the earlier editor collision probe. They do not establish alignment during a
+turn or identify the Unreal level of the earlier blocked mission.
+
+The earlier blocked run contained both above- and below-DEM obstacle samples in
+different moving LiDAR frames. The LiDAR component is configured to tick
+post-physics in source, while the rover Blueprint's actual telemetry production
+phase has not been measured. Tick order and capture-time body pose are possible
+contributors, not established causes; tick-group settings state minimum tick
+groups and do not prove when a Blueprint emits telemetry or when rendering
+captures it.
