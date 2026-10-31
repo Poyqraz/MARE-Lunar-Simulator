@@ -188,6 +188,36 @@ class TestControlledTurn(unittest.TestCase):
         data = snapshot(state="new_session_requires_goal")
         probe._stationary(data)
 
+    def test_expected_alignment_session_must_match_both_preflight_samples(self):
+        for changed_snapshot in (1, 2):
+            sim = FakeRun()
+            original_get = sim.get
+
+            def get(path):
+                result = copy.deepcopy(original_get(path))
+                if path == "/mission/snapshot" and sim.snapshot_count == changed_snapshot:
+                    result["session_id"] = "different"
+                return result
+
+            with self.subTest(snapshot=changed_snapshot), self.assertRaisesRegex(ValueError, "Hizalama oturumu degisti"):
+                probe.run("fake.log", get=get, post=sim.post, analyzer=sim.analyzer,
+                          now=sim.now, sleep=sim.sleep, expected_session="session-a")
+            self.assertEqual(sim.posts, [])
+
+        sim = FakeRun()
+        result = probe.run("fake.log", get=sim.get, post=sim.post, analyzer=sim.analyzer,
+                           now=sim.now, sleep=sim.sleep, expected_session="session-a")
+        self.assertEqual(result["expected_session_id"], "session-a")
+        self.assertEqual([p[0] for p in sim.posts], ["/goal", "/stop"])
+
+    def test_session_change_during_turn_attempts_stop(self):
+        sim = FakeRun()
+        sim.moving_snapshot["session_id"] = "different"
+        result = probe.run("fake.log", get=sim.get, post=sim.post, analyzer=sim.analyzer,
+                           now=sim.now, sleep=sim.sleep, expected_session="session-a")
+        self.assertEqual(result["reason"], "session_changed")
+        self.assertEqual([p[0] for p in sim.posts], ["/goal", "/stop"])
+
     def test_sensor_freshness_boundaries_are_unchanged(self):
         data = snapshot()
         for sensor in data["sensor_health"].values():

@@ -152,13 +152,19 @@ def _segment_is_open(grid, start, goal):
     return True
 
 
-def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic, sleep=time.sleep):
+def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic, sleep=time.sleep,
+        expected_session=None):
     """Aim to stop after 8 seconds or 45 degrees, including a stop on request errors.
 
     Synchronous HTTP calls can overrun the target duration. This is an
     operator-supervised simulation diagnostic, not a real-time watchdog.
     """
+    if expected_session is not None and (not isinstance(expected_session, str) or not expected_session):
+        raise ValueError("Beklenen oturum gecersiz")
     first = get("/mission/snapshot")
+    if expected_session is not None and first.get("session_id") != expected_session:
+        raise ValueError(f"Hizalama oturumu degisti: expected={expected_session!r}; "
+                         f"current={first.get('session_id')!r}; hedef gonderilmedi")
     try:
         start, heading, first_stamp = _stationary(first)
     except ValueError as error:
@@ -177,6 +183,9 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
             or _stamp(log2["last_capture_stamp_ns"]) <= _stamp(log1["last_capture_stamp_ns"])):
         raise ValueError("LiDAR pose logu ilerlemiyor; hedef gonderilmedi")
     second = get("/mission/snapshot")
+    if expected_session is not None and second.get("session_id") != expected_session:
+        raise ValueError(f"Hizalama oturumu degisti: expected={expected_session!r}; "
+                         f"current={second.get('session_id')!r}; hedef gonderilmedi")
     try:
         position, current_heading, start_stamp = _stationary(second)
     except ValueError as error:
@@ -264,16 +273,17 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
         mission_export, export_error = None, str(exc)[:500]
     return {"reason": reason, "error": error, "goal_confirmed": goal_confirmed,
             "stop_request_succeeded": stop_ok, "final_status": final_status,
-            "start_session_id": first["session_id"], "start_position_m": start, "start_heading_rad": heading,
+            "start_session_id": first["session_id"], "expected_session_id": expected_session,
+            "start_position_m": start, "start_heading_rad": heading,
             "goal_m": goal, "snapshot_count": len(snapshots), "sampled_path_m": sampled_path_m,
             "snapshots": snapshots,
             "pose_comparison": comparison, "mission_export": mission_export, "mission_export_error": export_error}
 
 
-def main():
+def main(expected_session=None):
     log = ROOT / "Saved/Logs/Moon_Simulator.log"
     try:
-        result = run(log)
+        result = run(log, expected_session=expected_session)
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise SystemExit("ON_KONTROL_BASARISIZ: " + str(error)) from error
     output = ROOT / "Saved/Mars" / f"lidar-donus-{uuid.uuid4().hex}.json"

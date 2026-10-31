@@ -292,3 +292,20 @@ snapshot and bridge status three times via local GET requests only and checks
 the current preflight fields without sending a goal or stop. These later
 samples cannot reconstruct the already-failed preflight, and each bridge
 status is a separate request from its adjacent mission snapshot.
+
+Three subsequent readiness samples all passed the snapshot and bridge checks,
+but their session was `bff3f21f`, not the `13470f98` recorded when the tick
+groups were set. The bridge reported connection ID 4 and no current error;
+this establishes that multiple connections existed since service startup, not
+why this particular session changed or whether PIE restarted. The rover was
+stationary in these samples. There is still no aligned turning measurement.
+
+`tools/run_aligned_mars_turn.py` is a motion command for this experiment. It
+reads the latest PIE `MARS_TICK_ALIGNMENT` record from the Unreal log, checks
+the reported actor/sensor tick groups, prints recent session history, and
+requires the recorded session in both turn preflight snapshots. A changed
+session during the turn triggers a stop attempt. The tick log states what was
+applied earlier; it is not a live query of the current groups. The two checks
+and the later `/goal` HTTP request are not atomic, and network delays or a
+failed stop can exceed the intended limits. An operator must supervise and be
+ready to stop Play. All existing freshness and movement checks remain in use.
