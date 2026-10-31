@@ -7,6 +7,7 @@ and navigation HTTP 8766 on localhost. Stop conflicting GNC services first.
 """
 
 import argparse
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -135,6 +136,10 @@ class NavigationService:
         self._timing_lock = threading.Lock()
         self._timing = {"cycles": 0, "last_cycle_s": None, "max_cycle_s": 0.0,
                         "cycles_over_50ms": 0, "cycles_over_250ms": 0, "expired_decisions": 0}
+        self._lidar_timing_lock = threading.Lock()
+        self._lidar_timing_samples = deque(maxlen=16)
+        self._lidar_timing_evicted = 0
+        self._lidar_timing_error = None
         self.bridge = BridgeServer(
             Calibration(), tcp_port=tcp_port, http_port=bridge_http_port, on_external_command=self.session.stop,
             telemetry_format=telemetry_format,
@@ -160,8 +165,67 @@ class NavigationService:
         self.feeds.camera(frame)
 
     def _lidar_received(self, scan):
-        self.session.feed_lidar(scan)
+        if self.session.obstacle_diagnostics and scan.sensor_id == self.session.config["lidar"]["sensor_id"]:
+            received = time.monotonic()
+            before, before_age, before_connected, before_id, before_error = self._safe_pose_reference()
+            started = time.monotonic()
+            self.session.feed_lidar(scan, now=received)
+            finished = time.monotonic()
+            try:
+                after, after_age, after_connected, after_id, after_error = self._safe_pose_reference()
+                sample = {
+                    "frame_id": int(scan.frame_id), "lidar_stamp_ns": str(scan.stamp_ns),
+                    "pose_before_stamp_ns": str(before) if before is not None else None,
+                    "pose_after_stamp_ns": str(after) if after is not None else None,
+                    "pose_before_age_s": before_age, "pose_after_age_s": after_age,
+                    "pose_before_connected": before_connected, "pose_after_connected": after_connected,
+                    "connection_id_before": before_id, "connection_id_after": after_id,
+                    "pose_before_error": before_error, "pose_after_error": after_error,
+                    "capture_lag_before_s": (before - scan.stamp_ns) / 1e9 if before is not None else None,
+                    "capture_lag_after_s": (after - scan.stamp_ns) / 1e9 if after is not None else None,
+                    "pose_reference_s": max(0.0, started - received),
+                    "session_feed_s": max(0.0, finished - started),
+                }
+                with self._lidar_timing_lock:
+                    self._lidar_timing_evicted += int(len(self._lidar_timing_samples) == self._lidar_timing_samples.maxlen)
+                    self._lidar_timing_samples.append(sample)
+            except Exception as error:  # The diagnostic is not a sensor gate.
+                self._lidar_timing_error = str(error)[:256]
+        else:
+            self.session.feed_lidar(scan)
         self.feeds.lidar(scan)
+
+    def _pose_reference(self):
+        """Sample the bridge's last telemetry without changing the motor watchdog."""
+        with self.bridge.state.lock:
+            telemetry = self.bridge.telemetry or {}
+            received_at = self.bridge.telemetry_received_at
+            connected = bool(self.bridge.state.connected)
+            connection_id = self.bridge.connection_id
+            now = time.monotonic()
+        raw = telemetry.get("t_ns")
+        if type(raw) is int:
+            stamp = raw
+        elif isinstance(raw, str) and raw.isascii() and raw.isdigit() and len(raw) <= 19:
+            stamp = int(raw)
+        else:
+            stamp = None
+        if stamp is not None and not 0 < stamp <= 2**63 - 1:
+            stamp = None
+        age = max(0.0, now - received_at) if received_at is not None else None
+        return stamp, age, connected, connection_id
+
+    def _safe_pose_reference(self):
+        try:
+            return (*self._pose_reference(), None)
+        except Exception as error:  # Recording diagnostics must not discard a scan.
+            return None, None, None, None, str(error)[:256]
+
+    def lidar_ingest_timing(self):
+        with self._lidar_timing_lock:
+            return {"max_samples": self._lidar_timing_samples.maxlen,
+                    "samples_evicted": self._lidar_timing_evicted,
+                    "collection_error": self._lidar_timing_error, "samples": list(self._lidar_timing_samples)}
 
     def _sensor_error(self, key, error):
         with self.session.lock:
@@ -324,6 +388,8 @@ class NavigationService:
                                     result = service.session.mission.event_page(after_seq=int(raw))
                         if parsed.path in ("/mission/snapshot", "/mission/export"):
                             result["control_timing"] = service.control_timing()
+                            if service.session.obstacle_diagnostics:
+                                result["lidar_ingest_timing"] = service.lidar_ingest_timing()
                         return self.reply(200, result)
                     except ValueError as error:
                         return self.reply(400, {"error": str(error)})
@@ -352,8 +418,11 @@ class NavigationService:
                     return self.reply(200, result)
                 if self.path != "/status":
                     return self.reply(404, {"error": "Unknown endpoint"})
-                self.reply(200, {**service.session.status(), "transport_error": service.last_transport_error,
-                                 "control_timing": service.control_timing()})
+                result = {**service.session.status(), "transport_error": service.last_transport_error,
+                          "control_timing": service.control_timing()}
+                if service.session.obstacle_diagnostics:
+                    result["lidar_ingest_timing"] = service.lidar_ingest_timing()
+                self.reply(200, result)
 
             def file_reply(self, path, content_type):
                 if not path.is_file():

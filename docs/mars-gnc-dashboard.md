@@ -69,3 +69,14 @@ free space. This optional collection costs processing time, so assess native
 control timing independently. It does not alter obstacle thresholds or permit
 movement on blocked or stale data. It is stored in memory until exported; the
 read-only recorder above checkpoints the export during a mission.
+
+The same option exposes the most recent 16 decoded LiDAR deliveries as
+`lidar_ingest_timing` in `/status`, `/mission/snapshot`, and `/mission/export`.
+Each sample compares the scan timestamp with the most recently received rover
+telemetry immediately before and after `feed_lidar`, reports the telemetry's
+wall-clock arrival age and connection state, and measures the feed call's
+elapsed wall time (including any session-lock wait). The pre-feed lag can
+already contain GPU, sender, TCP, socket-buffer or decoder delay; these data
+cannot split those stages. A stale or missing telemetry reference cannot prove
+capture latency. Timing samples and obstacle records are diagnostic only and
+never extend the source data deadlines.
