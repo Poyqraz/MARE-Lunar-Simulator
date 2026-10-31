@@ -257,3 +257,21 @@ with a fresh map, export any needed mission history first, stop Play, and
 restart the navigation service with `--obstacle-diagnostics` before Play.
 Stopping the service discards its in-memory map and history; the export does
 not restore that map. Do not infer that previously marked cells were all false.
+
+One aligned test attempt failed the LiDAR preflight before sending a goal.
+Subsequent stationary samples were taken in navigation session `e3e79056`,
+whereas the last recorded tick-alignment call was in `f57b3886`. A new
+navigation session can arise from several causes and does not by itself prove
+that Play restarted; the current PIE tick groups and diagnostic tag must be
+rechecked. In each of the five samples labelled logging on and five labelled
+logging off, reported LiDAR arrival age was 0.031–0.172 s, pose-to-processed
+LiDAR capture difference was 0.067–0.167 s, and the valid count was at least
+52,987. None reproduced the original preflight rejection; depth capture age
+was not recorded. The labels alone do not establish the tag's state in the
+new session. The second telemetry timing snapshot's lifetime maximum parsed
+interval was 1.234 s while the reported maximum capture gap was 0.0334 s;
+the reason and exact timing are not established.
+
+The turn probe now reports which LiDAR/depth preflight condition failed and
+the relevant values. Its thresholds and the prohibition on sending a goal
+when preflight fails are unchanged.

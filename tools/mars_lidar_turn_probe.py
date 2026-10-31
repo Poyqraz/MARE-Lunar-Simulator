@@ -73,11 +73,25 @@ def _stationary(snapshot):
     for name in ("lidar", "ground_truth"):
         sensor = (snapshot.get("sensor_health") or {}).get(name) or {}
         age, count = sensor.get("received_age_s"), sensor.get("valid_inside_points")
-        lag = pose_stamp - _stamp(sensor.get("stamp_ns"))
-        if (sensor.get("capture_stale") is True or type(age) not in (int, float) or not math.isfinite(age)
-                or not 0 <= age <= 0.35 or type(count) is not int or count < 20
-                or not -1024 <= lag <= 350_000_000):
-            raise ValueError(f"{name} verisi yeterince taze degil")
+        try:
+            lag = pose_stamp - _stamp(sensor.get("stamp_ns"))
+        except ValueError as error:
+            raise ValueError(f"{name} verisi yeterince taze degil: sensor_zamani_gecersiz") from error
+        reasons = []
+        if sensor.get("capture_stale") is True:
+            reasons.append("capture_stale")
+        if type(age) not in (int, float) or not math.isfinite(age) or not 0 <= age <= 0.35:
+            reasons.append("received_age_invalid_or_over_0.35s")
+        if type(count) is not int or count < 20:
+            reasons.append("valid_points_under_20_or_missing")
+        if lag < -1024:
+            reasons.append("sensor_ahead_of_pose")
+        if lag > 350_000_000:
+            reasons.append("capture_older_than_0.35s")
+        if reasons:
+            raise ValueError(f"{name} verisi yeterince taze degil: neden={','.join(reasons)}; "
+                             f"valid_points={count!r}; received_age_s={age!r}; "
+                             f"pose_minus_sensor_s={lag / 1e9:.9f}; capture_stale={sensor.get('capture_stale')!r}")
     return tuple(position), float(heading), pose_stamp
 
 

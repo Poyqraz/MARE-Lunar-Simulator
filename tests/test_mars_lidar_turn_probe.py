@@ -133,6 +133,39 @@ class TestControlledTurn(unittest.TestCase):
                 probe.run("fake.log", get=get, post=sim.post, analyzer=analyzer, now=sim.now, sleep=sim.sleep)
             self.assertEqual(sim.posts, [])
 
+    def test_sensor_preflight_reports_the_specific_rejection_without_commands(self):
+        cases = {
+            "capture_stale": ({"capture_stale": True}, "capture_stale"),
+            "arrival": ({"received_age_s": 0.351}, "received_age_invalid_or_over_0.35s"),
+            "count": ({"valid_inside_points": 19}, "valid_points_under_20_or_missing"),
+            "older": ({"stamp_ns": str(STAMP - 350_000_001)}, "capture_older_than_0.35s"),
+            "future": ({"stamp_ns": str(STAMP + 1025)}, "sensor_ahead_of_pose"),
+            "missing_stamp": ({"stamp_ns": None}, "sensor_zamani_gecersiz"),
+        }
+        for name, (override, message) in cases.items():
+            for bad_snapshot in (1, 2):
+                sim = FakeRun()
+                original_get = sim.get
+
+                def get(path):
+                    result = copy.deepcopy(original_get(path))
+                    if path == "/mission/snapshot" and sim.snapshot_count == bad_snapshot:
+                        result["sensor_health"]["lidar"].update(override)
+                    return result
+
+                with self.subTest(case=name, snapshot=bad_snapshot), self.assertRaisesRegex(ValueError, message):
+                    probe.run("fake.log", get=get, post=sim.post, analyzer=sim.analyzer, now=sim.now, sleep=sim.sleep)
+                self.assertEqual(sim.posts, [])
+
+    def test_sensor_freshness_boundaries_are_unchanged(self):
+        data = snapshot()
+        for sensor in data["sensor_health"].values():
+            sensor.update(stamp_ns=str(STAMP - 350_000_000), received_age_s=0.35, valid_inside_points=20)
+        probe._stationary(data)
+        for sensor in data["sensor_health"].values():
+            sensor["stamp_ns"] = str(STAMP + 1024)
+        probe._stationary(data)
+
     def test_stop_is_attempted_even_if_goal_request_times_out(self):
         sim = FakeRun()
         sim.goal_error = TimeoutError("goal response timed out")
