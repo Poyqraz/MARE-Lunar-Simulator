@@ -94,11 +94,13 @@ def fake_world():
     ), calls
 
 
-def api(state="idle", lag_ns=100_000_000, wheel=0.0, angular=0.0, telemetry_age=0.01):
+def api(state="idle", lag_ns=100_000_000, wheel=0.0, angular=0.0, telemetry_age=0.01, mission=None,
+        pose_fresh=True, clock_advancing=True):
     stamp = 1_700_000_000_000_000_000
     telemetry = {"x": -10000, "y": 10000, "z": 100, "roll": 0, "pitch": 0, "yaw": 180,
                  "wx": angular, "wy": 0, "wz": 0, "t_ns": str(stamp)}
-    snapshot = {"state": state, "pose_fresh": True, "capture_clock_advancing": True, "speed_estimate_m_s": 0.001}
+    snapshot = {"state": state, "pose_fresh": pose_fresh, "capture_clock_advancing": clock_advancing,
+                "speed_estimate_m_s": 0.001, "mission": mission}
     status = {"connected": True, "connection_id": 7, "telemetry_age_s": telemetry_age,
               "wheel_command_m_s": {k: wheel for k in ("FL", "FR", "BL", "BR")},
               "telemetry_unreal": telemetry}
@@ -151,13 +153,36 @@ class TestLidarLiveProbe(unittest.TestCase):
     def test_probe_rejects_motion_or_stale_scan_before_any_trace(self):
         probe = module()
         unreal, calls = fake_world()
-        cases = ((api(state="following")[0], "idle"), (api(lag_ns=500_000_000)[0], "behind pose"),
+        cases = ((api(state="following")[0], "no active goal"), (api(lag_ns=500_000_000)[0], "behind pose"),
                  (api(wheel=0.1)[0], "wheel command"), (api(angular=0.1)[0], "angular velocity"),
-                 (api(telemetry_age=0.41)[0], "telemetry became too old"))
+                 (api(telemetry_age=0.41)[0], "telemetry became too old"),
+                 (api(state="new_session_requires_goal", pose_fresh=False)[0], "pose_fresh=False"),
+                 (api(state="new_session_requires_goal", clock_advancing=False)[0], "clock_advancing=False"),
+                 (api(state="new_session_requires_goal", mission={"closed": False})[0], "active.*mission"),
+                 (api(state="idle", mission={"closed": False})[0], "active.*mission"))
         for fetch, expected in cases:
             with tempfile.TemporaryDirectory() as tmp, self.assertRaisesRegex(ValueError, expected):
                 probe.probe_idle(str(config_file(Path(tmp))), unreal_module=unreal, fetch_json=fetch)
         self.assertEqual(calls, [])
+
+    def test_new_session_without_a_goal_is_accepted_without_motion_commands(self):
+        probe = module()
+        unreal, calls = fake_world()
+        fetch, seen = api(state="new_session_requires_goal")
+        with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
+            result = probe.probe_idle(str(config_file(Path(tmp))), unreal_module=unreal, fetch_json=fetch)
+        self.assertEqual(result["navigation_state"], "new_session_requires_goal")
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(all(not any(x in url for x in ("/goal", "/stop", "/command")) for url in seen))
+
+    def test_closed_previous_mission_is_allowed_in_idle_state(self):
+        probe = module()
+        unreal, calls = fake_world()
+        fetch, _ = api(state="idle", mission={"closed": True})
+        with tempfile.TemporaryDirectory() as tmp, redirect_stdout(io.StringIO()):
+            result = probe.probe_idle(str(config_file(Path(tmp))), unreal_module=unreal, fetch_json=fetch)
+        self.assertEqual(result["navigation_state"], "idle")
+        self.assertEqual(len(calls), 3)
 
     def test_stdlib_telemetry_pose_matches_navigation_pose_for_nonzero_angles(self):
         probe = module()

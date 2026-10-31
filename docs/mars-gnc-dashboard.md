@@ -130,7 +130,8 @@ and rounded dashboard LiDAR points using HTTP GET, maps them with the current
 PIE `base_link` transform, and traces up to 48 corresponding vertical rays. It
 reports trace actor classes, signed height differences by range, a current-body
 versus latest telemetry comparison, and the current sensor-to-body calibration
-difference. It requires idle/fresh telemetry, near-zero reported speed and
+difference. It accepts `idle` or `new_session_requires_goal` with no active
+mission, plus fresh telemetry, near-zero reported speed and
 angular components, zero wheel commands, and an at-most-0.4 s scan/pose gap.
 Those checks are a screen, not proof that the rover was stationary for the
 entire capture interval. Current collision and current pose do not reconstruct

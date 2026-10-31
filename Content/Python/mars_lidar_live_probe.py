@@ -104,9 +104,15 @@ def probe_idle(sensor_config_path, *, unreal_module=None, fetch_json=None):
     mount = lidar if follow.lower() in ("", "none") else find(follow)
 
     snapshot = get("http://127.0.0.1:8766/mission/snapshot")
-    if (snapshot.get("state") != "idle" or not snapshot.get("pose_fresh")
-            or not snapshot.get("capture_clock_advancing")):
-        raise ValueError("The rover must be idle with a fresh, advancing pose")
+    state = snapshot.get("state")
+    mission = snapshot.get("mission")
+    if (state not in ("idle", "new_session_requires_goal") or snapshot.get("pose_fresh") is not True
+            or snapshot.get("capture_clock_advancing") is not True):
+        raise ValueError("The rover must have no active goal and a fresh, advancing pose "
+                         f"(state={state!r}, pose_fresh={snapshot.get('pose_fresh')!r}, "
+                         f"clock_advancing={snapshot.get('capture_clock_advancing')!r})")
+    if mission is not None and (not isinstance(mission, dict) or mission.get("closed") is not True):
+        raise ValueError("The rover has an active or unrecognized mission")
     speed = snapshot.get("speed_estimate_m_s")
     if type(speed) not in (int, float) or not math.isfinite(speed) or not 0 <= speed <= 0.01:
         raise ValueError("Wait for a stationary speed estimate of at most 0.01 m/s")
@@ -174,7 +180,7 @@ def probe_idle(sensor_config_path, *, unreal_module=None, fetch_json=None):
                         "below_minus_015m": sum(v < -0.15 for v in deltas), "examples": landscape[:3]})
     expected = config["lidar"]["to_body"]
     matrix_difference = max(abs(sensor_to_body[i][j] - expected[i][j]) for i in range(3) for j in range(4))
-    result = {"world_path": world.get_path_name(), "rover": rover.get_name(),
+    result = {"world_path": world.get_path_name(), "rover": rover.get_name(), "navigation_state": state,
               "mode": str(lidar.get_editor_property("mode")), "follow_component": follow,
               "sensor_id_scene": int(lidar.get_editor_property("sensor_id")),
               "sensor_id_config": config["lidar"]["sensor_id"],
