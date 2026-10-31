@@ -156,3 +156,41 @@ phase has not been measured. Tick order and capture-time body pose are possible
 contributors, not established causes; tick-group settings state minimum tick
 groups and do not prove when a Blueprint emits telemetry or when rendering
 captures it.
+
+The next runtime inspection on the same PIE level reported the rover actor's
+primary tick as enabled, `TG_PrePhysics`, and its LiDAR component's minimum
+tick group as `TG_PostPhysics`. This strengthens the possibility of a
+physics-phase mismatch, but does not show where the Blueprint emits telemetry
+or prove the GPU render uses either measured pose.
+
+An opt-in diagnostic logs the `base_link` transform on the game thread just
+after each GPU LiDAR capture request when the PIE rover has the transient
+`MarsLidarPoseProbe` tag. Normal scans do not log; it does not change tick
+groups, commands, packets, or obstacle thresholds. With Play running,
+`mars_lidar_pose_diagnostics.enable()` adds the tag to that PIE actor and
+`disable()` removes it. Stopping Play discards the transient actor. Logging can
+affect performance, so enable it only for a short controlled observation.
+It records the scan's double-precision simulation timestamp converted to ns,
+which can differ slightly from integer-ns telemetry. The offline command
+`python tools/analyze_mars_lidar_pose.py Saved/Logs/Moon_Simulator.log`
+reads a bounded log tail and compares uniquely matching rover Blueprint
+telemetry and request-pose timestamps within 1024 ns. It rejects ambiguous
+matches and reports pose differences and an illustrative 8 m body-forward
+height difference. The parser currently accepts the observed tr-TR Blueprint
+log format only. It does not measure the actual GPU-render pose or prove the
+cause of an obstacle. Native UE compilation and a controlled turn are required
+before drawing any conclusion.
+
+`python tools/mars_lidar_turn_probe.py` is an optional **motion command** for
+this simulator, not the read-only diagnostic above. It requires current,
+advancing matched pose-log lines, a fresh idle rover with zero wheel commands,
+low linear/angular velocity, fresh LiDAR and ground-truth depth, the expected
+tr-TR telemetry format, and a clear inflated-map segment. It selects a temporary
+goal 2 m behind the rover and requests a stop when it observes about 45 degrees
+of rotation, 0.2 m of translation, a terminal state, or an 8 s target duration.
+Synchronous HTTP calls or a failed stop can overrun those targets: an operator
+must supervise and can stop PIE. The tool attempts `/stop` even when the goal
+request times out, prints a failure if the stop is not acknowledged, and saves
+the observations and available mission export under a unique `Saved/Mars` name.
+The resulting pose comparison remains request-time versus telemetry, not a
+measurement of GPU render-time pose or a safety qualification.
