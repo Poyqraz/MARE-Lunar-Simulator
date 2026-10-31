@@ -111,3 +111,28 @@ the sole active PIE world when available, otherwise the editor world, and
 reports the selected world and hit actors. A vertical collision probe measures
 the current world, not the historical moving LiDAR capture or the renderer's
 depth, so matching collision and DEM alone does not establish the sensor error.
+
+In a subsequent editor-world probe of level `JezeroRover_d18c24b80675`, both
+collision modes hit `Landscape_0` at the three saved sample coordinates. The
+collision heights differed from the DEM by at most 2.6 mm and were 20.3–22.6 cm
+above the recorded LiDAR points. The saved export does not identify its Unreal
+level, so the editor probe alone does not prove it was the same historical
+world. The scene's sensor IDs and editor-time body-relative depth and LiDAR
+matrices matched the selected configuration. A Live Coding build succeeded and
+the per-tick StereoCam marker appeared at BeginPlay; eight idle snapshots had
+positive LiDAR/depth point counts and no reported processing error. Those
+observations do not establish timing under motion or the cause of the LiDAR
+height discrepancy.
+
+`mars_lidar_live_probe.probe_idle(path_to_sensor_config)` is a bounded,
+read-only comparison for one idle PIE world. It fetches the already downsampled
+and rounded dashboard LiDAR points using HTTP GET, maps them with the current
+PIE `base_link` transform, and traces up to 48 corresponding vertical rays. It
+reports trace actor classes, signed height differences by range, a current-body
+versus latest telemetry comparison, and the current sensor-to-body calibration
+difference. It requires idle/fresh telemetry, near-zero reported speed and
+angular components, zero wheel commands, and an at-most-0.4 s scan/pose gap.
+Those checks are a screen, not proof that the rover was stationary for the
+entire capture interval. Current collision and current pose do not reconstruct
+the old moving scan or necessarily match the GPU-rendered surface; this probe
+does not classify obstacles or change navigation.
