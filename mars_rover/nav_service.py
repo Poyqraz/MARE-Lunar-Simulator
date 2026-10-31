@@ -121,9 +121,11 @@ class NavigationService:
         depth_source="ground_truth",
         settle_s=2.0,
         telemetry_format="json",
+        obstacle_diagnostics=False,
     ):
         self.session = NavigationSession(
-            grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s
+            grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s,
+            obstacle_diagnostics=obstacle_diagnostics,
         )
         self.feeds = LiveFeeds(config)
         self.viewport = ViewportLink()
@@ -494,17 +496,22 @@ def main(argv=None):
     parser.add_argument("--depth-source", choices=("ground_truth", "stereo"), default="ground_truth")
     parser.add_argument("--telemetry-format", choices=TELEMETRY_FORMATS, default="json",
                         help="wire format; unreal-tr-v1 is explicit compatibility for a tr-TR UE producer")
+    parser.add_argument("--obstacle-diagnostics", action="store_true",
+                        help="record bounded sensor/map-change diagnostics in mission export")
     args = parser.parse_args(argv)
     try:
         config = json.loads(args.sensors.read_text(encoding="utf-8"))
         grid = TerrainMap.from_bundle(args.manifest)
         with NavigationService(grid, config, depth_source=args.depth_source,
-                               telemetry_format=args.telemetry_format) as service:
+                               telemetry_format=args.telemetry_format,
+                               obstacle_diagnostics=args.obstacle_diagnostics) as service:
             if args.goal:
                 service.session.set_goal(args.goal)
             print("Navigation API http://127.0.0.1:8766; start Unreal Play after this line.", flush=True)
             print(f"Depth source: {args.depth_source}; native rover acceptance is still required.", flush=True)
             print(f"Telemetry format: {args.telemetry_format}", flush=True)
+            if args.obstacle_diagnostics:
+                print("Obstacle diagnostics enabled; use mission export to preserve the evidence.", flush=True)
             if args.telemetry_format == "unreal-tr-v1":
                 print(TR_TELEMETRY_NOTICE, flush=True)
             try:

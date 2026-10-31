@@ -53,3 +53,19 @@ mission closes, or after the time limit. It only reads the mission snapshot and
 export endpoints: it never sends a goal or a stop command, including on timeout.
 If the service becomes unavailable, the files retain the last successful
 checkpoint; events after that checkpoint cannot be recovered from those files.
+
+For a short native diagnosis, add `--obstacle-diagnostics` when starting the
+navigation service. The mission export then includes a bounded history of the
+sensor frames that marked new raw obstacle cells: source, capture timestamp,
+capture-time transform, map revision, counts and one sample per newly blocked
+cell. A failed planning attempt also records whether its start and goal are
+blocked and which raw cells contribute to footprint inflation. At most 128
+changed frames and 256 cells per frame are retained; eviction or truncation is
+reported. If a frame contains more cells, those nearest the capture-time rover
+position or active goal are prioritized. Records include their session and mission ID because the map can
+outlive a mission. These samples cannot establish whether an obstacle is real
+or determine a calibration error on their own; missing samples do not mean
+free space. This optional collection costs processing time, so assess native
+control timing independently. It does not alter obstacle thresholds or permit
+movement on blocked or stale data. It is stored in memory until exported; the
+read-only recorder above checkpoints the export during a mission.
