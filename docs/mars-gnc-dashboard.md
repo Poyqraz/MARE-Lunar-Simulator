@@ -86,3 +86,28 @@ lock, using the complete in-range frame and retaining the original receive
 timestamp. Capture-pose application and obstacle-map mutation remain under the
 session lock. The sensor health report splits preparation and locked processing
 times; native performance and sensor freshness must still be checked.
+
+In a later native turn, mission history recorded repeated ground-truth depth
+capture waits at 0.433–0.467 s. The previous UnrealStereoCam pump only polled
+GPU readbacks when another capture was due, introducing a polling interval of
+up to one `SendHz` period. The component now polls on each game tick while
+starting captures and readbacks only at the configured rate. Capture timestamps
+remain those of the original capture, and freshness limits are unchanged. An
+isolated C++ tick simulation checks scheduling, but UE compilation, GPU
+readback behavior and runtime performance require native verification. At
+BeginPlay the updated binary logs `UnrealStereoCam: per-tick readback polling
+enabled`; its absence means the new plugin cannot be assumed to be loaded.
+
+The same turn ended blocked because LiDAR samples marked the goal cell and
+neighbours; the recorded sample heights were below the DEM. These observations
+do not establish whether the surface has a real discrepancy or whether sensor
+projection/capture timing is responsible. The obstacle classifier remains
+conservative until that discrepancy is measured against the actual Unreal scene.
+With the same rover level open, the Unreal Editor Python console can run
+`import mars_lidar_collision_probe as p; p.probe_goal(r"C:/path/to/mission-export.json")`.
+It performs read-only simple and complex vertical collision traces at recorded
+goal-contributor sample coordinates and prints `MARS_LIDAR_COLLISION`. It uses
+the sole active PIE world when available, otherwise the editor world, and
+reports the selected world and hit actors. A vertical collision probe measures
+the current world, not the historical moving LiDAR capture or the renderer's
+depth, so matching collision and DEM alone does not establish the sensor error.
