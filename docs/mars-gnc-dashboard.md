@@ -234,3 +234,26 @@ counterfactual is useful for sizing the effect, but it does not prove GPU
 render-pose identity or a rigid sensor mount during motion, replay all points,
 or authorize clearing a cell. Unique
 request matches are required; missing and ambiguous matches are reported.
+
+The native request-pose replay matched all five mission LiDAR frames and 43
+representative samples. All 43 reprojected samples were within the 0.15 m
+height threshold under the logged request-pose assumption. This is strong
+evidence that the observed pose difference can account for these selected
+samples, not proof of a clear cell or actual GPU render-time pose. It does
+not cover the depth map's 19 new cells or every return in any cell.
+
+`mars_tick_alignment_probe.apply()` is an opt-in experiment on live PIE
+objects. It checks for an idle, fresh, stationary rover with zero wheel
+commands, then sets the actor's minimum tick group to `TG_PostPhysics` and
+the LiDAR and navigation-camera components to `TG_PostUpdateWork`. It logs
+before/after groups and attempts rollback on failure; stopping Play discards
+the runtime changes. It does not send a goal or alter assets. The Blueprint
+telemetry phase and camera/LiDAR render poses remain unverified, and shifting
+the actor tick may change control latency. A supervised, recorded A/B test is
+required; this is not a permanent fix or a change to obstacle thresholds.
+
+The current service keeps dynamic occupancy across PIE reconnects. To compare
+with a fresh map, export any needed mission history first, stop Play, and
+restart the navigation service with `--obstacle-diagnostics` before Play.
+Stopping the service discards its in-memory map and history; the export does
+not restore that map. Do not infer that previously marked cells were all false.
