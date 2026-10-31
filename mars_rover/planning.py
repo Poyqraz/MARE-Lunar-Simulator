@@ -163,6 +163,11 @@ class TerrainMap:
                     cells.append(parent[cells[-1]])
                 route = [(col * r, row * r) for row, col in reversed(cells)]
                 route = [start, *route, goal]
+                # The first grid centre can be behind an off-centre rover.
+                # Bypass it only if the exact connection to the next point is
+                # clear under the same inflated-map and corner checks.
+                if route[1] != start and self.segment_clear(start, route[2]):
+                    del route[1]
                 route = [p for i, p in enumerate(route) if i == 0 or p != route[i - 1]]
                 if not all(self.segment_clear(a, b) for a, b in zip(route, route[1:])):
                     raise NoRoute("Exact start/goal connection intersects a blocked cell")
@@ -204,7 +209,7 @@ class TerrainMap:
             + dy * ((1 - dx) * self.heights[i + 1, j] + dx * self.heights[i + 1, j + 1])
         )
 
-    def observe(self, points):
+    def observe(self, points, *, diagnostics=False, diagnostic_focus=()):
         points = np.asarray(points, dtype=float)
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError("Observed points must be Nx3 local-map metres")
@@ -227,12 +232,13 @@ class TerrainMap:
         negative = int(np.sum(residual < -self.limits.obstacle_height_m))
         hazard = np.isfinite(residual) & (np.abs(residual) > self.limits.obstacle_height_m)
         rows, cols = np.floor(r[hazard] + 0.5).astype(int), np.floor(c[hazard] + 0.5).astype(int)
-        changed = bool(np.any(~self.raw_blocked[rows, cols]))
+        newly_blocked = ~self.raw_blocked[rows, cols]
+        changed = bool(np.any(newly_blocked))
         self.raw_blocked[rows, cols] = True
         if changed:
             self.blocked = self._inflate(self.raw_blocked)
             self.revision += 1
-        return {
+        report = {
             "positive_obstacles": positive,
             "negative_obstacles": negative,
             "valid_inside_points": int(np.isfinite(residual).sum()),
@@ -240,6 +246,56 @@ class TerrainMap:
             "unknown_is_free": False,
             "micro_geometry_complete": False,
         }
+        if diagnostics:
+            # Capture first evidence for each newly occupied raster cell. This
+            # is optional, bounded evidence, not a new classification rule.
+            try:
+                cells = []
+                total = 0
+                if changed:
+                    new_rows, new_cols = rows[newly_blocked], cols[newly_blocked]
+                    keys = new_rows * w + new_cols
+                    _, first, counts = np.unique(keys, return_index=True, return_counts=True)
+                    total = len(first)
+                    hazard_points = points[hazard][newly_blocked]
+                    hazard_residuals = residual[hazard][newly_blocked]
+                    selected = np.arange(total)
+                    if total > 256 and diagnostic_focus:
+                        cell_xy = np.column_stack((new_cols[first], new_rows[first])) * self.resolution_m
+                        distance = np.full(total, np.inf)
+                        for xy in diagnostic_focus:
+                            distance = np.minimum(distance, np.sum((cell_xy - xy) ** 2, axis=1))
+                        selected = np.argsort(distance, kind="stable")
+                    for n in selected[:256]:
+                        idx = first[n]
+                        cells.append({"cell_row_col": [int(new_rows[idx]), int(new_cols[idx])],
+                                      "hazard_points": int(counts[n]),
+                                      "sample_world_m": hazard_points[idx].tolist(),
+                                      "sample_residual_m": float(hazard_residuals[idx])})
+                report["diagnostics"] = {"new_cells_total": total, "new_cells": cells,
+                                         "new_cells_truncated": total - len(cells)}
+            except Exception as error:  # Diagnostics must not change the map/control result.
+                report["diagnostics"] = {"collection_error": str(error)[:256]}
+        return report
+
+    def blockage_details(self, xy):
+        """Describe occupied input cells contributing to an inflated endpoint."""
+        row, col = self.cell(xy)
+        radius = (self.limits.robot_radius_m / self.resolution_m + math.sqrt(2) / 2
+                  if self.limits.robot_radius_m else 0.0)
+        distance = math.ceil(radius)
+        contributors = []
+        if distance <= 8:  # Keep optional failure diagnostics bounded.
+            for dy in range(-distance, distance + 1):
+                for dx in range(-distance, distance + 1):
+                    r, c = row + dy, col + dx
+                    if (math.hypot(dx, dy) <= radius and 0 <= r < self.heights.shape[0]
+                            and 0 <= c < self.heights.shape[1] and self.raw_blocked[r, c]):
+                        contributors.append([r, c])
+        return {"cell_row_col": [row, col], "blocked": bool(self.blocked[row, col]),
+                "raw_blocked": bool(self.raw_blocked[row, col]),
+                "contributors_raw_row_col": contributors if distance <= 8 else None,
+                "contributors_omitted": distance > 8}
 
     def geographic_goal(self, longitude, latitude):
         if self.manifest is None or not (-180 <= longitude <= 360 and -90 <= latitude <= 90):

@@ -4,8 +4,10 @@ The optional service lives in nav_service.py. Sensor validity/freshness is a
 separate gate from terrain planning. Ground-truth depth is labelled explicitly.
 """
 
-import math
 import copy
+from collections import deque
+from dataclasses import dataclass
+import math
 import threading
 import time
 
@@ -23,6 +25,16 @@ from .sensors import (
 )
 
 LATE_DATA_ERROR = "Pose or sensor data expired during control processing"
+
+
+@dataclass(frozen=True)
+class PreparedGroundTruthFrame:
+    """Depth points in the camera frame; capture pose is applied later."""
+
+    frame_id: int
+    stamp_ns: int
+    points: np.ndarray
+    preparation_s: float
 
 
 class RouteFollower:
@@ -65,6 +77,7 @@ class NavigationSession:
         sensor_timeout_s=0.4,
         speed_m_s=0.15,
         settle_s=2.0,
+        obstacle_diagnostics=False,
     ):
         if (
             config.get("schema_version") != 1
@@ -75,6 +88,7 @@ class NavigationSession:
             or not 0 < sensor_timeout_s <= 2
             or not 0 < speed_m_s <= 0.5
             or not 0 <= settle_s <= 30
+            or type(obstacle_diagnostics) is not bool
         ):
             raise ValueError("Sensor config must match this terrain; invalid navigation settings")
         try:
@@ -134,6 +148,10 @@ class NavigationSession:
         self.sensor_wait_details = {}
         self._pose_received_at = self._unique_pose_at = None
         self._late_decision = False
+        self.obstacle_diagnostics = obstacle_diagnostics
+        self._obstacle_frames = deque(maxlen=128)
+        self._obstacle_frames_evicted = 0
+        self._last_planning_failure = None
 
     def set_goal(self, goal):
         with self.lock:
@@ -177,7 +195,17 @@ class NavigationSession:
             settings = self.config["depth"]
             if "width" in settings and frame.pixels.shape[:2] != (settings["height"], settings["width"]):
                 raise ValueError("Depth resolution changed since calibration")
-            self._feed("ground_truth", frame, now)
+            received = time.monotonic() if now is None else now
+            if self.depth_source == "ground_truth":
+                # This camera-only projection needs neither the session lock
+                # nor the capture pose. Keep the original arrival time so the
+                # time spent here still counts against freshness.
+                started = time.monotonic()
+                points = depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
+                points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
+                frame = PreparedGroundTruthFrame(frame.frame_id, frame.stamp_ns, points,
+                                                 max(0.0, time.monotonic() - started))
+            self._feed("ground_truth", frame, received)
         if self.depth_source == "stereo" and frame.format == 1:
             from .stereo import stereo_pair_depth
 
@@ -246,8 +274,12 @@ class NavigationSession:
                 if key == "ground_truth"
                 else self.config["stereo"]
             )
-            points = frame.points if key == "lidar" else depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
-            points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
+            prepared = key == "ground_truth" and isinstance(frame, PreparedGroundTruthFrame)
+            if prepared:
+                points = frame.points
+            else:
+                points = frame.points if key == "lidar" else depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
+                points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
             matrix = pose.matrix @ transform_matrix(settings["to_body"])
             if key == "stereo" and len(points):
                 # A stated one-pixel disparity scenario, not measured error:
@@ -258,9 +290,30 @@ class NavigationSession:
                 height_factor = np.abs((points @ matrix[:3, :3].T)[:, 2] / points[:, 2])
                 points = points[3 * sigma_z * height_factor <= self.grid.limits.obstacle_height_m / 2]
             world = transform_points(points, matrix)
-            report = self.grid.observe(world)
+            if self.obstacle_diagnostics:
+                focus = (pose.xy_heading[:2], self.goal) if self.goal else (pose.xy_heading[:2],)
+                report = self.grid.observe(world, diagnostics=True, diagnostic_focus=focus)
+                diagnostic = report.pop("diagnostics")
+                if report["map_changed"] or "collection_error" in diagnostic:
+                    self._obstacle_frames_evicted += int(len(self._obstacle_frames) == self._obstacle_frames.maxlen)
+                    self._obstacle_frames.append({
+                        "source": key, "frame_id": int(frame.frame_id), "stamp_ns": str(frame.stamp_ns),
+                        "session_id": self.mission.session_id,
+                        "mission_id": self.mission.current["mission_id"] if self.mission.active else None,
+                        "map_revision": self.grid.revision, "world_from_body": pose.matrix.tolist(),
+                        "sensor_to_body": transform_matrix(settings["to_body"]).tolist(),
+                        "positive_obstacles": report["positive_obstacles"],
+                        "negative_obstacles": report["negative_obstacles"],
+                        "valid_inside_points": report["valid_inside_points"], **diagnostic,
+                    })
+            else:
+                report = self.grid.observe(world)
+            locked_processing = max(0.0, time.monotonic() - processing_started)
+            preparation = frame.preparation_s if prepared else 0.0
             self.health[key] = {**report, "received_at": received, "stamp_ns": frame.stamp_ns,
-                                "processing_s": max(0.0, time.monotonic() - processing_started)}
+                                "processing_s": preparation + locked_processing}
+            if prepared:
+                self.health[key].update(preparation_s=preparation, locked_processing_s=locked_processing)
             self.used[key] = signature
 
     def _observe_bridge(self, bridge_status, now):
@@ -444,6 +497,16 @@ class NavigationSession:
             except (ValueError, KeyError, TypeError) as error:
                 self.error = str(error)
                 self.state = "blocked" if isinstance(error, NoRoute) else "waiting_for_sensors"
+                if isinstance(error, NoRoute) and self.obstacle_diagnostics:
+                    try:
+                        self._last_planning_failure = {
+                            "mission_id": self.mission.current["mission_id"] if self.mission.current else None,
+                            "stamp_ns": str(self.pose.stamp_ns), "map_revision": self.grid.revision,
+                            "error": str(error), "start": self.grid.blockage_details(self.pose.xy_heading[:2]),
+                            "goal": self.grid.blockage_details(self.goal),
+                        }
+                    except Exception as diagnostic_error:  # Do not alter the stop on NoRoute.
+                        self._last_planning_failure = {"collection_error": str(diagnostic_error)[:256]}
                 return 0, 0
 
     def _sensor_wait_reasons(self, now):
@@ -547,4 +610,10 @@ class NavigationSession:
     def mission_export(self):
         with self.lock:
             captured = self.mission.capture_export()
+            if self.obstacle_diagnostics:
+                captured["obstacle_diagnostics"] = {
+                    "enabled": True, "max_frames": self._obstacle_frames.maxlen,
+                    "frames_evicted": self._obstacle_frames_evicted,
+                    "frames": list(self._obstacle_frames), "last_planning_failure": self._last_planning_failure,
+                }
         return copy.deepcopy(captured)

@@ -7,6 +7,7 @@ and navigation HTTP 8766 on localhost. Stop conflicting GNC services first.
 """
 
 import argparse
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -15,7 +16,10 @@ import threading
 import time
 from urllib.parse import parse_qs, urlsplit
 
+import numpy as np
+
 from .bridge import BridgeServer, TELEMETRY_FORMATS, TR_TELEMETRY_NOTICE
+from .dashboard_bridge import LiveFeeds, ViewportLink, local_depth_view, project_route
 from .drive import Calibration
 from .navigation import LATE_DATA_ERROR, NavigationSession
 from .planning import TerrainMap
@@ -118,16 +122,24 @@ class NavigationService:
         depth_source="ground_truth",
         settle_s=2.0,
         telemetry_format="json",
+        obstacle_diagnostics=False,
     ):
         self.session = NavigationSession(
-            grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s
+            grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s,
+            obstacle_diagnostics=obstacle_diagnostics,
         )
+        self.feeds = LiveFeeds(config)
+        self.viewport = ViewportLink()
         self.ending = threading.Event()
         self.last_transport_error = None
         self.threads = []
         self._timing_lock = threading.Lock()
         self._timing = {"cycles": 0, "last_cycle_s": None, "max_cycle_s": 0.0,
                         "cycles_over_50ms": 0, "cycles_over_250ms": 0, "expired_decisions": 0}
+        self._lidar_timing_lock = threading.Lock()
+        self._lidar_timing_samples = deque(maxlen=16)
+        self._lidar_timing_evicted = 0
+        self._lidar_timing_error = None
         self.bridge = BridgeServer(
             Calibration(), tcp_port=tcp_port, http_port=bridge_http_port, on_external_command=self.session.stop,
             telemetry_format=telemetry_format,
@@ -135,12 +147,12 @@ class NavigationService:
         self.lidar, self.camera, self.http = None, None, None
         try:
             self.lidar = PacketListener(
-                lidar_port, LidarStream, self.session.feed_lidar, lambda error: self._sensor_error("lidar", error)
+                lidar_port, LidarStream, self._lidar_received, lambda error: self._sensor_error("lidar", error)
             )
             self.camera = PacketListener(
                 camera_port,
                 NavStream,
-                self.session.feed_camera,
+                self._camera_received,
                 lambda error: self._sensor_error(self.session.depth_source, error),
             )
             self.http = ThreadingHTTPServer(("127.0.0.1", http_port), self._handler())
@@ -148,11 +160,82 @@ class NavigationService:
             self.close()
             raise
 
+    def _camera_received(self, frame):
+        self.session.feed_camera(frame)
+        self.feeds.camera(frame)
+
+    def _lidar_received(self, scan):
+        if self.session.obstacle_diagnostics and scan.sensor_id == self.session.config["lidar"]["sensor_id"]:
+            received = time.monotonic()
+            before, before_age, before_connected, before_id, before_error = self._safe_pose_reference()
+            started = time.monotonic()
+            self.session.feed_lidar(scan, now=received)
+            finished = time.monotonic()
+            try:
+                after, after_age, after_connected, after_id, after_error = self._safe_pose_reference()
+                sample = {
+                    "frame_id": int(scan.frame_id), "lidar_stamp_ns": str(scan.stamp_ns),
+                    "pose_before_stamp_ns": str(before) if before is not None else None,
+                    "pose_after_stamp_ns": str(after) if after is not None else None,
+                    "pose_before_age_s": before_age, "pose_after_age_s": after_age,
+                    "pose_before_connected": before_connected, "pose_after_connected": after_connected,
+                    "connection_id_before": before_id, "connection_id_after": after_id,
+                    "pose_before_error": before_error, "pose_after_error": after_error,
+                    "capture_lag_before_s": (before - scan.stamp_ns) / 1e9 if before is not None else None,
+                    "capture_lag_after_s": (after - scan.stamp_ns) / 1e9 if after is not None else None,
+                    "pose_reference_s": max(0.0, started - received),
+                    "session_feed_s": max(0.0, finished - started),
+                }
+                with self._lidar_timing_lock:
+                    self._lidar_timing_evicted += int(len(self._lidar_timing_samples) == self._lidar_timing_samples.maxlen)
+                    self._lidar_timing_samples.append(sample)
+            except Exception as error:  # The diagnostic is not a sensor gate.
+                self._lidar_timing_error = str(error)[:256]
+        else:
+            self.session.feed_lidar(scan)
+        self.feeds.lidar(scan)
+
+    def _pose_reference(self):
+        """Sample the bridge's last telemetry without changing the motor watchdog."""
+        with self.bridge.state.lock:
+            telemetry = self.bridge.telemetry or {}
+            received_at = self.bridge.telemetry_received_at
+            connected = bool(self.bridge.state.connected)
+            connection_id = self.bridge.connection_id
+            now = time.monotonic()
+        raw = telemetry.get("t_ns")
+        if type(raw) is int:
+            stamp = raw
+        elif isinstance(raw, str) and raw.isascii() and raw.isdigit() and len(raw) <= 19:
+            stamp = int(raw)
+        else:
+            stamp = None
+        if stamp is not None and not 0 < stamp <= 2**63 - 1:
+            stamp = None
+        age = max(0.0, now - received_at) if received_at is not None else None
+        return stamp, age, connected, connection_id
+
+    def _safe_pose_reference(self):
+        try:
+            return (*self._pose_reference(), None)
+        except Exception as error:  # Recording diagnostics must not discard a scan.
+            return None, None, None, None, str(error)[:256]
+
+    def lidar_ingest_timing(self):
+        with self._lidar_timing_lock:
+            return {"max_samples": self._lidar_timing_samples.maxlen,
+                    "samples_evicted": self._lidar_timing_evicted,
+                    "collection_error": self._lidar_timing_error, "samples": list(self._lidar_timing_samples)}
+
     def _sensor_error(self, key, error):
         with self.session.lock:
             self.last_transport_error = str(error)
             self.session.health.pop(key, None)
             self.bridge.state.stop()
+            if key == "lidar":
+                self.feeds.clear_lidar()
+            else:
+                self.feeds.clear_camera()
 
     def control_timing(self):
         """Read-only, process-lifetime wall-clock control-loop counters."""
@@ -179,16 +262,103 @@ class NavigationService:
             def log_message(self, *args):
                 pass
 
+            def send_payload(self, code, payload, content_type, *, stamp=None, no_store=False):
+                try:
+                    self.send_response(code)
+                    self.send_header("Content-Type", content_type)
+                    self.send_header("Content-Length", str(len(payload)))
+                    if no_store:
+                        self.send_header("Cache-Control", "no-store")
+                    if stamp is not None:
+                        self.send_header("X-Capture-Stamp-Ns", stamp)
+                    self.end_headers()
+                    self.wfile.write(payload)
+                except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                    # A client can leave while a reply is being prepared. This
+                    # only ends its HTTP response; it must not affect a mission.
+                    self.close_connection = True
+
             def reply(self, code, value):
                 payload = json.dumps(value, allow_nan=False).encode()
-                self.send_response(code)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
+                return self.send_payload(code, payload, "application/json")
 
             def do_GET(self):
                 parsed = urlsplit(self.path)
+                if parsed.path == "/viewport_camera":
+                    try:
+                        if len(self.path) > 1024:
+                            raise ValueError("Viewport query too large")
+                        query = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=True)
+                        if set(query) != {"applied", "rover"} or any(len(v) != 1 for v in query.values()):
+                            raise ValueError("Expected applied and rover fields")
+                        return self.reply(200, service.viewport.update_editor(query["applied"][0], query["rover"][0]))
+                    except ValueError as error:
+                        return self.reply(400, {"error": str(error)})
+                if self.path == "/dashboard/viewport":
+                    return self.reply(200, service.viewport.status())
+                if self.path == "/dashboard":
+                    return self.file_reply(Path(__file__).with_name("dashboard_assets") / "index.html",
+                                           "text/html; charset=utf-8")
+                if parsed.path.startswith("/dashboard-assets/"):
+                    name = parsed.path.removeprefix("/dashboard-assets/")
+                    allowed = {"mars-adapter.js", "theme.js", "base.css", "alerts.js", "local_dem.js",
+                               "feed_legends.js", "nav_overlay.js", "dash_common.js", "lidar_view.js",
+                               "three-r128.min.js"}
+                    if name not in allowed or parsed.query:
+                        return self.reply(404, {"error": "Unknown dashboard asset"})
+                    mime = "text/css; charset=utf-8" if name.endswith(".css") else "text/javascript; charset=utf-8"
+                    return self.file_reply(Path(__file__).with_name("dashboard_assets") / name, mime)
+                if self.path == "/dashboard/map":
+                    grid = service.session.grid
+                    if grid.heights.size > 2_000_000:
+                        return self.reply(413, {"error": "Dashboard map exceeds the display budget"})
+                    values = np.where(np.isfinite(grid.heights) & (grid.heights < 9999), grid.heights, 9999)
+                    return self.reply(200, {"width": int(values.shape[1]), "height": int(values.shape[0]),
+                                            "resolution": grid.resolution_m, "data": values.ravel().tolist()})
+                if self.path == "/dashboard/feeds":
+                    return self.reply(200, service.feeds.status())
+                if self.path == "/dashboard/lidar":
+                    scan = service.feeds.lidar_view()
+                    return self.reply(200, scan) if scan else self.reply(404, {"error": "No fresh LiDAR scan"})
+                if parsed.path in ("/dashboard/path-overlay", "/dashboard/local-dem"):
+                    name = "cam_central" if parsed.path.endswith("path-overlay") else "depth_gt"
+                    try:
+                        frame = self.requested_frame(name, parsed.query)
+                        if frame is None:
+                            raise ValueError("No fresh matching frame")
+                        with service.session.lock:
+                            pose = service.session.history.at(frame.stamp_ns)
+                            config = dict(service.session.config["depth"])
+                            follower = service.session.follower
+                            route = [pose.xy_heading[:2], *follower.route[follower.index:]] if follower else None
+                            replans = max(0, service.session.replans - 1)
+                        h, w = frame.pixels.shape[:2]
+                        if (("width" in config and config["width"] != w)
+                                or ("height" in config and config["height"] != h)):
+                            raise ValueError("Frame does not match central camera calibration")
+                        if name == "cam_central":
+                            if route is None:
+                                raise ValueError("No planned route")
+                            view = project_route(service.session.grid, pose.matrix, config["to_body"],
+                                                 config["hfov_deg"], w, h, route)
+                            view["replans"] = replans
+                        else:
+                            view = local_depth_view(service.session.grid, pose.matrix, config["to_body"],
+                                                    config["hfov_deg"], frame.depth_m())
+                        if service.feeds.frame(name, frame.stamp_ns) is not frame:
+                            raise ValueError("Frame expired or sensor disconnected during processing")
+                        view["stamp_ns"] = str(frame.stamp_ns)
+                        return self.reply(200, view)
+                    except (ValueError, KeyError, TypeError) as error:
+                        return self.reply(404, {"error": str(error)})
+                if parsed.path.startswith("/dashboard/camera/") and not parsed.query:
+                    filename = parsed.path.removeprefix("/dashboard/camera/")
+                    allowed = {"cam_central.jpg", "cam_left.jpg", "cam_right.jpg", "depth_gt.jpg"}
+                    if filename not in allowed:
+                        return self.reply(404, {"error": "Unknown camera feed"})
+                    packet = service.feeds.image(filename.removesuffix(".jpg"), with_stamp=True)
+                    return (self.binary_reply(packet[0], "image/jpeg", stamp=packet[1]) if packet
+                            else self.reply(404, {"error": "No fresh frame or image encoder"}))
                 if parsed.path in ("/mission/snapshot", "/mission/trail", "/mission/events", "/mission/export"):
                     try:
                         if len(self.path) > 1024:
@@ -218,6 +388,8 @@ class NavigationService:
                                     result = service.session.mission.event_page(after_seq=int(raw))
                         if parsed.path in ("/mission/snapshot", "/mission/export"):
                             result["control_timing"] = service.control_timing()
+                            if service.session.obstacle_diagnostics:
+                                result["lidar_ingest_timing"] = service.lidar_ingest_timing()
                         return self.reply(200, result)
                     except ValueError as error:
                         return self.reply(400, {"error": str(error)})
@@ -246,21 +418,35 @@ class NavigationService:
                     return self.reply(200, result)
                 if self.path != "/status":
                     return self.reply(404, {"error": "Unknown endpoint"})
-                self.reply(200, {**service.session.status(), "transport_error": service.last_transport_error,
-                                 "control_timing": service.control_timing()})
+                result = {**service.session.status(), "transport_error": service.last_transport_error,
+                          "control_timing": service.control_timing()}
+                if service.session.obstacle_diagnostics:
+                    result["lidar_ingest_timing"] = service.lidar_ingest_timing()
+                self.reply(200, result)
 
             def file_reply(self, path, content_type):
                 if not path.is_file():
                     return self.reply(404, {"error": "Asset not available"})
                 payload = path.read_bytes()
-                self.send_response(200)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Content-Length", str(len(payload)))
-                self.end_headers()
-                self.wfile.write(payload)
+                return self.send_payload(200, payload, content_type)
+
+            def requested_frame(self, name, query_string):
+                if not query_string:
+                    return service.feeds.frame(name)
+                if len(query_string) > 128:
+                    raise ValueError("Capture query too large")
+                query = parse_qs(query_string, keep_blank_values=True, strict_parsing=True)
+                raw = query.get("stamp", [""])
+                if (set(query) != {"stamp"} or len(raw) != 1 or not raw[0].isascii()
+                        or not raw[0].isdigit() or len(raw[0]) > 19):
+                    raise ValueError("Expected one exact capture timestamp")
+                return service.feeds.frame(name, int(raw[0]))
+
+            def binary_reply(self, payload, content_type, *, stamp=None):
+                return self.send_payload(200, payload, content_type, stamp=stamp, no_store=True)
 
             def do_POST(self):
-                if self.path not in ("/goal", "/stop"):
+                if self.path not in ("/goal", "/stop", "/dashboard/viewport"):
                     return self.reply(404, {"error": "Unknown endpoint"})
                 try:
                     size = int(self.headers.get("Content-Length", "0"))
@@ -275,6 +461,10 @@ class NavigationService:
                         raise ValueError("Non-finite JSON number: " + value)
 
                     data = json.loads(self.rfile.read(size), parse_constant=reject)
+                    if self.path == "/dashboard/viewport":
+                        if not isinstance(data, dict) or set(data) != {"mode"}:
+                            raise ValueError("Supply exactly one viewport mode")
+                        return self.reply(200, service.viewport.set_mode(data["mode"]))
                     with service.session.lock:
                         service.bridge.state.stop()
                         if self.path == "/goal":
@@ -287,9 +477,10 @@ class NavigationService:
                             service.session.stop()
                     self.reply(200, {"ok": True, **service.session.status()})
                 except (ValueError, TypeError, TimeoutError, UnicodeError) as error:
-                    with service.session.lock:
-                        service.bridge.state.stop()
-                        service.session.stop()
+                    if self.path in ("/goal", "/stop"):
+                        with service.session.lock:
+                            service.bridge.state.stop()
+                            service.session.stop()
                     self.reply(400, {"error": str(error)})
 
         return Handler
@@ -374,17 +565,22 @@ def main(argv=None):
     parser.add_argument("--depth-source", choices=("ground_truth", "stereo"), default="ground_truth")
     parser.add_argument("--telemetry-format", choices=TELEMETRY_FORMATS, default="json",
                         help="wire format; unreal-tr-v1 is explicit compatibility for a tr-TR UE producer")
+    parser.add_argument("--obstacle-diagnostics", action="store_true",
+                        help="record bounded sensor/map-change diagnostics in mission export")
     args = parser.parse_args(argv)
     try:
         config = json.loads(args.sensors.read_text(encoding="utf-8"))
         grid = TerrainMap.from_bundle(args.manifest)
         with NavigationService(grid, config, depth_source=args.depth_source,
-                               telemetry_format=args.telemetry_format) as service:
+                               telemetry_format=args.telemetry_format,
+                               obstacle_diagnostics=args.obstacle_diagnostics) as service:
             if args.goal:
                 service.session.set_goal(args.goal)
             print("Navigation API http://127.0.0.1:8766; start Unreal Play after this line.", flush=True)
             print(f"Depth source: {args.depth_source}; native rover acceptance is still required.", flush=True)
             print(f"Telemetry format: {args.telemetry_format}", flush=True)
+            if args.obstacle_diagnostics:
+                print("Obstacle diagnostics enabled; use mission export to preserve the evidence.", flush=True)
             if args.telemetry_format == "unreal-tr-v1":
                 print(TR_TELEMETRY_NOTICE, flush=True)
             try:

@@ -194,6 +194,16 @@ def test_missing_returns_never_erase_a_previous_hazard():
     assert grid.revision == revision and grid.blocked[10, 10]
 
 
+def test_replanned_rover_already_facing_goal_does_not_turn_back_to_cell_center():
+    p = importlib.import_module("mars_rover.planning")
+    grid = p.TerrainMap(np.zeros((10, 10)), 1, p.PlanningLimits(robot_radius_m=0))
+    start, goal = (5.01225, 4.58223), (5.0, 4.0)
+    follower = nav().RouteFollower(grid.plan(start, goal))
+    velocity, turn = follower.command((*start, -math.pi / 2))
+    assert velocity > 0
+    assert abs(turn) < 0.1
+
+
 def test_observed_obstacle_stops_then_replans_around_the_blocked_route():
     p = importlib.import_module("mars_rover.planning")
     s = importlib.import_module("mars_rover.sensors")
