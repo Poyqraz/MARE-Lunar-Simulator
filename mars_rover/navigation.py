@@ -405,6 +405,30 @@ class NavigationSession:
                 if self.state == "waiting_for_sensors" and self.sensor_wait_details
                 else None
             )
+            if self.state == "waiting_for_pose":
+                # Preserve the reason at the control decision, before a later
+                # healthy snapshot overwrites the transient observer error.
+                def finite_number(value):
+                    return float(value) if type(value) in (int, float) and math.isfinite(value) else None
+
+                def elapsed(since):
+                    value = finite_number(since)
+                    return max(0.0, now - value) if value is not None else None
+
+                telemetry = bridge_status.get("telemetry_unreal")
+                raw_stamp = telemetry.get("t_ns") if isinstance(telemetry, dict) else None
+                stamp = str(raw_stamp) if type(raw_stamp) in (str, int) else ""
+                if not stamp.isascii() or not stamp.isdigit() or len(stamp) > 19 or not 0 < int(stamp) <= 2**63 - 1:
+                    stamp = None
+                bridge_error = bridge_status.get("last_error")
+                details = {"pose": {
+                    "observer_error": self.observer_error,
+                    "bridge_telemetry_age_s": finite_number(bridge_status.get("telemetry_age_s")),
+                    "bridge_telemetry_stamp_ns": stamp,
+                    "bridge_last_error": bridge_error[:256] if isinstance(bridge_error, str) else None,
+                    "last_pose_age_s": elapsed(self._pose_received_at),
+                    "capture_clock_age_s": elapsed(self._unique_pose_at),
+                }}
             self.mission.state(self.state, self.error, details=details)
             return command
 
