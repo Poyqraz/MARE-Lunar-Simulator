@@ -192,5 +192,8 @@ Synchronous HTTP calls or a failed stop can overrun those targets: an operator
 must supervise and can stop PIE. The tool attempts `/stop` even when the goal
 request times out, prints a failure if the stop is not acknowledged, and saves
 the observations and available mission export under a unique `Saved/Mars` name.
+If the goal response is missing, the user must stop PIE even when `/stop` was
+acknowledged: separate HTTP requests may be processed out of order. It also
+attempts a stop as soon as a polled pose becomes stale or its clock stops.
 The resulting pose comparison remains request-time versus telemetry, not a
 measurement of GPU render-time pose or a safety qualification.

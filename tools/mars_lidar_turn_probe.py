@@ -156,7 +156,7 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
         raise ValueError("Oturum, harita, durgunluk veya log tazeligi degisti; hedef gonderilmedi")
 
     snapshots, reason, error = [], "timeout", None
-    stop_ok = False
+    goal_confirmed, stop_ok = False, False
     attempted = False
     start_time = now()
     try:
@@ -164,6 +164,7 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
         acknowledgement = post("/goal", {"x": goal[0], "y": goal[1]})
         if not isinstance(acknowledgement, dict) or acknowledgement.get("ok") is not True:
             raise ValueError("Hedef istegi onaylanmadi")
+        goal_confirmed = True
         while now() - start_time < 8:
             s = get("/mission/snapshot")
             current = s.get("live_pose") or {}
@@ -175,6 +176,9 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
                 break
             if s.get("state") in STOP_STATES:
                 reason = str(s["state"])
+                break
+            if s.get("pose_fresh") is not True or s.get("capture_clock_advancing") is not True:
+                reason = "pose_stale"
                 break
             p, h = current.get("position_m"), current.get("heading_rad")
             if (not isinstance(p, (list, tuple)) or len(p) != 3
@@ -221,7 +225,8 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
         mission_export, export_error = get("/mission/export"), None
     except Exception as exc:
         mission_export, export_error = None, str(exc)[:500]
-    return {"reason": reason, "error": error, "stop_request_succeeded": stop_ok, "final_status": final_status,
+    return {"reason": reason, "error": error, "goal_confirmed": goal_confirmed,
+            "stop_request_succeeded": stop_ok, "final_status": final_status,
             "start_session_id": first["session_id"], "start_position_m": start, "start_heading_rad": heading,
             "goal_m": goal, "snapshot_count": len(snapshots), "snapshots": snapshots,
             "pose_comparison": comparison, "mission_export": mission_export, "mission_export_error": export_error}
@@ -248,6 +253,8 @@ def main():
         print("KAYIT:", output, flush=True)
     if not result["stop_request_succeeded"]:
         raise SystemExit("DURDURMA ISTEGI BASARISIZ: Unreal'da Stop dugmesine basin")
+    if not result["goal_confirmed"]:
+        raise SystemExit("HEDEF YANITI BELIRSIZ: Unreal'da Stop dugmesine basin")
 
 
 if __name__ == "__main__":

@@ -98,6 +98,7 @@ class TestControlledTurn(unittest.TestCase):
         sim = FakeRun()
         result = sim.run()
         self.assertEqual(result["reason"], "turn_observed")
+        self.assertTrue(result["goal_confirmed"])
         self.assertTrue(result["stop_request_succeeded"])
         self.assertEqual(result["final_status"]["wheel_command_m_s"], dict.fromkeys(("FL", "FR", "BL", "BR"), 0.0))
         self.assertEqual([p[0] for p in sim.posts], ["/goal", "/stop"])
@@ -138,6 +139,7 @@ class TestControlledTurn(unittest.TestCase):
         result = sim.run()
         self.assertEqual([p[0] for p in sim.posts], ["/goal", "/stop"])
         self.assertEqual(result["reason"], "request_error")
+        self.assertFalse(result["goal_confirmed"])
         self.assertTrue(result["stop_request_succeeded"])
         self.assertIn("timed out", result["error"])
 
@@ -160,6 +162,13 @@ class TestControlledTurn(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "logu ilerlemiyor"):
             probe.run("fake.log", get=sim.get, post=sim.post, analyzer=analyzer, now=sim.now, sleep=sim.sleep)
         self.assertEqual(sim.posts, [])
+
+    def test_pose_becoming_stale_during_motion_attempts_stop(self):
+        sim = FakeRun()
+        sim.moving_snapshot["pose_fresh"] = False
+        result = sim.run()
+        self.assertEqual(result["reason"], "pose_stale")
+        self.assertEqual([p[0] for p in sim.posts], ["/goal", "/stop"])
 
     def test_timeout_and_translation_limit_both_attempt_stop(self):
         timeout = FakeRun()
