@@ -136,6 +136,16 @@ da uygulanır. Paket kilit beklerken geçen süre tazelikten düşülür; stereo
 tarafındaki korumalardır; ağ tamamen koparsa veya işlem kapanırsa bağımsız
 Unreal motor watchdog'unun yerini tutmaz.
 
+Ground-truth depth görüntüsünün kamera koordinatlarındaki noktalara dönüşümü ve
+8 m menzil seçimi kamera alım iş parçacığında, navigasyon kilidi dışında yapılır.
+Tüm geçerli menzil içi noktalar korunur; veri azaltılmaz. Alınma zamanı bu işten
+önce kaydedilir, dolayısıyla hazırlık süresi 0,4 saniyelik sensör tazeliği
+sınırına dahildir. Çekim anındaki pozun uygulanması ve harita güncellemesi yine
+navigasyon kilidi altında yapılır. Sağlık çıktısında `preparation_s` ve
+`locked_processing_s` ayrı, `processing_s` bunların toplamı olarak verilir.
+Bu düzenleme kilit beklemesini azaltmayı hedefler; Unreal, ağ veya GPU kaynaklı
+gecikmenin giderildiğini tek başına göstermez.
+
 `/mission/snapshot` ve `/mission/export` içindeki `control_timing` alanı
 servis başlangıcından beri kontrol çevrimlerinin duvar saati sürelerini ve
 reddedilen gecikmiş kararların sayısını gösterir. `sensor_health` içindeki

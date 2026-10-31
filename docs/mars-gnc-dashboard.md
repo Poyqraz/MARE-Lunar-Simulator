@@ -80,3 +80,9 @@ already contain GPU, sender, TCP, socket-buffer or decoder delay; these data
 cannot split those stages. A stale or missing telemetry reference cannot prove
 capture latency. Timing samples and obstacle records are diagnostic only and
 never extend the source data deadlines.
+
+Depth back-projection and range filtering run outside the navigation session
+lock, using the complete in-range frame and retaining the original receive
+timestamp. Capture-pose application and obstacle-map mutation remain under the
+session lock. The sensor health report splits preparation and locked processing
+times; native performance and sensor freshness must still be checked.

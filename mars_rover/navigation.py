@@ -6,6 +6,7 @@ separate gate from terrain planning. Ground-truth depth is labelled explicitly.
 
 import copy
 from collections import deque
+from dataclasses import dataclass
 import math
 import threading
 import time
@@ -24,6 +25,16 @@ from .sensors import (
 )
 
 LATE_DATA_ERROR = "Pose or sensor data expired during control processing"
+
+
+@dataclass(frozen=True)
+class PreparedGroundTruthFrame:
+    """Depth points in the camera frame; capture pose is applied later."""
+
+    frame_id: int
+    stamp_ns: int
+    points: np.ndarray
+    preparation_s: float
 
 
 class RouteFollower:
@@ -184,7 +195,17 @@ class NavigationSession:
             settings = self.config["depth"]
             if "width" in settings and frame.pixels.shape[:2] != (settings["height"], settings["width"]):
                 raise ValueError("Depth resolution changed since calibration")
-            self._feed("ground_truth", frame, now)
+            received = time.monotonic() if now is None else now
+            if self.depth_source == "ground_truth":
+                # This camera-only projection needs neither the session lock
+                # nor the capture pose. Keep the original arrival time so the
+                # time spent here still counts against freshness.
+                started = time.monotonic()
+                points = depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
+                points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
+                frame = PreparedGroundTruthFrame(frame.frame_id, frame.stamp_ns, points,
+                                                 max(0.0, time.monotonic() - started))
+            self._feed("ground_truth", frame, received)
         if self.depth_source == "stereo" and frame.format == 1:
             from .stereo import stereo_pair_depth
 
@@ -253,8 +274,12 @@ class NavigationSession:
                 if key == "ground_truth"
                 else self.config["stereo"]
             )
-            points = frame.points if key == "lidar" else depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
-            points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
+            prepared = key == "ground_truth" and isinstance(frame, PreparedGroundTruthFrame)
+            if prepared:
+                points = frame.points
+            else:
+                points = frame.points if key == "lidar" else depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
+                points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
             matrix = pose.matrix @ transform_matrix(settings["to_body"])
             if key == "stereo" and len(points):
                 # A stated one-pixel disparity scenario, not measured error:
@@ -283,8 +308,12 @@ class NavigationSession:
                     })
             else:
                 report = self.grid.observe(world)
+            locked_processing = max(0.0, time.monotonic() - processing_started)
+            preparation = frame.preparation_s if prepared else 0.0
             self.health[key] = {**report, "received_at": received, "stamp_ns": frame.stamp_ns,
-                                "processing_s": max(0.0, time.monotonic() - processing_started)}
+                                "processing_s": preparation + locked_processing}
+            if prepared:
+                self.health[key].update(preparation_s=preparation, locked_processing_s=locked_processing)
             self.used[key] = signature
 
     def _observe_bridge(self, bridge_status, now):
