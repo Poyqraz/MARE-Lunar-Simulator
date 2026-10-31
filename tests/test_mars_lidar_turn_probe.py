@@ -157,6 +157,37 @@ class TestControlledTurn(unittest.TestCase):
                     probe.run("fake.log", get=get, post=sim.post, analyzer=sim.analyzer, now=sim.now, sleep=sim.sleep)
                 self.assertEqual(sim.posts, [])
 
+    def test_state_preflight_explains_the_failure_and_snapshot_without_commands(self):
+        cases = {
+            "state": ({"state": "disconnected"}, "state_not_idle"),
+            "pose": ({"pose_fresh": False}, "pose_not_fresh"),
+            "clock": ({"capture_clock_advancing": False}, "capture_clock_not_advancing"),
+        }
+        for case, (override, expected) in cases.items():
+            for bad_snapshot in (1, 2):
+                sim = FakeRun()
+                original_get = sim.get
+
+                def get(path):
+                    result = copy.deepcopy(original_get(path))
+                    if path == "/mission/snapshot" and sim.snapshot_count == bad_snapshot:
+                        result.update(override, pose_age_s=0.45, observer_error="test diagnostic")
+                    return result
+
+                with self.subTest(case=case, snapshot=bad_snapshot):
+                    with self.assertRaisesRegex(ValueError, expected) as raised:
+                        probe.run("fake.log", get=get, post=sim.post, analyzer=sim.analyzer,
+                                  now=sim.now, sleep=sim.sleep)
+                    self.assertIn(f"on_kontrol_ornegi={bad_snapshot}", str(raised.exception))
+                    self.assertIn("session_id='session-a'", str(raised.exception))
+                    self.assertIn("pose_age_s=0.45", str(raised.exception))
+                    self.assertIn("observer_error='test diagnostic'", str(raised.exception))
+                    self.assertEqual(sim.posts, [])
+
+    def test_new_session_idle_state_remains_accepted(self):
+        data = snapshot(state="new_session_requires_goal")
+        probe._stationary(data)
+
     def test_sensor_freshness_boundaries_are_unchanged(self):
         data = snapshot()
         for sensor in data["sensor_health"].values():

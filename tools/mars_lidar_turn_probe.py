@@ -50,9 +50,23 @@ def _stamp(value):
 def _stationary(snapshot):
     if snapshot.get("position_source") != "simulation telemetry" or snapshot.get("depth_source") != "ground_truth":
         raise ValueError("Beklenen simulator telemetrisi ve ground_truth derinligi gerekli")
-    if (snapshot.get("state") not in ("idle", "new_session_requires_goal")
-            or snapshot.get("pose_fresh") is not True or snapshot.get("capture_clock_advancing") is not True):
-        raise ValueError("Durum bos, poz taze ve saat ilerliyor olmali")
+    state = snapshot.get("state")
+    pose_fresh = snapshot.get("pose_fresh")
+    clock_advancing = snapshot.get("capture_clock_advancing")
+    reasons = []
+    if state not in ("idle", "new_session_requires_goal"):
+        reasons.append("state_not_idle")
+    if pose_fresh is not True:
+        reasons.append("pose_not_fresh")
+    if clock_advancing is not True:
+        reasons.append("capture_clock_not_advancing")
+    if reasons:
+        raise ValueError("Durum bos, poz taze ve saat ilerliyor olmali: "
+                         f"neden={','.join(reasons)}; session_id={snapshot.get('session_id')!r}; "
+                         f"state={state!r}; pose_fresh={pose_fresh!r}; "
+                         f"capture_clock_advancing={clock_advancing!r}; "
+                         f"pose_age_s={snapshot.get('pose_age_s')!r}; "
+                         f"observer_error={snapshot.get('observer_error')!r}")
     mission = snapshot.get("mission")
     if mission is not None and (not isinstance(mission, dict) or mission.get("closed") is not True):
         raise ValueError("Aktif gorev var")
@@ -145,7 +159,10 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
     operator-supervised simulation diagnostic, not a real-time watchdog.
     """
     first = get("/mission/snapshot")
-    start, heading, first_stamp = _stationary(first)
+    try:
+        start, heading, first_stamp = _stationary(first)
+    except ValueError as error:
+        raise ValueError(f"on_kontrol_ornegi=1; {error}") from error
     _bridge_stationary(get("bridge"))
     grid = get("/map")
     goal = (start[0] - 2 * math.cos(heading), start[1] - 2 * math.sin(heading))
@@ -160,7 +177,10 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
             or _stamp(log2["last_capture_stamp_ns"]) <= _stamp(log1["last_capture_stamp_ns"])):
         raise ValueError("LiDAR pose logu ilerlemiyor; hedef gonderilmedi")
     second = get("/mission/snapshot")
-    position, current_heading, start_stamp = _stationary(second)
+    try:
+        position, current_heading, start_stamp = _stationary(second)
+    except ValueError as error:
+        raise ValueError(f"on_kontrol_ornegi=2; {error}") from error
     _bridge_stationary(get("bridge"))
     if (not first.get("session_id") or second.get("session_id") != first["session_id"]
             or second.get("map_revision") != grid.get("revision")

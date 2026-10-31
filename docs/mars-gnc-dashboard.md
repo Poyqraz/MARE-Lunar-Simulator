@@ -275,3 +275,20 @@ the reason and exact timing are not established.
 The turn probe now reports which LiDAR/depth preflight condition failed and
 the relevant values. Its thresholds and the prohibition on sending a goal
 when preflight fails are unchanged.
+
+A subsequent native tick-alignment call reported session `13470f98` with the
+actor in `TG_PostPhysics` and LiDAR/camera components in `TG_PostUpdateWork`.
+The following turn probe rejected its idle/pose/clock preflight before sending
+a goal. The old error did not identify which of these three checks failed or
+which preflight sample was involved; the session at the failed check is also
+unknown. No aligned turning measurement resulted from that attempt.
+
+The probe now includes the failed preflight sample number and reports the
+actual state, pose-fresh and clock-advancing flags, pose age, observer error,
+and session ID. These are copied from the snapshot that failed, not a later
+observation. Neither acceptance checks nor navigation thresholds are changed.
+`tools/check_mars_readiness.py --expected-session <id>` samples the mission
+snapshot and bridge status three times via local GET requests only and checks
+the current preflight fields without sending a goal or stop. These later
+samples cannot reconstruct the already-failed preflight, and each bridge
+status is a separate request from its adjacent mission snapshot.
