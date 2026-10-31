@@ -187,7 +187,9 @@ advancing matched pose-log lines, a fresh idle rover with zero wheel commands,
 low linear/angular velocity, fresh LiDAR and ground-truth depth, the expected
 tr-TR telemetry format, and a clear inflated-map segment. It selects a temporary
 goal 2 m behind the rover and requests a stop when it observes about 45 degrees
-of rotation, 0.2 m of translation, a terminal state, or an 8 s target duration.
+of rotation, 0.2 m of net displacement or sampled path length, a terminal
+state, or an 8 s target duration. Sampled movement cannot guarantee the full
+path length between samples.
 Synchronous HTTP calls or a failed stop can overrun those targets: an operator
 must supervise and can stop PIE. The tool attempts `/stop` even when the goal
 request times out, prints a failure if the stop is not acknowledged, and saves
@@ -197,3 +199,38 @@ acknowledged: separate HTTP requests may be processed out of order. It also
 attempts a stop as soon as a polled pose becomes stale or its clock stops.
 The resulting pose comparison remains request-time versus telemetry, not a
 measurement of GPU render-time pose or a safety qualification.
+
+On the native controlled turn in PIE `JezeroRover_5c8b3fa632eb`, the logger
+matched 50 of 50 request-pose records to Blueprint telemetry in the reported
+window, which includes pre-turn and post-stop frames. The p95 and maximum
+up-axis differences were 2.588 and 3.200 degrees; request and telemetry poses
+are compared with the same simulation stamp. The 8 m body-forward point had
+illustrative absolute p95/max vertical differences of 0.372/0.416 m. These are
+not measured errors of actual terrain returns or GPU render poses.
+
+While mission `6b7d419f-5e0b-4c1a-a2aa-cc2602b075d2` was active, five LiDAR
+diagnostic frames introduced 43 previously unblocked cells and four depth
+frames introduced 19. Two LiDAR map-change frames and two depth map-change
+frames shared a frame number with a large logged LiDAR request/telemetry pose
+difference. Another 16 cells were recorded after the mission ended. This
+coincidence raises a concrete hypothesis but does not prove the cells are clear,
+that depth and LiDAR used identical render poses, or that the earlier aborted
+mission had the same cause. The test stopped deliberately after a turn, not
+because its goal was reached. One `waiting_for_sensors` event reported LiDAR
+capture age of 0.433 s. Large rejected-line counts in the older summary cover
+the scanned log tail; they are not counts of unmatched frames in this turn.
+The observed last turn sample was approximately 56 degrees, beyond the 45
+degree target. The observer recorded a 0.265 m XY path even though its net
+displacement remained below 0.2 m. The turn tool now sums sampled movement as
+well as checking displacement, but both may exceed their targets between
+polls and neither represents a real-time stop guarantee.
+
+`tools/analyze_lidar_pose_residuals.py` reads that test's JSON and Unreal log,
+matches LiDAR map-changing frames by both frame ID and capture stamp, verifies
+the terrain manifest and recorded sample residuals, then reprojects the one
+recorded representative point per cell with the logged request-time body pose.
+It does not contact the service or modify the log, source report, or map. Its
+counterfactual is useful for sizing the effect, but it does not prove GPU
+render-pose identity or a rigid sensor mount during motion, replay all points,
+or authorize clearing a cell. Unique
+request matches are required; missing and ambiguous matches are reported.

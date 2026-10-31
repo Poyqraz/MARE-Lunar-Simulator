@@ -170,6 +170,25 @@ class TestControlledTurn(unittest.TestCase):
         self.assertEqual(result["reason"], "pose_stale")
         self.assertEqual([p[0] for p in sim.posts], ["/goal", "/stop"])
 
+    def test_back_and_forth_motion_counts_toward_translation_limit(self):
+        sim = FakeRun()
+        original_get = sim.get
+        positions = iter((10.12, 10.0))
+
+        def get(path):
+            if path == "/mission/snapshot" and sim.snapshot_count >= 2:
+                data = snapshot(heading=-math.pi / 2, stamp=STAMP + 100_000_000)
+                data["live_pose"]["position_m"][0] = next(positions, 10.0)
+                sim.snapshot_count += 1
+                return data
+            return original_get(path)
+
+        result = probe.run("fake.log", get=get, post=sim.post, analyzer=sim.analyzer,
+                           now=sim.now, sleep=sim.sleep)
+        self.assertEqual(result["reason"], "translation_limit")
+        self.assertAlmostEqual(result["sampled_path_m"], 0.24)
+        self.assertEqual([p[0] for p in sim.posts], ["/goal", "/stop"])
+
     def test_timeout_and_translation_limit_both_attempt_stop(self):
         timeout = FakeRun()
         timeout.moving_snapshot = snapshot(heading=-math.pi / 2, stamp=STAMP + 100_000_000)

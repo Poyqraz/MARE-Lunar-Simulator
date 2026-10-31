@@ -156,6 +156,7 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
         raise ValueError("Oturum, harita, durgunluk veya log tazeligi degisti; hedef gonderilmedi")
 
     snapshots, reason, error = [], "timeout", None
+    previous_position, sampled_path_m = start[:2], 0.0
     goal_confirmed, stop_ok = False, False
     attempted = False
     start_time = now()
@@ -186,7 +187,9 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
                     or type(h) not in (int, float) or not math.isfinite(h)):
                 reason = "pose_unavailable"
                 break
-            if math.dist(start[:2], p[:2]) > 0.2:
+            sampled_path_m += math.dist(previous_position, p[:2])
+            previous_position = tuple(p[:2])
+            if math.dist(start[:2], p[:2]) > 0.2 or sampled_path_m > 0.2:
                 reason = "translation_limit"
                 break
             turn = abs(math.atan2(math.sin(h - heading), math.cos(h - heading)))
@@ -228,7 +231,8 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
     return {"reason": reason, "error": error, "goal_confirmed": goal_confirmed,
             "stop_request_succeeded": stop_ok, "final_status": final_status,
             "start_session_id": first["session_id"], "start_position_m": start, "start_heading_rad": heading,
-            "goal_m": goal, "snapshot_count": len(snapshots), "snapshots": snapshots,
+            "goal_m": goal, "snapshot_count": len(snapshots), "sampled_path_m": sampled_path_m,
+            "snapshots": snapshots,
             "pose_comparison": comparison, "mission_export": mission_export, "mission_export_error": export_error}
 
 
