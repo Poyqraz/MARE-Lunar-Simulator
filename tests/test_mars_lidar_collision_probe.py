@@ -94,3 +94,65 @@ def test_probe_refuses_an_unblocked_goal_or_ambiguous_pie_world(tmp_path):
     unreal.EditorLevelLibrary.get_pie_worlds = lambda _: ["world1", "world2"]
     with pytest.raises(RuntimeError, match="PIE worlds"):
         module().probe_goal(str(path), unreal_module=unreal)
+
+
+def test_mission_probe_checks_recorded_points_without_a_blocked_goal(tmp_path):
+    report = incident()
+    report["missions"][0]["session_id"] = "s1"
+    diag = report["obstacle_diagnostics"]
+    diag["last_planning_failure"] = None
+    diag["frames"] = [
+        {"frame_id": 42, "stamp_ns": "123", "source": "lidar", "mission_id": "m1", "session_id": "s1",
+         "new_cells_total": 1, "new_cells_truncated": 0,
+         "new_cells": [{"cell_row_col": [5, 5], "sample_world_m": [5.0, 5.0, 5.1],
+                        "sample_residual_m": -0.2}]},
+        {"frame_id": 43, "stamp_ns": "124", "source": "lidar", "mission_id": "m1", "session_id": "s1",
+         "new_cells_total": 1, "new_cells_truncated": 0,
+         "new_cells": [{"cell_row_col": [6, 6], "sample_world_m": [6.0, 6.0, 5.5],
+                        "sample_residual_m": 0.2}]},
+        # Other sensors, missions and sessions must not contaminate the result.
+        {"frame_id": 44, "source": "lidar", "mission_id": "m1", "session_id": "other", "new_cells": [{}]},
+        {"frame_id": 45, "source": "lidar", "mission_id": "other", "session_id": "s1", "new_cells": [{}]},
+        {"frame_id": 46, "source": "ground_truth", "mission_id": "m1", "session_id": "s1", "new_cells": [{}]},
+    ]
+    path = tmp_path / "mission.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    unreal, calls = fake_unreal()
+
+    result = module().probe_mission(str(path), unreal_module=unreal)
+    assert result["world_type"] == "PIE"
+    assert result["mission_id"] == "m1"
+    assert result["session_id"] == "s1"
+    assert result["recorded_samples"] == result["samples_tested"] == len(calls) == 2
+    assert result["samples_omitted"] == 0
+    assert all(call["trace_complex"] for call in calls)
+    first, second = result["frames"]
+    assert first["actor_classes"] == {"Landscape": 1}
+    assert first["collision_minus_dem_m"]["median"] == pytest.approx(0)
+    assert first["lidar_minus_collision_m"]["median"] == pytest.approx(-0.2)
+    assert second["lidar_minus_collision_m"]["median"] == pytest.approx(0.2)
+
+    result = module().probe_mission(str(path), max_samples=1, unreal_module=unreal)
+    assert result["samples_tested"] == 1 and result["samples_omitted"] == 1
+    assert len(result["frames"]) == 1
+
+
+def test_mission_probe_rejects_missing_data_and_multiple_worlds(tmp_path):
+    report = incident()
+    report["missions"][0]["session_id"] = "s1"
+    path = tmp_path / "mission.json"
+    unreal, _ = fake_unreal()
+    report["obstacle_diagnostics"]["frames"] = []
+    path.write_text(json.dumps(report), encoding="utf-8")
+    with pytest.raises(ValueError, match="No retained"):
+        module().probe_mission(str(path), unreal_module=unreal)
+    with pytest.raises(ValueError, match="max_samples"):
+        module().probe_mission(str(path), max_samples=True, unreal_module=unreal)
+
+    report["obstacle_diagnostics"]["frames"] = [{
+        "frame_id": 42, "source": "lidar", "mission_id": "m1", "session_id": "s1", "new_cells": [{}]
+    }]
+    path.write_text(json.dumps(report), encoding="utf-8")
+    unreal.EditorLevelLibrary.get_pie_worlds = lambda _: ["world1", "world2"]
+    with pytest.raises(RuntimeError, match="PIE worlds"):
+        module().probe_mission(str(path), unreal_module=unreal)
