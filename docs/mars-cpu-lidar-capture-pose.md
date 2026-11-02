@@ -25,6 +25,16 @@ health reports `pose_source: cpu_capture`. Diagnostics include
 `world_from_sensor_used` and `pose_source` as well as the telemetry and
 calibration matrices.
 
+`Content/Python/mars_cpu_lidar_setup.py` provides an editor-only temporary
+setup. It re-resolves the actor and component after every property change,
+because Blueprint post-edit reconstruction can replace the object a Python
+variable refers to. It verifies all settings and tries to restore the previous
+values if an edit fails. It sets 160 columns, 120 channels and 5 Hz for a
+bounded initial experiment. It does not save the level or verify PIE settings.
+The returned `restore_source` identifies whether `restore_values` were supplied
+by the caller or captured just before applying this setup. After stopping Play,
+call `restore()` in the same editor session to restore those stored values.
+
 No obstacle is removed or classified as ground by this feature. Positive and
 negative height residuals, the obstacle threshold, vehicle footprint and
 sensor freshness checks are unchanged. CPU line traces see collision geometry,
