@@ -25,6 +25,10 @@ BRIDGE = "http://127.0.0.1:8765/status"
 STOP_STATES = {"arrived", "blocked", "stalled_or_timed_out", "disconnected"}
 
 
+class SensorPreflightNotReady(ValueError):
+    """No goal has been sent because a sensor did not pass preflight."""
+
+
 def _get(path):
     url = BRIDGE if path == "bridge" else BASE + path
     with urlopen(url, timeout=3) as response:
@@ -90,7 +94,7 @@ def _stationary(snapshot):
         try:
             lag = pose_stamp - _stamp(sensor.get("stamp_ns"))
         except ValueError as error:
-            raise ValueError(f"{name} verisi yeterince taze degil: sensor_zamani_gecersiz") from error
+            raise SensorPreflightNotReady(f"{name} verisi yeterince taze degil: sensor_zamani_gecersiz") from error
         reasons = []
         if sensor.get("capture_stale") is True:
             reasons.append("capture_stale")
@@ -103,9 +107,9 @@ def _stationary(snapshot):
         if lag > 350_000_000:
             reasons.append("capture_older_than_0.35s")
         if reasons:
-            raise ValueError(f"{name} verisi yeterince taze degil: neden={','.join(reasons)}; "
-                             f"valid_points={count!r}; received_age_s={age!r}; "
-                             f"pose_minus_sensor_s={lag / 1e9:.9f}; capture_stale={sensor.get('capture_stale')!r}")
+            raise SensorPreflightNotReady(f"{name} verisi yeterince taze degil: neden={','.join(reasons)}; "
+                                          f"valid_points={count!r}; received_age_s={age!r}; "
+                                          f"pose_minus_sensor_s={lag / 1e9:.9f}; capture_stale={sensor.get('capture_stale')!r}")
     return tuple(position), float(heading), pose_stamp
 
 
@@ -153,7 +157,7 @@ def _segment_is_open(grid, start, goal):
 
 
 def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic, sleep=time.sleep,
-        expected_session=None):
+        expected_session=None, preflight_deadline=None):
     """Aim to stop after 8 seconds or 45 degrees, including a stop on request errors.
 
     Synchronous HTTP calls can overrun the target duration. This is an
@@ -167,6 +171,8 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
                          f"current={first.get('session_id')!r}; hedef gonderilmedi")
     try:
         start, heading, first_stamp = _stationary(first)
+    except SensorPreflightNotReady as error:
+        raise SensorPreflightNotReady(f"on_kontrol_ornegi=1; {error}") from error
     except ValueError as error:
         raise ValueError(f"on_kontrol_ornegi=1; {error}") from error
     _bridge_stationary(get("bridge"))
@@ -188,6 +194,8 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
                          f"current={second.get('session_id')!r}; hedef gonderilmedi")
     try:
         position, current_heading, start_stamp = _stationary(second)
+    except SensorPreflightNotReady as error:
+        raise SensorPreflightNotReady(f"on_kontrol_ornegi=2; {error}") from error
     except ValueError as error:
         raise ValueError(f"on_kontrol_ornegi=2; {error}") from error
     _bridge_stationary(get("bridge"))
@@ -197,6 +205,8 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
             or abs(math.atan2(math.sin(current_heading - heading), math.cos(current_heading - heading))) > 0.02
             or abs(start_stamp - _stamp(log2["last_capture_stamp_ns"])) > 1_000_000_000):
         raise ValueError("Oturum, harita, durgunluk veya log tazeligi degisti; hedef gonderilmedi")
+    if preflight_deadline is not None and now() >= preflight_deadline:
+        raise ValueError("on_kontrol_suresi_doldu; hedef gonderilmedi")
 
     snapshots, reason, error = [], "timeout", None
     previous_position, sampled_path_m = start[:2], 0.0
@@ -280,10 +290,37 @@ def run(log_path, *, get=_get, post=_post, analyzer=analyze, now=time.monotonic,
             "pose_comparison": comparison, "mission_export": mission_export, "mission_export_error": export_error}
 
 
+def _run_with_sensor_wait(log_path, expected_session, *, run_probe=run, now=time.monotonic,
+                          sleep=time.sleep, wait_s=10.0, poll_s=0.25, notify=print):
+    """Retry whole preflight on sensor rejection; never retry after a goal attempt.
+
+    The delay is a scheduling budget, not a real-time deadline: a synchronous
+    HTTP or log read can overrun it. All original preflight checks still run.
+    """
+    deadline = now() + wait_s
+    announced = False
+    last_error = None
+    while True:
+        if last_error is not None and now() >= deadline:
+            raise SensorPreflightNotReady(f"sensor_bekleme_suresi_doldu; {last_error}") from last_error
+        try:
+            return run_probe(log_path, expected_session=expected_session, preflight_deadline=deadline)
+        except SensorPreflightNotReady as error:
+            last_error = error
+            remaining = deadline - now()
+            if remaining <= 0:
+                raise SensorPreflightNotReady(f"sensor_bekleme_suresi_doldu; {error}") from error
+            if not announced:
+                notify(f"SENSOR_BEKLENIYOR: on kontrol yaklasik {wait_s:g} sn boyunca tekrarlanabilir; hedef gonderilmedi.",
+                       flush=True)
+                announced = True
+            sleep(min(poll_s, remaining))
+
+
 def main(expected_session=None):
     log = ROOT / "Saved/Logs/Moon_Simulator.log"
     try:
-        result = run(log, expected_session=expected_session)
+        result = _run_with_sensor_wait(log, expected_session)
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise SystemExit("ON_KONTROL_BASARISIZ: " + str(error)) from error
     output = ROOT / "Saved/Mars" / f"lidar-donus-{uuid.uuid4().hex}.json"

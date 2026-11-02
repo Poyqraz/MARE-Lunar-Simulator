@@ -380,5 +380,133 @@ class TestControlledTurn(unittest.TestCase):
         self.assertEqual(result["pose_comparison"]["first_capture_stamp_ns"], str(STAMP + 100_000_000))
 
 
+class TestBoundedSensorWait(unittest.TestCase):
+    @staticmethod
+    def runner(sim, get):
+        return lambda path, expected_session, preflight_deadline: probe.run(
+            path, get=get, post=sim.post, analyzer=sim.analyzer, now=sim.now, sleep=sim.sleep,
+            expected_session=expected_session, preflight_deadline=preflight_deadline,
+        )
+
+    def test_stale_depth_then_fresh_repeats_full_preflight_before_single_goal(self):
+        sim, messages = FakeRun(), []
+
+        def get(path):
+            if path != "/mission/snapshot":
+                return sim.get(path)
+            sim.snapshot_count += 1
+            value = snapshot() if sim.snapshot_count <= 3 else sim.moving_snapshot
+            value = copy.deepcopy(value)
+            if sim.snapshot_count == 1:
+                value["sensor_health"]["ground_truth"]["stamp_ns"] = str(STAMP - 450_000_000)
+            return value
+
+        result = probe._run_with_sensor_wait(
+            "fake.log", "session-a", run_probe=self.runner(sim, get), now=sim.now, sleep=sim.sleep,
+            notify=lambda message, **_: messages.append(message),
+        )
+        self.assertEqual(result["reason"], "turn_observed")
+        self.assertEqual([p[0] for p in sim.posts], ["/goal", "/stop"])
+        self.assertEqual(len(messages), 1)
+        self.assertIn("hedef gonderilmedi", messages[0])
+        self.assertGreaterEqual(sim.snapshot_count, 4)
+
+    def test_stale_sensor_through_deadline_sends_no_commands(self):
+        sim = FakeRun()
+
+        def get(path):
+            if path != "/mission/snapshot":
+                return sim.get(path)
+            sim.snapshot_count += 1
+            value = snapshot()
+            value["sensor_health"]["ground_truth"]["stamp_ns"] = str(STAMP - 450_000_000)
+            return value
+
+        with self.assertRaisesRegex(probe.SensorPreflightNotReady, "sensor_bekleme_suresi_doldu"):
+            probe._run_with_sensor_wait("fake.log", "session-a", run_probe=self.runner(sim, get),
+                                        now=sim.now, sleep=sim.sleep, wait_s=0.5,
+                                        notify=lambda *_args, **_kwargs: None)
+        self.assertEqual(sim.posts, [])
+        self.assertEqual(sim.snapshot_count, 2)
+
+    def test_stale_second_sample_restarts_checks_and_does_not_reuse_old_map(self):
+        sim, map_reads = FakeRun(), []
+
+        def get(path):
+            if path == "/map":
+                map_reads.append(1)
+                return sim.get(path)
+            if path != "/mission/snapshot":
+                return sim.get(path)
+            sim.snapshot_count += 1
+            value = snapshot() if sim.snapshot_count <= 4 else sim.moving_snapshot
+            value = copy.deepcopy(value)
+            if sim.snapshot_count == 2:
+                value["sensor_health"]["ground_truth"]["stamp_ns"] = str(STAMP - 450_000_000)
+            return value
+
+        def analyzer(_path, **kwargs):
+            if "start_stamp_ns" in kwargs:
+                return {"status": "matched", "matched_frames": 10}
+            return {"status": "matched", "last_capture_stamp_ns": str(STAMP - 200_000_000 + int(sim.clock * 1e8))}
+
+        runner = lambda path, expected_session, preflight_deadline: probe.run(
+            path, get=get, post=sim.post, analyzer=analyzer, now=sim.now, sleep=sim.sleep,
+            expected_session=expected_session, preflight_deadline=preflight_deadline,
+        )
+        result = probe._run_with_sensor_wait("fake.log", "session-a", run_probe=runner,
+                                             now=sim.now, sleep=sim.sleep,
+                                             notify=lambda *_args, **_kwargs: None)
+        self.assertEqual(result["reason"], "turn_observed")
+        self.assertEqual(len(map_reads), 2)
+        self.assertEqual([p[0] for p in sim.posts], ["/goal", "/stop"])
+
+    def test_movement_while_waiting_aborts_without_sending_a_goal(self):
+        sim = FakeRun()
+
+        def get(path):
+            if path != "/mission/snapshot":
+                return sim.get(path)
+            sim.snapshot_count += 1
+            value = snapshot()
+            if sim.snapshot_count == 1:
+                value["sensor_health"]["ground_truth"]["stamp_ns"] = str(STAMP - 450_000_000)
+            else:
+                value["wheel_command_m_s"]["FL"] = 0.1
+            return value
+
+        with self.assertRaisesRegex(ValueError, "Teker komutlari"):
+            probe._run_with_sensor_wait("fake.log", "session-a", run_probe=self.runner(sim, get),
+                                        now=sim.now, sleep=sim.sleep,
+                                        notify=lambda *_args, **_kwargs: None)
+        self.assertEqual(sim.snapshot_count, 2)
+        self.assertEqual(sim.posts, [])
+
+    def test_wrong_session_is_not_retried_or_sent(self):
+        sim = FakeRun()
+        with self.assertRaisesRegex(ValueError, "Hizalama oturumu degisti"):
+            probe._run_with_sensor_wait("fake.log", "different", run_probe=self.runner(sim, sim.get),
+                                        now=sim.now, sleep=sim.sleep, notify=lambda *_args, **_kwargs: None)
+        self.assertEqual(sim.snapshot_count, 1)
+        self.assertEqual(sim.posts, [])
+
+    def test_expired_during_preflight_never_sends_goal(self):
+        sim = FakeRun()
+        with self.assertRaisesRegex(ValueError, "on_kontrol_suresi_doldu"):
+            probe._run_with_sensor_wait("fake.log", "session-a", run_probe=self.runner(sim, sim.get),
+                                        now=sim.now, sleep=sim.sleep, wait_s=0.5,
+                                        notify=lambda *_args, **_kwargs: None)
+        self.assertEqual(sim.posts, [])
+
+    def test_exception_after_goal_attempt_is_never_retried(self):
+        sim = FakeRun()
+        sim.goal_error = probe.SensorPreflightNotReady("simulated goal request error")
+        result = probe._run_with_sensor_wait("fake.log", "session-a", run_probe=self.runner(sim, sim.get),
+                                             now=sim.now, sleep=sim.sleep,
+                                             notify=lambda *_args, **_kwargs: None)
+        self.assertEqual(result["reason"], "request_error")
+        self.assertEqual([p[0] for p in sim.posts], ["/goal", "/stop"])
+
+
 if __name__ == "__main__":
     unittest.main()
