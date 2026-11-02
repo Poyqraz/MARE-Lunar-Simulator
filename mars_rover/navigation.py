@@ -25,6 +25,7 @@ from .sensors import (
 )
 
 LATE_DATA_ERROR = "Pose or sensor data expired during control processing"
+DEFAULT_ANGULAR_LIMIT_RAD_S = 0.6
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,7 @@ class PreparedGroundTruthFrame:
 class RouteFollower:
     """Low-speed waypoint tracker with rotate-in-place turns, for skid steering."""
 
-    def __init__(self, route, *, speed_m_s=0.15, angular_limit_rad_s=0.6):
+    def __init__(self, route, *, speed_m_s=0.15, angular_limit_rad_s=DEFAULT_ANGULAR_LIMIT_RAD_S):
         if len(route) < 1 or not 0 < speed_m_s <= 0.5 or not 0 < angular_limit_rad_s <= 2:
             raise ValueError("Invalid route/tracking speed")
         self.route = [tuple(map(float, p)) for p in route]
@@ -76,6 +77,7 @@ class NavigationSession:
         min_points=20,
         sensor_timeout_s=0.4,
         speed_m_s=0.15,
+        angular_limit_rad_s=DEFAULT_ANGULAR_LIMIT_RAD_S,
         settle_s=2.0,
         obstacle_diagnostics=False,
     ):
@@ -87,6 +89,8 @@ class NavigationSession:
             or min_points < 1
             or not 0 < sensor_timeout_s <= 2
             or not 0 < speed_m_s <= 0.5
+            or type(angular_limit_rad_s) not in (int, float)
+            or not 0 < angular_limit_rad_s <= DEFAULT_ANGULAR_LIMIT_RAD_S
             or not 0 <= settle_s <= 30
             or type(obstacle_diagnostics) is not bool
         ):
@@ -130,6 +134,7 @@ class NavigationSession:
             speed_m_s,
         )
         self.settle_s = settle_s
+        self.angular_limit_rad_s = float(angular_limit_rad_s)
         self.lock = threading.RLock()
         self.history = PoseHistory()
         self.connection_id = None
@@ -484,7 +489,9 @@ class NavigationSession:
                         return 0, 0  # send stop BEFORE the next planning cycle
                 if self.follower is None:
                     route = self.grid.plan(xyh[:2], self.goal)
-                    self.follower = RouteFollower(route, speed_m_s=self.speed)
+                    self.follower = RouteFollower(
+                        route, speed_m_s=self.speed, angular_limit_rad_s=self.angular_limit_rad_s
+                    )
                     self.mission.plan(route, self.grid.revision)
                     self.plan_revision, self.replans = self.grid.revision, self.replans + 1
                     self.state, self.error = "following", None

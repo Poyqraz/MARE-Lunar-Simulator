@@ -10,6 +10,7 @@ import argparse
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import math
 from pathlib import Path
 import socket
 import threading
@@ -21,7 +22,7 @@ import numpy as np
 from .bridge import BridgeServer, TELEMETRY_FORMATS, TR_TELEMETRY_NOTICE
 from .dashboard_bridge import LiveFeeds, ViewportLink, local_depth_view, project_route
 from .drive import Calibration
-from .navigation import LATE_DATA_ERROR, NavigationSession
+from .navigation import DEFAULT_ANGULAR_LIMIT_RAD_S, LATE_DATA_ERROR, NavigationSession
 from .planning import TerrainMap
 from .sensors import LidarStream, NavStream
 
@@ -121,11 +122,13 @@ class NavigationService:
         min_points=20,
         depth_source="ground_truth",
         settle_s=2.0,
+        angular_limit_rad_s=DEFAULT_ANGULAR_LIMIT_RAD_S,
         telemetry_format="json",
         obstacle_diagnostics=False,
     ):
         self.session = NavigationSession(
             grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s,
+            angular_limit_rad_s=angular_limit_rad_s,
             obstacle_diagnostics=obstacle_diagnostics,
         )
         self.feeds = LiveFeeds(config)
@@ -567,18 +570,30 @@ def main(argv=None):
                         help="wire format; unreal-tr-v1 is explicit compatibility for a tr-TR UE producer")
     parser.add_argument("--obstacle-diagnostics", action="store_true",
                         help="record bounded sensor/map-change diagnostics in mission export")
+    parser.add_argument("--max-turn-rate-deg-s", type=float, default=None,
+                        help="limit commanded turns in degrees/s, no higher than the existing default (~34.38)")
     args = parser.parse_args(argv)
+    if args.max_turn_rate_deg_s is not None and not 0 < args.max_turn_rate_deg_s <= math.degrees(
+        DEFAULT_ANGULAR_LIMIT_RAD_S
+    ):
+        parser.error("--max-turn-rate-deg-s must be positive and no greater than the existing default")
     try:
         config = json.loads(args.sensors.read_text(encoding="utf-8"))
         grid = TerrainMap.from_bundle(args.manifest)
         with NavigationService(grid, config, depth_source=args.depth_source,
                                telemetry_format=args.telemetry_format,
+                               angular_limit_rad_s=(math.radians(args.max_turn_rate_deg_s)
+                                                   if args.max_turn_rate_deg_s is not None
+                                                   else DEFAULT_ANGULAR_LIMIT_RAD_S),
                                obstacle_diagnostics=args.obstacle_diagnostics) as service:
             if args.goal:
                 service.session.set_goal(args.goal)
             print("Navigation API http://127.0.0.1:8766; start Unreal Play after this line.", flush=True)
             print(f"Depth source: {args.depth_source}; native rover acceptance is still required.", flush=True)
             print(f"Telemetry format: {args.telemetry_format}", flush=True)
+            if args.max_turn_rate_deg_s is not None:
+                print(f"Commanded turn-rate limit: {args.max_turn_rate_deg_s:g} deg/s; "
+                      "physical turning and acceleration are not limited by this setting.", flush=True)
             if args.obstacle_diagnostics:
                 print("Obstacle diagnostics enabled; use mission export to preserve the evidence.", flush=True)
             if args.telemetry_format == "unreal-tr-v1":
