@@ -74,6 +74,7 @@ class PacketListener:
 
     def _read(self, peer):
         decoder = self.decoder()
+        error_message = None
         try:
             with peer:
                 peer.settimeout(0.2)
@@ -87,11 +88,13 @@ class PacketListener:
                     for packet in decoder.feed(chunk):
                         self.on_packet(packet)
         except (OSError, ValueError, RuntimeError) as error:
-            self.on_error(str(error))
+            error_message = str(error)
         finally:
             with self.lock:
                 self.peers.discard(peer)
-            self.on_error("Sensor connection closed")
+            # Signal once, after the connection is closed. Otherwise the
+            # generic close event erases the useful decoder/handler error.
+            self.on_error(error_message or "Sensor connection closed")
             self.slots.release()
 
     def close(self):
@@ -141,6 +144,11 @@ class NavigationService:
         self.viewport = ViewportLink()
         self.ending = threading.Event()
         self.last_transport_error = None
+        self._sensor_transport = {
+            key: {"events": 0, "last_event": None, "last_detailed_error": None,
+                  "last_detailed_error_event": None}
+            for key in ("lidar", "camera")
+        }
         self.threads = []
         self._timing_lock = threading.Lock()
         self._timing = {"cycles": 0, "last_cycle_s": None, "max_cycle_s": 0.0,
@@ -239,13 +247,38 @@ class NavigationService:
     def _sensor_error(self, key, error):
         with self.session.lock:
             self.last_transport_error = str(error)
-            self.session.health.pop(key, None)
+            details = self._sensor_transport["lidar" if key == "lidar" else "camera"]
+            details["events"] += 1
+            details["last_event"] = str(error)[:256]
+            if str(error) != "Sensor connection closed":
+                details["last_detailed_error"] = str(error)[:256]
+                details["last_detailed_error_event"] = details["events"]
+            # A decoded but not yet consumed frame cannot restore health after
+            # its transport has failed. Require a new frame on reconnection.
+            affected = ("lidar",) if key == "lidar" else ("ground_truth", "stereo", "stereo_pair", "left", "right")
+            for sensor in affected:
+                self.session.health.pop(sensor, None)
+                self.session.latest.pop(sensor, None)
+                self.session.used.pop(sensor, None)
             self.session.invalidate_fusion()
             self.bridge.state.stop()
             if key == "lidar":
                 self.feeds.clear_lidar()
             else:
                 self.feeds.clear_camera()
+
+    def sensor_transport_diagnostics(self):
+        # Counts are sampled separately from sensor health and apply to this
+        # service process; the last detailed error can precede a later recovery.
+        with self.session.lock:
+            result = {key: details.copy() for key, details in self._sensor_transport.items()}
+        for key, listener in (("lidar", self.lidar), ("camera", self.camera)):
+            if listener is not None:
+                with listener.lock:
+                    result[key]["active_connections"] = len(listener.peers)
+            else:
+                result[key]["active_connections"] = 0
+        return result
 
     def control_timing(self):
         """Read-only, process-lifetime wall-clock control-loop counters."""
@@ -429,6 +462,7 @@ class NavigationService:
                             result["control_timing"] = service.control_timing()
                             if service.session.obstacle_diagnostics:
                                 result["lidar_ingest_timing"] = service.lidar_ingest_timing()
+                                result["sensor_transport"] = service.sensor_transport_diagnostics()
                         return self.reply(200, result)
                     except ValueError as error:
                         return self.reply(400, {"error": str(error)})
@@ -461,6 +495,7 @@ class NavigationService:
                           "control_timing": service.control_timing()}
                 if service.session.obstacle_diagnostics:
                     result["lidar_ingest_timing"] = service.lidar_ingest_timing()
+                    result["sensor_transport"] = service.sensor_transport_diagnostics()
                 self.reply(200, result)
 
             def file_reply(self, path, content_type):
