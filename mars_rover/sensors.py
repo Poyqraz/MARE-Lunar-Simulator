@@ -16,6 +16,9 @@ import numpy as np
 # when comparing it with integer-nanosecond camera and pose timestamps.
 CAPTURE_CLOCK_TOLERANCE_NS = 1024
 LIDAR_HEADER = struct.Struct("<4sBBHQdffIIII")
+# Optional CPU-only v2 extension: row-major sensor-FLU to local-map transform.
+# GPU render-time pose is not represented by this protocol.
+LIDAR_CPU_POSE = struct.Struct("<12d")
 NAV_HEADER = struct.Struct("<4sBBBBHHQI")
 POINT_DTYPE = np.dtype(
     [("x", "<f4"), ("y", "<f4"), ("z", "<f4"), ("intensity", "<f4"), ("ring", "<u2"), ("column", "<u2")]
@@ -30,6 +33,7 @@ class LidarScan:
     points: np.ndarray
     rows: int
     columns: int
+    cpu_capture_to_world: np.ndarray | None = None
 
 
 @dataclass
@@ -65,8 +69,7 @@ class LidarStream:
             )
             if (
                 magic != b"LIDR"
-                or version != 1
-                or flags != 1
+                or (version, flags) not in ((1, 1), (2, 3))
                 or step != 20
                 or not 1 <= cols <= 4096
                 or not 1 <= rows <= 512
@@ -78,16 +81,28 @@ class LidarStream:
             ):
                 self.buffer.clear()
                 raise ValueError("Invalid/unsupported LIDR header")
-            size = LIDAR_HEADER.size + count * step
+            data_start = LIDAR_HEADER.size + (LIDAR_CPU_POSE.size if version == 2 else 0)
+            size = data_start + count * step
             if len(self.buffer) < size:
                 break
-            raw = np.frombuffer(bytes(self.buffer[LIDAR_HEADER.size : size]), dtype=POINT_DTYPE)
+            cpu_capture_to_world = None
+            if version == 2:
+                cpu_capture_to_world = np.eye(4)
+                cpu_capture_to_world[:3, :] = np.asarray(
+                    LIDAR_CPU_POSE.unpack_from(self.buffer, LIDAR_HEADER.size)
+                ).reshape(3, 4)
+                try:
+                    cpu_capture_to_world = transform_matrix(cpu_capture_to_world)
+                except ValueError:
+                    self.buffer.clear()
+                    raise ValueError("Invalid CPU LiDAR capture pose") from None
+            raw = np.frombuffer(bytes(self.buffer[data_start:size]), dtype=POINT_DTYPE)
             index = np.arange(count)
             if not np.array_equal(raw["ring"], index // cols) or not np.array_equal(raw["column"], index % cols):
                 raise ValueError("LIDR organized point indices disagree with dimensions")
             points = np.column_stack((raw["x"], raw["y"], raw["z"])).astype("float64")
             points[~np.isfinite(points).all(axis=1)] = np.nan
-            result.append(LidarScan(sid, frame, int(round(stamp * 1e9)), points, rows, cols))
+            result.append(LidarScan(sid, frame, int(round(stamp * 1e9)), points, rows, cols, cpu_capture_to_world))
             del self.buffer[:size]
         return result
 

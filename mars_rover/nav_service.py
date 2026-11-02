@@ -128,12 +128,14 @@ class NavigationService:
         telemetry_format="json",
         obstacle_diagnostics=False,
         fusion_shadow=False,
+        lidar_pose_source="telemetry",
     ):
         self.session = NavigationSession(
             grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s,
             angular_limit_rad_s=angular_limit_rad_s,
             obstacle_diagnostics=obstacle_diagnostics,
             fusion_shadow=fusion_shadow,
+            lidar_pose_source=lidar_pose_source,
         )
         self.feeds = LiveFeeds(config, rear_camera_id=rear_camera_id)
         self.viewport = ViewportLink()
@@ -606,6 +608,8 @@ def main(argv=None):
                         help="record bounded sensor/map-change diagnostics in mission export")
     parser.add_argument("--fusion-shadow", action="store_true",
                         help="display sampled LiDAR/depth comparison; never changes map or motion")
+    parser.add_argument("--lidar-pose-source", choices=("telemetry", "cpu_capture"), default="telemetry",
+                        help="experimental: cpu_capture requires a CPU-only LIDR v2 producer")
     parser.add_argument("--max-turn-rate-deg-s", type=float, default=None,
                         help="limit commanded turns in degrees/s, no higher than the existing default (~34.38)")
     parser.add_argument("--rear-camera-id", type=int, default=None,
@@ -627,12 +631,16 @@ def main(argv=None):
                                                    else DEFAULT_ANGULAR_LIMIT_RAD_S),
                                rear_camera_id=args.rear_camera_id,
                                obstacle_diagnostics=args.obstacle_diagnostics,
-                               fusion_shadow=args.fusion_shadow) as service:
+                               fusion_shadow=args.fusion_shadow,
+                               lidar_pose_source=args.lidar_pose_source) as service:
             if args.goal:
                 service.session.set_goal(args.goal)
             print("Navigation API http://127.0.0.1:8766; start Unreal Play after this line.", flush=True)
             print(f"Depth source: {args.depth_source}; native rover acceptance is still required.", flush=True)
             print(f"Telemetry format: {args.telemetry_format}", flush=True)
+            if args.lidar_pose_source == "cpu_capture":
+                print("Experimental CPU LiDAR capture-pose mode; LIDR v2 required. "
+                      "Unreal runtime and obstacle coverage must be validated.", flush=True)
             if args.max_turn_rate_deg_s is not None:
                 print(f"Commanded turn-rate limit: {args.max_turn_rate_deg_s:g} deg/s; "
                       "physical turning and acceleration are not limited by this setting.", flush=True)

@@ -218,9 +218,9 @@ def test_slow_real_sensor_observation_cannot_submit_stale_motion(monkeypatch):
         feed(2)
         original_observe = grid.observe
 
-        def delayed_observe(points):
+        def delayed_observe(points, **kwargs):
             clock.value += 0.2
-            return original_observe(points)
+            return original_observe(points, **kwargs)
 
         monkeypatch.setattr(grid, "observe", delayed_observe)
         submitted = []
@@ -299,7 +299,7 @@ def test_arrival_requires_fresh_pose_after_observation(monkeypatch, delay, arriv
         return True
 
     monkeypatch.setattr(session, "_observe_bridge", slow_observation)
-    monkeypatch.setattr(session, "_consume", lambda: None)
+    monkeypatch.setattr(session, "_consume", lambda _now: None)
     assert session.step({}, now=100.0, wall_clock=lambda: clock.value) == (0, 0)
     assert session.state == ("arrived" if arrives else "waiting_for_fresh_data")
     assert session.mission.active is (not arrives)

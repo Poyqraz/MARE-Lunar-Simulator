@@ -564,7 +564,8 @@ void UUnrealLidarCam::ScanCpu(double Stamp)
 			}
 		}
 	});
-	Publish(Stamp, GFrameCounter, Range, Intensity);
+	// Sensor is the same immutable transform used for every CPU trace above.
+	Publish(Stamp, GFrameCounter, Range, Intensity, &Sensor);
 }
 
 void UUnrealLidarCam::ScanGpu(double Stamp)
@@ -691,18 +692,20 @@ void UUnrealLidarCam::PumpGpu()
 }
 
 void UUnrealLidarCam::Publish(double Stamp, uint64 FrameId, const TArray<float>& Range,
-                              const TArray<float>& Intensity)
+                              const TArray<float>& Intensity, const FTransform* CpuCapturePose)
 {
 	const int32 Count = Beams.Num();
+	const bool bCpuPose = bSendCpuCapturePose && CpuCapturePose != nullptr && ActiveMode == EUnrealLidarCamMode::CPU;
+	const int32 PoseBytes = bCpuPose ? static_cast<int32>(12 * sizeof(double)) : 0;
 	TArray<uint8> Packet;
-	Packet.SetNumUninitialized(sizeof(FLidarHeader) + Count * sizeof(FLidarPoint));
+	Packet.SetNumUninitialized(sizeof(FLidarHeader) + PoseBytes + Count * sizeof(FLidarPoint));
 	FLidarHeader* Header = reinterpret_cast<FLidarHeader*>(Packet.GetData());
-	FLidarPoint* Points = reinterpret_cast<FLidarPoint*>(Packet.GetData() + sizeof(FLidarHeader));
+	FLidarPoint* Points = reinterpret_cast<FLidarPoint*>(Packet.GetData() + sizeof(FLidarHeader) + PoseBytes);
 
 	Header->Magic[0] = 'L'; Header->Magic[1] = 'I'; Header->Magic[2] = 'D'; Header->Magic[3] = 'R';
-	Header->Version = 1;
+	Header->Version = bCpuPose ? 2 : 1;
 	Header->SensorId = static_cast<uint8>(SensorId);
-	Header->Flags = 1;                      // Organized
+	Header->Flags = bCpuPose ? 3 : 1;      // Organized; bit 1: CPU trace pose
 	Header->FrameId = FrameId;
 	Header->Stamp = Stamp;
 	Header->HorizontalFov = HorizontalFOV;
@@ -711,6 +714,22 @@ void UUnrealLidarCam::Publish(double Stamp, uint64 FrameId, const TArray<float>&
 	Header->Rows = Rows;
 	Header->PointCount = Count;
 	Header->PointStep = sizeof(FLidarPoint);
+
+	if (bCpuPose)
+	{
+		// Convert Unreal's world axes (cm, X reflected in the Mars map) and
+		// sensor axes (Y right) to map metres and sensor FLU (Y left).
+		const FVector Forward = CpuCapturePose->GetRotation().RotateVector(FVector(1, 0, 0));
+		const FVector Left = CpuCapturePose->GetRotation().RotateVector(FVector(0, -1, 0));
+		const FVector Up = CpuCapturePose->GetRotation().RotateVector(FVector(0, 0, 1));
+		const FVector Position = CpuCapturePose->GetLocation();
+		const double Matrix[12] = {
+			-Forward.X, -Left.X, -Up.X, -Position.X / 100.0,
+			 Forward.Y,  Left.Y,  Up.Y,  Position.Y / 100.0,
+			 Forward.Z,  Left.Z,  Up.Z,  Position.Z / 100.0,
+		};
+		FMemory::Memcpy(Packet.GetData() + sizeof(FLidarHeader), Matrix, sizeof(Matrix));
+	}
 
 	const float NaN = std::numeric_limits<float>::quiet_NaN();
 	int32 Returns = 0;

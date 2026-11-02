@@ -82,6 +82,7 @@ class NavigationSession:
         settle_s=2.0,
         obstacle_diagnostics=False,
         fusion_shadow=False,
+        lidar_pose_source="telemetry",
     ):
         if (
             config.get("schema_version") != 1
@@ -96,6 +97,7 @@ class NavigationSession:
             or not 0 <= settle_s <= 30
             or type(obstacle_diagnostics) is not bool
             or type(fusion_shadow) is not bool
+            or lidar_pose_source not in ("telemetry", "cpu_capture")
         ):
             raise ValueError("Sensor config must match this terrain; invalid navigation settings")
         try:
@@ -137,6 +139,7 @@ class NavigationSession:
             speed_m_s,
         )
         self.settle_s = settle_s
+        self.lidar_pose_source = lidar_pose_source
         self.angular_limit_rad_s = float(angular_limit_rad_s)
         self.lock = threading.RLock()
         self.history = PoseHistory()
@@ -211,6 +214,16 @@ class NavigationSession:
 
     def feed_lidar(self, scan, *, now=None):
         if scan.sensor_id == self.config["lidar"]["sensor_id"]:
+            # Do not silently fall back to a telemetry pose, or accidentally
+            # use a CPU-only packet as a GPU render-pose measurement.
+            has_capture = scan.cpu_capture_to_world is not None
+            if has_capture != (self.lidar_pose_source == "cpu_capture"):
+                with self.lock:
+                    self.latest.pop("lidar", None)
+                    self.used.pop("lidar", None)
+                    self.health.pop("lidar", None)
+                    self._invalidate_fusion()
+                raise ValueError("LiDAR packet pose source does not match the configured pose source")
             self._feed("lidar", scan, now)
 
     def feed_camera(self, frame, *, now=None):
@@ -307,6 +320,19 @@ class NavigationSession:
                 points = frame.points if key == "lidar" else depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
                 points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
             matrix = pose.matrix @ transform_matrix(settings["to_body"])
+            if key == "lidar" and self.lidar_pose_source == "cpu_capture":
+                measured = transform_matrix(frame.cpu_capture_to_world)
+                # Catch the wrong rover, origin, or mount instead of placing
+                # its points on this map. This is a plausibility check, not a
+                # calibration or a substitute for synchronized telemetry.
+                translation = np.linalg.norm(measured[:3, 3] - matrix[:3, 3])
+                cosine = (np.trace(measured[:3, :3].T @ matrix[:3, :3]) - 1) / 2
+                angle = math.acos(float(np.clip(cosine, -1, 1)))
+                if translation > 0.3 or angle > math.radians(15):
+                    self.health.pop("lidar", None)
+                    self._invalidate_fusion()
+                    raise ValueError("CPU LiDAR capture pose disagrees with calibrated telemetry")
+                matrix = measured
             if key == "stereo" and len(points):
                 # A stated one-pixel disparity scenario, not measured error:
                 # sigma_Z ~= Z^2/(fx*baseline). Propagate along each viewing
@@ -328,6 +354,8 @@ class NavigationSession:
                         "mission_id": self.mission.current["mission_id"] if self.mission.active else None,
                         "map_revision": self.grid.revision, "world_from_body": pose.matrix.tolist(),
                         "sensor_to_body": transform_matrix(settings["to_body"]).tolist(),
+                        "world_from_sensor_used": matrix.tolist(),
+                        "pose_source": self.lidar_pose_source if key == "lidar" else "telemetry",
                         "positive_obstacles": report["positive_obstacles"],
                         "negative_obstacles": report["negative_obstacles"],
                         "valid_inside_points": report["valid_inside_points"], **diagnostic,
@@ -338,6 +366,8 @@ class NavigationSession:
             preparation = frame.preparation_s if prepared else 0.0
             self.health[key] = {**report, "received_at": received, "stamp_ns": frame.stamp_ns,
                                 "processing_s": preparation + locked_processing}
+            if key == "lidar":
+                self.health[key]["pose_source"] = self.lidar_pose_source
             if prepared:
                 self.health[key].update(preparation_s=preparation, locked_processing_s=locked_processing)
             self.used[key] = signature
