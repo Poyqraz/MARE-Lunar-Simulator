@@ -106,6 +106,17 @@ gate, or motor commands, and diagnostic errors do not suppress sensor updates.
 Sampling and dashboard requests consume resources; test latency on the target
 machine before using this optional observer during motion.
 
+`tools/record_mars_mission.py --fusion-shadow` polls this read-only comparison
+alongside mission snapshots and checkpoints both to local files. Before
+reporting ready, this opt-in mode requires an idle rover, a fresh advancing
+pose, estimated speed at most 0.02 m/s, zero wheel commands, and both service
+diagnostics flags. It never sends a goal or stop.
+The final `MARS_FUSION_RUN` summary matches sensor capture timestamps with
+recorded LiDAR map changes within the same session and mission. Its polling
+is intermittent; a missing match is not evidence of agreement. Timestamp
+equality does not prove the same individual scan if unrecorded duplicate
+timestamps exist, and an overlapping bin need not be a changed cell or ray.
+
 The Mars overview consumes central/left/right RGB, ground-truth depth and
 LiDAR when fresh. Its local 3D depth view is labelled ground truth. A rear RGB
 stream can optionally be wired with `--rear-camera-id` when its ID is verified
