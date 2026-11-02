@@ -93,6 +93,10 @@ shared bins where LiDAR has a threshold-crossing residual while depth has only
 near-DEM sampled returns. The near-DEM band is one third of the existing
 obstacle threshold and is an exploratory display parameter, not a calibrated
 sensor tolerance. Incomplete/expired captures are labelled unavailable.
+The frozen pair can still be reported if a newer ordinary frame arrives during
+the calculation, provided the original pair remains fresh. Reconnects, pose
+discontinuities and sensor transport failures invalidate in-flight results;
+the response identifies its two capture stamps and arrival ages.
 
 The two sensors may see different locations or occluded surfaces in the same
 bin. The sample is not a complete scan, GPU render-time poses are unverified,

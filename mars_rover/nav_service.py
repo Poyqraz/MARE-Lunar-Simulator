@@ -238,6 +238,7 @@ class NavigationService:
         with self.session.lock:
             self.last_transport_error = str(error)
             self.session.health.pop(key, None)
+            self.session.invalidate_fusion()
             self.bridge.state.stop()
             if key == "lidar":
                 self.feeds.clear_lidar()

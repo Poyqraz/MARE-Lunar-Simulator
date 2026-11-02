@@ -140,7 +140,62 @@ def test_comparison_racing_session_reset_is_discarded(monkeypatch):
         return original(*args)
 
     monkeypatch.setattr(navigation, "compare_sampled_clouds", reset_during_comparison)
-    assert session.fusion_shadow_snapshot(now=1.01)["status"] == "samples_changed_during_processing"
+    assert session.fusion_shadow_snapshot(now=1.01)["status"] == "samples_invalidated_during_processing"
+
+
+def test_new_fresh_frame_during_comparison_preserves_the_captured_pair(monkeypatch):
+    import mars_rover.navigation as navigation
+
+    session, bridge = prepare_session(True)
+    session.step(bridge, now=1)
+    stamp = int(bridge["telemetry_unreal"]["t_ns"])
+    original = navigation.compare_sampled_clouds
+
+    def receive_new_frame(*args):
+        next_stamp = stamp + 100000000
+        session.feed_lidar(LidarScan(0, 2, next_stamp, np.array([[1.5, 0, 0.2]]), 1, 1), now=1.1)
+        next_bridge = {**bridge, "telemetry_unreal": {**bridge["telemetry_unreal"], "t_ns": str(next_stamp)}}
+        session.step(next_bridge, now=1.1)
+        return original(*args)
+
+    monkeypatch.setattr(navigation, "compare_sampled_clouds", receive_new_frame)
+    result = session.fusion_shadow_snapshot(now=1.11)
+    assert result["status"] == "sampled_comparison"
+    assert result["newer_frames_during_processing"] is True
+    assert result["lidar_stamp_ns"] == str(stamp)  # The result is for the original pair.
+    assert result["lidar_arrival_age_s"] == pytest.approx(0.11)
+    assert result["lidar_hazard_depth_ground_like_bins"] == 1
+
+
+def test_invalidated_pair_stays_rejected_even_if_frames_reappear(monkeypatch):
+    import mars_rover.navigation as navigation
+
+    session, bridge = prepare_session(True)
+    session.step(bridge, now=1)
+    original = navigation.compare_sampled_clouds
+
+    def invalidate_then_restore(*args):
+        with session.lock:
+            saved = dict(session._fusion_frames)
+            session.invalidate_fusion()
+            session._fusion_frames.update(saved)  # Simulate recovery before computation ends.
+        return original(*args)
+
+    monkeypatch.setattr(navigation, "compare_sampled_clouds", invalidate_then_restore)
+    assert session.fusion_shadow_snapshot(now=1.01)["status"] == "samples_invalidated_during_processing"
+
+
+def test_sensor_transport_error_invalidates_inflight_comparisons():
+    grid = TerrainMap(np.zeros((10, 10)), 1, PlanningLimits(robot_radius_m=0))
+    service = NavigationService(grid, config(), tcp_port=0, bridge_http_port=0, http_port=0,
+                                lidar_port=0, camera_port=0, fusion_shadow=True)
+    try:
+        epoch = service.session._fusion_epoch
+        service._sensor_error("lidar", "connection closed")
+        assert service.session._fusion_epoch == epoch + 1
+        assert service.session._fusion_frames == {}
+    finally:
+        service.close()
 
 
 def test_comparison_that_expires_during_processing_is_discarded(monkeypatch):
@@ -195,6 +250,62 @@ def test_enabled_http_endpoint_compares_actual_session_inputs():
         assert value["lidar_hazard_depth_ground_like_bins"] == 1
         np.testing.assert_array_equal(grid.blocked, before)
     finally:
+        service.close()
+
+
+def test_http_comparison_survives_a_new_sensor_frame_while_processing(monkeypatch):
+    import mars_rover.navigation as navigation
+
+    grid = TerrainMap(np.zeros((20, 20)), 1, PlanningLimits(robot_radius_m=0))
+    service = NavigationService(grid, config(), tcp_port=0, bridge_http_port=0, http_port=0,
+                                lidar_port=0, camera_port=0, min_points=1, settle_s=0, fusion_shadow=True)
+    started, release, replies, failures = threading.Event(), threading.Event(), [], []
+    try:
+        now = time.monotonic()
+        stamp = 1700000000000000000
+        service.session.feed_lidar(LidarScan(0, 1, stamp, np.array([[1.5, 0, 0.2]]), 1, 1), now=now)
+        depth = np.full((3, 3), np.nan, dtype="float32")
+        depth[2, 1] = 150
+        service.session.feed_camera(CameraFrame(4, 1, stamp, 2, depth), now=now)
+        bridge = {"connected": True, "connection_id": 1, "telemetry_age_s": 0,
+                  "telemetry_unreal": dict(x=-500, y=500, z=0, roll=0, pitch=0, yaw=180, t_ns=str(stamp))}
+        service.session.step(bridge, now=now)
+        original = navigation.compare_sampled_clouds
+
+        def delayed(*args):
+            started.set()
+            assert release.wait(2)
+            return original(*args)
+
+        monkeypatch.setattr(navigation, "compare_sampled_clouds", delayed)
+        server = threading.Thread(target=service.http.handle_request, daemon=True)
+        server.start()
+        url = f"http://127.0.0.1:{service.http.server_port}/dashboard/fusion-shadow"
+
+        def request():
+            try:
+                with urllib.request.urlopen(url, timeout=3) as response:
+                    replies.append(json.load(response))
+            except Exception as error:
+                failures.append(error)
+
+        client = threading.Thread(target=request, daemon=True)
+        client.start()
+        assert started.wait(2)
+        later = time.monotonic()
+        next_stamp = stamp + 33333333
+        service.session.feed_lidar(LidarScan(0, 2, next_stamp, np.array([[1.5, 0, 0.2]]), 1, 1), now=later)
+        next_bridge = {**bridge, "telemetry_unreal": {**bridge["telemetry_unreal"], "t_ns": str(next_stamp)}}
+        service.session.step(next_bridge, now=later)
+        release.set()
+        client.join(timeout=3)
+        server.join(timeout=3)
+        assert not failures and not client.is_alive()
+        assert replies[0]["status"] == "sampled_comparison"
+        assert replies[0]["newer_frames_during_processing"] is True
+        assert replies[0]["lidar_stamp_ns"] == str(stamp)
+    finally:
+        release.set()
         service.close()
 
 

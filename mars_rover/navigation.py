@@ -163,6 +163,7 @@ class NavigationSession:
         self.fusion_shadow = fusion_shadow
         self._fusion_frames = {}
         self._fusion_error = None
+        self._fusion_epoch = 0
 
     def set_goal(self, goal):
         with self.lock:
@@ -191,11 +192,22 @@ class NavigationSession:
         self.latest.clear()
         self.used.clear()
         self.health.clear()
-        self._fusion_frames.clear()
+        self._invalidate_fusion()
         self._fusion_error = None
         self.pose = None
         self._pose_received_at = self._unique_pose_at = None
         self.state = "new_session_requires_goal"
+
+    def _invalidate_fusion(self):
+        """Invalidate in-flight observational comparisons while holding the session lock."""
+        if self.fusion_shadow:
+            self._fusion_epoch += 1
+            self._fusion_frames.clear()
+
+    def invalidate_fusion(self):
+        """Invalidate comparison samples on an external sensor transport failure."""
+        with self.lock:
+            self._invalidate_fusion()
 
     def feed_lidar(self, scan, *, now=None):
         if scan.sensor_id == self.config["lidar"]["sensor_id"]:
@@ -279,6 +291,7 @@ class NavigationSession:
             if self._capture_too_old(frame.stamp_ns):
                 self.health[key] = {"received_at": received, "valid_inside_points": 0,
                                     "capture_stale": True, "stamp_ns": frame.stamp_ns}
+                self._invalidate_fusion()
                 continue
             settings = (
                 self.config["lidar"]
@@ -339,9 +352,9 @@ class NavigationSession:
                                                     "total_points": total}
                         self._fusion_error = None
                     else:
-                        self._fusion_frames.pop(key, None)
+                        self._invalidate_fusion()
                 except Exception as error:  # Never alter mapping or motor decisions for a viewer diagnostic.
-                    self._fusion_frames.pop(key, None)
+                    self._invalidate_fusion()
                     self._fusion_error = str(error)[:256]
 
     def fusion_shadow_snapshot(self, *, now=None):
@@ -358,7 +371,7 @@ class NavigationSession:
                     or not 0 <= now - self._pose_received_at <= 0.3
                     or not 0 <= now - self._unique_pose_at <= 0.3):
                 return {"enabled": True, "status": "waiting_for_fresh_pose"}
-            session = self.mission.session_id
+            session, epoch = self.mission.session_id, self._fusion_epoch
             sources = ("lidar", self.depth_source)
             records = [self._fusion_frames.get(key) for key in sources]
             if any(record is None for record in records):
@@ -382,23 +395,37 @@ class NavigationSession:
         except Exception as error:
             return {"enabled": True, "status": "diagnostic_error", "error": str(error)[:256]}
         with self.lock:
-            # Reject calculations that raced a reconnect, pose discontinuity,
-            # transport failure, or replacement of either capture.
-            if (not self.connected or session != self.mission.session_id
-                    or any(self._fusion_frames.get(key) is not record for key, record in zip(sources, records))
-                    or any(not self.health.get(key) for key in sources)):
-                return {"enabled": True, "status": "samples_changed_during_processing"}
+            # A normal newer capture does not invalidate the immutable pair
+            # being compared. Actual discontinuities increment the epoch.
+            if not self.connected or session != self.mission.session_id or epoch != self._fusion_epoch:
+                return {"enabled": True, "status": "samples_invalidated_during_processing"}
             end = time.monotonic() if live_clock else now
-            if (self._pose_received_at is None or self._unique_pose_at is None
+            if (self.pose is None or self.observer_error is not None
+                    or self._pose_received_at is None or self._unique_pose_at is None
                     or not 0 <= end - self._pose_received_at <= 0.3
                     or not 0 <= end - self._unique_pose_at <= 0.3
                     or any(not 0 <= end - record["received_at"] <= self.timeout
-                           or self._capture_too_old(record["stamp_ns"]) for record in records)):
+                           or self._capture_too_old(record["stamp_ns"])
+                           or record["stamp_ns"] - self.pose.stamp_ns > CAPTURE_CLOCK_TOLERANCE_NS
+                           for record in records)):
                 return {"enabled": True, "status": "samples_expired_during_processing"}
+            for key in sources:
+                current = self._fusion_frames.get(key)
+                health = self.health.get(key) or {}
+                if (current is None or health.get("stamp_ns") != current["stamp_ns"]
+                        or health.get("capture_stale") or not health.get("valid_inside_points")
+                        or not 0 <= end - current["received_at"] <= self.timeout
+                        or self._capture_too_old(current["stamp_ns"])
+                        or current["stamp_ns"] - self.pose.stamp_ns > CAPTURE_CLOCK_TOLERANCE_NS):
+                    return {"enabled": True, "status": "samples_invalidated_during_processing"}
+            newer_frames = any(self._fusion_frames.get(key) is not record for key, record in zip(sources, records))
         return {"enabled": True, "status": "sampled_comparison", "session_id": session,
                 "depth_source": self.depth_source, "capture_skew_s": gap,
                 "lidar_stamp_ns": str(records[0]["stamp_ns"]), "depth_stamp_ns": str(records[1]["stamp_ns"]),
                 "lidar_input_points": records[0]["total_points"], "depth_input_points": records[1]["total_points"],
+                "lidar_arrival_age_s": end - records[0]["received_at"],
+                "depth_arrival_age_s": end - records[1]["received_at"],
+                "newer_frames_during_processing": newer_frames,
                 "sampling": "at most 8192 evenly selected points per source", **result}
 
     def _observe_bridge(self, bridge_status, now):
@@ -406,8 +433,11 @@ class NavigationSession:
         if self.connection_id not in (None, 0) and connection != self.connection_id:
             self._reset_link()
         self.connection_id = connection
+        was_connected = self.connected
         self.connected = bool(bridge_status.get("connected"))
         if not self.connected:
+            if was_connected:
+                self._invalidate_fusion()
             if connection not in (None, 0):
                 self.mission.finish("disconnected")
                 self.goal, self.follower = None, None
@@ -415,6 +445,7 @@ class NavigationSession:
             return False
         age = bridge_status.get("telemetry_age_s")
         if type(age) not in (float, int) or not math.isfinite(age) or not 0 <= age <= 0.3:
+            self._invalidate_fusion()
             self.observer_error = "No fresh pose telemetry"
             if self.goal:
                 self.state = "waiting_for_pose"
@@ -438,7 +469,7 @@ class NavigationSession:
                     self.latest.clear()
                     self.used.clear()
                     self.health.clear()
-                    self._fusion_frames.clear()
+                    self._invalidate_fusion()
                     self.follower = None
             if self.pose is None or pose.stamp_ns != self.pose.stamp_ns:
                 self._unique_pose_at = now
@@ -456,6 +487,7 @@ class NavigationSession:
                 self.sensor_observation_error = str(error)
             return True
         except (ValueError, KeyError, TypeError) as error:
+            self._invalidate_fusion()
             self.observer_error = str(error)
             if self.goal:
                 self.state = "waiting_for_pose"
