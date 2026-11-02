@@ -297,7 +297,7 @@ class NavigationSession:
             world = transform_points(points, matrix)
             if self.obstacle_diagnostics:
                 focus = (pose.xy_heading[:2], self.goal) if self.goal else (pose.xy_heading[:2],)
-                report = self.grid.observe(world, diagnostics=True, diagnostic_focus=focus)
+                report = self.grid.observe(world, source=key, diagnostics=True, diagnostic_focus=focus)
                 diagnostic = report.pop("diagnostics")
                 if report["map_changed"] or "collection_error" in diagnostic:
                     self._obstacle_frames_evicted += int(len(self._obstacle_frames) == self._obstacle_frames.maxlen)
@@ -312,7 +312,7 @@ class NavigationSession:
                         "valid_inside_points": report["valid_inside_points"], **diagnostic,
                     })
             else:
-                report = self.grid.observe(world)
+                report = self.grid.observe(world, source=key)
             locked_processing = max(0.0, time.monotonic() - processing_started)
             preparation = frame.preparation_s if prepared else 0.0
             self.health[key] = {**report, "received_at": received, "stamp_ns": frame.stamp_ns,

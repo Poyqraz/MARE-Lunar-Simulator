@@ -83,6 +83,11 @@ class TerrainMap:
         )
         self.raw_blocked[[0, -1], :] = True
         self.raw_blocked[:, [0, -1]] = True
+        # Preserve the immutable terrain prior and the first sensor that added
+        # each later cell. These are display provenance only: they do not
+        # influence occupancy, inflation or routing.
+        self.static_raw_blocked = self.raw_blocked.copy()
+        self.first_sensor_source = np.zeros(self.raw_blocked.shape, dtype=np.uint8)
         self.blocked = self._inflate(self.raw_blocked)
         self.revision = 0
 
@@ -209,7 +214,10 @@ class TerrainMap:
             + dy * ((1 - dx) * self.heights[i + 1, j] + dx * self.heights[i + 1, j + 1])
         )
 
-    def observe(self, points, *, diagnostics=False, diagnostic_focus=()):
+    def observe(self, points, *, source=None, diagnostics=False, diagnostic_focus=()):
+        source_codes = {None: 0, "lidar": 1, "ground_truth": 2, "stereo": 3}
+        if source not in source_codes:
+            raise ValueError("Unknown observation source")
         points = np.asarray(points, dtype=float)
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError("Observed points must be Nx3 local-map metres")
@@ -234,6 +242,7 @@ class TerrainMap:
         rows, cols = np.floor(r[hazard] + 0.5).astype(int), np.floor(c[hazard] + 0.5).astype(int)
         newly_blocked = ~self.raw_blocked[rows, cols]
         changed = bool(np.any(newly_blocked))
+        self.first_sensor_source[rows[newly_blocked], cols[newly_blocked]] = source_codes[source]
         self.raw_blocked[rows, cols] = True
         if changed:
             self.blocked = self._inflate(self.raw_blocked)

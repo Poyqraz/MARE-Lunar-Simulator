@@ -7,6 +7,7 @@ and navigation HTTP 8766 on localhost. Stop conflicting GNC services first.
 """
 
 import argparse
+import base64
 from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -319,6 +320,33 @@ class NavigationService:
                     values = np.where(np.isfinite(grid.heights) & (grid.heights < 9999), grid.heights, 9999)
                     return self.reply(200, {"width": int(values.shape[1]), "height": int(values.shape[0]),
                                             "resolution": grid.resolution_m, "data": values.ravel().tolist()})
+                if self.path == "/dashboard/occupancy":
+                    # Take an atomic snapshot of the actual planner masks.
+                    # Classifying/encoding outside the lock keeps display work
+                    # out of the control and sensor critical section.
+                    with service.session.lock:
+                        grid = service.session.grid
+                        if grid.heights.size > 2_000_000:
+                            return self.reply(413, {"error": "Dashboard map exceeds the display budget"})
+                        static = grid.static_raw_blocked.copy()
+                        raw, blocked = grid.raw_blocked.copy(), grid.blocked.copy()
+                        first = grid.first_sensor_source.copy()
+                        revision = grid.revision
+                        session_id = service.session.mission.session_id
+                        resolution = grid.resolution_m
+                    classes = np.zeros(raw.shape, dtype=np.uint8)
+                    classes[blocked] = 6                 # footprint inflation
+                    classes[raw] = 5                     # unknown first source
+                    for sensor_code in (1, 2, 3):
+                        classes[raw & ~static & (first == sensor_code)] = sensor_code + 1
+                    classes[raw & static] = 1             # immutable terrain prior
+                    return self.reply(200, {
+                        "session_id": session_id, "revision": revision,
+                        "width": int(raw.shape[1]), "height": int(raw.shape[0]),
+                        "resolution": resolution,
+                        "classes_b64": base64.b64encode(classes.tobytes()).decode("ascii"),
+                        "semantics": "planner mask; sensor labels indicate first source only",
+                    })
                 if self.path == "/dashboard/feeds":
                     return self.reply(200, service.feeds.status())
                 if self.path == "/dashboard/lidar":

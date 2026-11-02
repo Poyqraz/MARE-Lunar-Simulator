@@ -349,9 +349,13 @@
         <span><b class="sw" style="background:#59b0ff"></b>DRIVEN</span>
         <span><b style="color:#33d6a6">➤</b> ROVER + HEADING</span>
         <span><b style="color:#ffbe5c">✕</b> GOAL</span>
-        <span><b style="color:#9fcbf2">◢</b> CAMERA FOV</span>
-        <span><b style="color:#ff6b7d">■</b> LOCAL OBSTACLES</span>
-        <span><b style="color:#ffd166">■</b> LIDAR OBSTACLES</span>
+        <span title="Immutable terrain restriction or invalid terrain"><b style="color:#ef6673">■</b> TERRAIN BLOCKED</span>
+        <span title="First source to mark the cell; other sensors may also have seen it"><b style="color:#ffd166">■</b> LIDAR MARKED</span>
+        <span title="First source to mark the cell; not a proof of a real obstacle"><b style="color:#fc81c7">■</b> GT DEPTH MARKED</span>
+        <span title="First source to mark the cell; not a proof of a real obstacle"><b style="color:#be8cff">■</b> STEREO MARKED</span>
+        <span title="An occupied input cell without source provenance"><b style="color:#f5f5f5">■</b> SOURCE UNKNOWN</span>
+        <span title="Planner footprint inflation around blocked cells"><b style="color:#ae86e8">■</b> FOOTPRINT MARGIN</span>
+        <span id="planner-grid-status" title="The actual planner mask, not a camera image">PLANNER GRID UNAVAILABLE</span>
         <span><b>⇕</b> WHEEL ZOOM · DRAG PAN</span>
       </div>
       <div id="mtl">
@@ -826,6 +830,8 @@ let lidarObs = [];                    /* planner's lidar obstacles, flat [x0, y0
 let elevMin = '0', elevMax = '0';
 /* the elevation image at one pixel per map cell, drawn into the view on each redraw */
 const elevCanvas = document.createElement('canvas'), elevCtx = elevCanvas.getContext('2d');
+const gridCanvas = document.createElement('canvas'), gridCtx = gridCanvas.getContext('2d');
+let gridVisible = false;
 const orbitalImage = new Image(); orbitalImage.src = '/terrain.png';
 let mapLayer = 'dem';
 orbitalImage.onload = () => { if (mapLayer === 'orbital') drawOverlay(); };
@@ -874,6 +880,9 @@ socket.on('map_update', m => {
     for (let i = 0; i < q.length; i++) m.data[i] = q[i] === 65535 ? 9999 : m.lo + q[i] * m.scale;
   }
   mapW = m.width; mapH = m.height; mapRes = m.resolution;
+  if (gridCanvas.width !== mapW || gridCanvas.height !== mapH) {
+    gridVisible = false; $('planner-grid-status').textContent = 'PLANNER GRID UNAVAILABLE';
+  }
   elevCanvas.width = mapW; elevCanvas.height = mapH;
   fitMapStack();
 
@@ -893,6 +902,28 @@ socket.on('map_update', m => {
   elevCtx.putImageData(img, 0, 0);
   drawColorbar(ok); drawOverlay();
   addLocal('INFO', `Elevation map loaded: ${mapW}×${mapH} @ ${mapRes} m/px.`);
+});
+
+socket.on('planner_occupancy_lost', () => {
+  gridVisible = false; $('planner-grid-status').textContent = 'PLANNER GRID UNAVAILABLE'; drawOverlay();
+});
+socket.on('planner_occupancy', m => {
+  if (m.width !== mapW || m.height !== mapH || m.resolution !== mapRes || m.data.length !== mapW * mapH) {
+    gridVisible = false; $('planner-grid-status').textContent = 'PLANNER GRID UNAVAILABLE'; drawOverlay(); return;
+  }
+  gridCanvas.width = mapW; gridCanvas.height = mapH;
+  const img = gridCtx.createImageData(mapW, mapH);
+  // 0 is only "not blocked by this planner", not proof of physical clearance.
+  const colors = [null, [239, 102, 115, 175], [255, 209, 102, 220], [252, 129, 199, 220],
+                  [190, 140, 255, 220], [245, 245, 245, 220], [174, 134, 232, 100]];
+  for (let i = 0; i < m.data.length; i++) {
+    const color = colors[m.data[i]];
+    if (!color) continue;
+    const x = i % mapW, y = (i / mapW) | 0, o = ((mapH - 1 - y) * mapW + x) * 4;
+    for (let k = 0; k < 4; k++) img.data[o + k] = color[k];
+  }
+  gridCtx.putImageData(img, 0, 0);
+  gridVisible = true; $('planner-grid-status').textContent = `PLANNER GRID · REV ${m.revision}`; drawOverlay();
 });
 
 /* The canvases match the view box at the display's pixel density. */
@@ -947,6 +978,13 @@ function drawOverlay() {
   mapCtx.setTransform(a, 0, 0, a, ox, oy);
   mapCtx.imageSmoothingEnabled = a < 1;          /* smooth when shrunk, crisp cells when zoomed */
   mapCtx.drawImage(mapLayer === 'orbital' && orbitalImage.naturalWidth ? orbitalImage : elevCanvas, 0, 0, mapW, mapH);
+  if (gridVisible) {
+    // Planner posts are centered on metric coordinates including both edges.
+    const sx = mapW / Math.max(1, mapW - 1), sy = mapH / Math.max(1, mapH - 1);
+    mapCtx.save(); mapCtx.beginPath(); mapCtx.rect(0, 0, mapW, mapH); mapCtx.clip();
+    mapCtx.imageSmoothingEnabled = false;
+    mapCtx.drawImage(gridCanvas, -sx / 2, -sy / 2, mapW * sx, mapH * sy); mapCtx.restore();
+  }
 
   odomCtx.setTransform(1, 0, 0, 1, 0, 0);
   odomCtx.clearRect(0, 0, odomCanvas.width, odomCanvas.height);
@@ -1064,7 +1102,7 @@ socket.on('trajectory_update',  m => {
   if (!m.path.length) {                 // session reset (Unreal Play/Stop): wipe stale goal
     globalPath = []; firstPath = []; replans = 0; lidarObs = [];
     $('t-goal').textContent = '—'; $('planning').style.display = 'none';
-    addLocal('INFO', 'New session detected (Unreal Play/Stop) — map cleared.');
+    addLocal('INFO', 'New session detected (Unreal Play/Stop) — mission track cleared; planner map retained.');
   }
   drawOverlay();
 });

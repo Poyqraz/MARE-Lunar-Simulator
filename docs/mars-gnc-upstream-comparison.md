@@ -45,6 +45,10 @@ are diagnostic evidence only; they do not classify obstacles or authorize
 motion. The script rejects missing frames, truncated cells, inconsistent map
 revisions, a mismatched terrain manifest, and a failure it cannot reproduce.
 It assumes the current planner code and limits match those of the recording.
+An optional `--image new-file.png` saves the reconstructed failure grid for
+offline inspection and never overwrites an existing file. It does not start or
+control Unreal. A successfully reconstructed map may show a counterfactual
+route, but the image shows the recorded mask, not a cleared one.
 
 ## Control, tests, and licensing
 
@@ -70,6 +74,14 @@ this repository calls the existing Mars planner and does not import or copy
 those upstream planner files.
 
 ## Dashboard and sensor sources
+
+The global map overlays the current planner's actual inflated blocked mask.
+Terrain restrictions, the first sensor to add each raw occupied cell, and the
+footprint margin have separate colours. "First" is provenance, not proof of a
+real obstacle or exclusive detection by that sensor. Uncoloured cells are not
+verified clear; missing overlays are explicitly unavailable. The planner map
+persists through a rover reconnection and is rebuilt on service restart. The
+display adds no obstacle-clearing rule and does not change route decisions.
 
 The Mars overview consumes central/left/right RGB, ground-truth depth and
 LiDAR when fresh. Its local 3D depth view is labelled ground truth. A rear RGB

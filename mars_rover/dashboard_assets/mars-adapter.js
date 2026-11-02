@@ -8,6 +8,7 @@
     const names = ['cam_central', 'cam_left', 'cam_right', 'cam_rear', 'depth_gt'];
     let snapshot = null, mapLoaded = false, previousSession = null, lastLidar = null;
     let busy = false, lastEvents = 0, centreWarned = false, encoderWarned = false;
+    let occupancyRevision = null, occupancySession = null;
 
     function on(name, fn) {
       if (!listeners.has(name)) listeners.set(name, []);
@@ -70,6 +71,7 @@
         for (const name of seen.keys()) dispatch('feed_lost', name);
         seen.clear(); lastLidar = null;
         dispatch('path_overlay', null); dispatch('local_dem_lost');
+        dispatch('planner_occupancy_lost'); occupancyRevision = occupancySession = null;
         dispatch('trajectory_update', {path: []});
       }
       previousSession = s.session_id;
@@ -93,6 +95,29 @@
                                                                      break_before: p.break_before}))});
       }
       return s;
+    }
+    async function receiveOccupancy(s) {
+      if (!s || typeof s.session_id !== 'string' || !Number.isSafeInteger(s.map_revision) || s.map_revision < 0) {
+        dispatch('planner_occupancy_lost'); occupancyRevision = occupancySession = null; return;
+      }
+      if (occupancySession === s.session_id && occupancyRevision === s.map_revision) return;
+      try {
+        const grid = await json('/dashboard/occupancy');
+        if (grid.session_id !== s.session_id || !Number.isSafeInteger(grid.revision) ||
+            grid.revision < s.map_revision || !Number.isSafeInteger(grid.width) ||
+            !Number.isSafeInteger(grid.height) || grid.width < 1 || grid.height < 1 ||
+            grid.width * grid.height > 2000000 || typeof grid.classes_b64 !== 'string' ||
+            !Number.isFinite(grid.resolution) || grid.resolution <= 0) throw Error('Invalid planner grid');
+        const decoded = atob(grid.classes_b64);
+        if (decoded.length !== grid.width * grid.height) throw Error('Incomplete planner grid');
+        const data = Uint8Array.from(decoded, c => c.charCodeAt(0));
+        if (data.some(v => v > 6)) throw Error('Unknown planner grid class');
+        dispatch('planner_occupancy', {...grid, data});
+        occupancySession = grid.session_id; occupancyRevision = grid.revision;
+      } catch (_) {
+        // An old overlay must not look like the current planner state.
+        dispatch('planner_occupancy_lost'); occupancyRevision = occupancySession = null;
+      }
     }
     async function receiveFeeds(s) {
       const status = await json('/dashboard/feeds');
@@ -171,12 +196,14 @@
         await receiveFeeds(s);
         dispatch('viewport_camera', await json('/dashboard/viewport'));
         if (!mapLoaded) await loadMap();
+        if (mapLoaded) await receiveOccupancy(s);
         if (Date.now() - lastEvents >= 2000) { await receiveEvents(); lastEvents = Date.now(); }
       } catch (_) {
         if (socket.connected) { socket.connected = false; dispatch('disconnect'); }
         dispatch('odom_lost');
         for (const name of seen.keys()) dispatch('feed_lost', name);
         seen.clear(); dispatch('path_overlay', null); dispatch('local_dem_lost');
+        dispatch('planner_occupancy_lost'); occupancyRevision = occupancySession = null;
       } finally { busy = false; setTimeout(poll, 500); }
     }
     setTimeout(poll, 0); // Allow the original overview to register its listeners first.
