@@ -123,6 +123,7 @@ class NavigationService:
         depth_source="ground_truth",
         settle_s=2.0,
         angular_limit_rad_s=DEFAULT_ANGULAR_LIMIT_RAD_S,
+        rear_camera_id=None,
         telemetry_format="json",
         obstacle_diagnostics=False,
     ):
@@ -131,7 +132,7 @@ class NavigationService:
             angular_limit_rad_s=angular_limit_rad_s,
             obstacle_diagnostics=obstacle_diagnostics,
         )
-        self.feeds = LiveFeeds(config)
+        self.feeds = LiveFeeds(config, rear_camera_id=rear_camera_id)
         self.viewport = ViewportLink()
         self.ending = threading.Event()
         self.last_transport_error = None
@@ -356,7 +357,7 @@ class NavigationService:
                         return self.reply(404, {"error": str(error)})
                 if parsed.path.startswith("/dashboard/camera/") and not parsed.query:
                     filename = parsed.path.removeprefix("/dashboard/camera/")
-                    allowed = {"cam_central.jpg", "cam_left.jpg", "cam_right.jpg", "depth_gt.jpg"}
+                    allowed = {"cam_central.jpg", "cam_left.jpg", "cam_right.jpg", "cam_rear.jpg", "depth_gt.jpg"}
                     if filename not in allowed:
                         return self.reply(404, {"error": "Unknown camera feed"})
                     packet = service.feeds.image(filename.removesuffix(".jpg"), with_stamp=True)
@@ -572,11 +573,15 @@ def main(argv=None):
                         help="record bounded sensor/map-change diagnostics in mission export")
     parser.add_argument("--max-turn-rate-deg-s", type=float, default=None,
                         help="limit commanded turns in degrees/s, no higher than the existing default (~34.38)")
+    parser.add_argument("--rear-camera-id", type=int, default=None,
+                        help="display an existing Unreal RGB camera stream with this distinct ID (0..255)")
     args = parser.parse_args(argv)
     if args.max_turn_rate_deg_s is not None and not 0 < args.max_turn_rate_deg_s <= math.degrees(
         DEFAULT_ANGULAR_LIMIT_RAD_S
     ):
         parser.error("--max-turn-rate-deg-s must be positive and no greater than the existing default")
+    if args.rear_camera_id is not None and not 0 <= args.rear_camera_id <= 255:
+        parser.error("--rear-camera-id must be in 0..255")
     try:
         config = json.loads(args.sensors.read_text(encoding="utf-8"))
         grid = TerrainMap.from_bundle(args.manifest)
@@ -585,6 +590,7 @@ def main(argv=None):
                                angular_limit_rad_s=(math.radians(args.max_turn_rate_deg_s)
                                                    if args.max_turn_rate_deg_s is not None
                                                    else DEFAULT_ANGULAR_LIMIT_RAD_S),
+                               rear_camera_id=args.rear_camera_id,
                                obstacle_diagnostics=args.obstacle_diagnostics) as service:
             if args.goal:
                 service.session.set_goal(args.goal)
@@ -594,6 +600,8 @@ def main(argv=None):
             if args.max_turn_rate_deg_s is not None:
                 print(f"Commanded turn-rate limit: {args.max_turn_rate_deg_s:g} deg/s; "
                       "physical turning and acceleration are not limited by this setting.", flush=True)
+            if args.rear_camera_id is not None:
+                print(f"Rear RGB stream ID: {args.rear_camera_id}; waiting for fresh Unreal frames.", flush=True)
             if args.obstacle_diagnostics:
                 print("Obstacle diagnostics enabled; use mission export to preserve the evidence.", flush=True)
             if args.telemetry_format == "unreal-tr-v1":

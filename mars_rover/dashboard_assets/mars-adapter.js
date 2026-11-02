@@ -5,7 +5,7 @@
   window.io = function () {
     const listeners = new Map(), seen = new Map();
     const socket = {connected: false, on, emit};
-    const names = ['cam_central', 'cam_left', 'cam_right', 'depth_gt'];
+    const names = ['cam_central', 'cam_left', 'cam_right', 'cam_rear', 'depth_gt'];
     let snapshot = null, mapLoaded = false, previousSession = null, lastLidar = null;
     let busy = false, lastEvents = 0, centreWarned = false, encoderWarned = false;
 

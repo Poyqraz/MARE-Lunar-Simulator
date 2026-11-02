@@ -153,7 +153,7 @@ class ViewportLink:
 
 
 class LiveFeeds:
-    def __init__(self, config, *, clock=time.monotonic, max_age_s=1.5, max_points=5000):
+    def __init__(self, config, *, rear_camera_id=None, clock=time.monotonic, max_age_s=1.5, max_points=5000):
         self.clock, self.max_age_s, self.max_points = clock, max_age_s, max_points
         depth = config["depth"]
         center = depth.get("color_camera_id", 0)
@@ -167,6 +167,11 @@ class LiveFeeds:
             self.ids[(left, 1)] = "cam_left"
         if type(right) is int and left != right:
             self.ids[(right, 1)] = "cam_right"
+        if rear_camera_id is not None:
+            reserved_ids = (depth["camera_id"], center, left, right)
+            if type(rear_camera_id) is not int or not 0 <= rear_camera_id <= 255 or rear_camera_id in reserved_ids:
+                raise ValueError("Rear camera ID must be a distinct integer in 0..255")
+            self.ids[(rear_camera_id, 1)] = "cam_rear"
         self.lidar_id = config["lidar"]["sensor_id"]
         self.to_body = transform_matrix(config["lidar"]["to_body"])
         self.lock = threading.Lock()
