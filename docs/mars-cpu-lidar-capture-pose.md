@@ -49,3 +49,14 @@ The simulator must be validated natively before relying on this mode. A good
 first check is an idle snapshot, followed by a short, supervised controlled
 motion test with a fresh mission recording and verified positive and negative
 hazard cases. Do not alter tick groups or component properties during Play.
+
+For the first moving check, start `tools/record_mars_mission.py --seconds 180
+--fusion-shadow` and wait for `KAYIT_HAZIR`. In another terminal,
+`tools/mars_cpu_lidar_short_probe.py` validates the CPU pose source, stationary
+rover, sensor freshness and the inflated map before sending one goal 2 m away
+at a 25-degree heading offset. It stops on a detected replan, stale pose,
+persistent sensor wait, sampled distance limit, or timeout, and requests stop
+after any goal attempt. The recorder is read-only. A sampled distance limit and
+synchronous HTTP timeouts are not hard real-time guarantees; supervise Unreal
+and keep its Stop control available. A successful run does not validate small
+obstacle coverage or prove future routes safe.
