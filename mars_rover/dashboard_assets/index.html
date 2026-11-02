@@ -405,6 +405,9 @@
         <div class="tl"><span class="k">ROLL / PITCH</span><span class="v cy" id="t-att">—</span></div>
         <div class="tl wide"><span class="k">TILT</span><span class="tiltbar"><span id="t-tiltfill"></span><span id="t-tiltlim"></span></span><span class="v" id="t-tilt">—</span></div>
         <div class="tl"><span class="k">LAST GOAL</span><span class="v cy" id="t-goal">—</span></div>
+        <div class="tl wide" title="Display-only sampled 25 cm bins: LiDAR hazard-like vs depth ground-like. Not proof of clearance; the sensors may see different surfaces.">
+          <span class="k">FUSION OBSERVE</span><span class="v" id="t-fusion">OFF</span>
+        </div>
       </div>
     </div>
   </div>
@@ -430,6 +433,12 @@
 const socket = io();
 GNCAlerts.attach(socket);
 const $ = id => document.getElementById(id);
+socket.on('fusion_shadow', m => {
+  $('t-fusion').textContent = m.status === 'sampled_comparison'
+    ? (m.shared_bins ? `LiDAR hazard / depth ground: ${m.lidar_hazard_depth_ground_like_bins} of ${m.shared_bins} bins`
+                     : 'NO SHARED SAMPLES')
+    : (m.status || 'unavailable').replaceAll('_', ' ').toUpperCase();
+});
 socket.on('command_error', message => {
   $('planning').style.display = 'none';
   addLocal('ERROR', message);

@@ -83,6 +83,25 @@ verified clear; missing overlays are explicitly unavailable. The planner map
 persists through a rover reconnection and is rebuilt on service restart. The
 display adds no obstacle-clearing rule and does not change route decisions.
 
+`--fusion-shadow` adds an opt-in, display-only comparison of the active LiDAR
+and selected depth source. At most 8192 evenly selected world points per source
+are retained, transformed using each capture's bracketed pose. A request to
+`/dashboard/fusion-shadow` compares their DEM residual categories in shared
+25 cm XY bins, provided pose, arrival and capture times are fresh and the two
+capture stamps differ by at most 0.25 s. The dashboard shows the number of
+shared bins where LiDAR has a threshold-crossing residual while depth has only
+near-DEM sampled returns. The near-DEM band is one third of the existing
+obstacle threshold and is an exploratory display parameter, not a calibrated
+sensor tolerance. Incomplete/expired captures are labelled unavailable.
+
+The two sensors may see different locations or occluded surfaces in the same
+bin. The sample is not a complete scan, GPU render-time poses are unverified,
+and ground-truth depth is another Unreal simulation output. These counters do
+not verify obstacle reality or free space. They never change the grid, sensor
+gate, or motor commands, and diagnostic errors do not suppress sensor updates.
+Sampling and dashboard requests consume resources; test latency on the target
+machine before using this optional observer during motion.
+
 The Mars overview consumes central/left/right RGB, ground-truth depth and
 LiDAR when fresh. Its local 3D depth view is labelled ground truth. A rear RGB
 stream can optionally be wired with `--rear-camera-id` when its ID is verified

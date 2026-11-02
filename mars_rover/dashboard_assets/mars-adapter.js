@@ -194,6 +194,10 @@
           socket.connected = true; dispatch('connect'); dispatch('config', {depth_max_distance: 8});
         }
         await receiveFeeds(s);
+        if (s.fusion_shadow_enabled) {
+          try { dispatch('fusion_shadow', await json('/dashboard/fusion-shadow')); }
+          catch (_) { dispatch('fusion_shadow', {status: 'unavailable'}); }
+        } else dispatch('fusion_shadow', {status: 'disabled'});
         dispatch('viewport_camera', await json('/dashboard/viewport'));
         if (!mapLoaded) await loadMap();
         if (mapLoaded) await receiveOccupancy(s);
@@ -203,6 +207,7 @@
         dispatch('odom_lost');
         for (const name of seen.keys()) dispatch('feed_lost', name);
         seen.clear(); dispatch('path_overlay', null); dispatch('local_dem_lost');
+        dispatch('fusion_shadow', {status: 'unavailable'});
         dispatch('planner_occupancy_lost'); occupancyRevision = occupancySession = null;
       } finally { busy = false; setTimeout(poll, 500); }
     }

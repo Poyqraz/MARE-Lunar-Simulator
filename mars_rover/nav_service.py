@@ -127,11 +127,13 @@ class NavigationService:
         rear_camera_id=None,
         telemetry_format="json",
         obstacle_diagnostics=False,
+        fusion_shadow=False,
     ):
         self.session = NavigationSession(
             grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s,
             angular_limit_rad_s=angular_limit_rad_s,
             obstacle_diagnostics=obstacle_diagnostics,
+            fusion_shadow=fusion_shadow,
         )
         self.feeds = LiveFeeds(config, rear_camera_id=rear_camera_id)
         self.viewport = ViewportLink()
@@ -349,6 +351,8 @@ class NavigationService:
                     })
                 if self.path == "/dashboard/feeds":
                     return self.reply(200, service.feeds.status())
+                if self.path == "/dashboard/fusion-shadow":
+                    return self.reply(200, service.session.fusion_shadow_snapshot())
                 if self.path == "/dashboard/lidar":
                     scan = service.feeds.lidar_view()
                     return self.reply(200, scan) if scan else self.reply(404, {"error": "No fresh LiDAR scan"})
@@ -599,6 +603,8 @@ def main(argv=None):
                         help="wire format; unreal-tr-v1 is explicit compatibility for a tr-TR UE producer")
     parser.add_argument("--obstacle-diagnostics", action="store_true",
                         help="record bounded sensor/map-change diagnostics in mission export")
+    parser.add_argument("--fusion-shadow", action="store_true",
+                        help="display sampled LiDAR/depth comparison; never changes map or motion")
     parser.add_argument("--max-turn-rate-deg-s", type=float, default=None,
                         help="limit commanded turns in degrees/s, no higher than the existing default (~34.38)")
     parser.add_argument("--rear-camera-id", type=int, default=None,
@@ -619,7 +625,8 @@ def main(argv=None):
                                                    if args.max_turn_rate_deg_s is not None
                                                    else DEFAULT_ANGULAR_LIMIT_RAD_S),
                                rear_camera_id=args.rear_camera_id,
-                               obstacle_diagnostics=args.obstacle_diagnostics) as service:
+                               obstacle_diagnostics=args.obstacle_diagnostics,
+                               fusion_shadow=args.fusion_shadow) as service:
             if args.goal:
                 service.session.set_goal(args.goal)
             print("Navigation API http://127.0.0.1:8766; start Unreal Play after this line.", flush=True)
@@ -632,6 +639,9 @@ def main(argv=None):
                 print(f"Rear RGB stream ID: {args.rear_camera_id}; waiting for fresh Unreal frames.", flush=True)
             if args.obstacle_diagnostics:
                 print("Obstacle diagnostics enabled; use mission export to preserve the evidence.", flush=True)
+            if args.fusion_shadow:
+                print("Fusion shadow enabled: sampled comparisons are display only, not driving decisions.",
+                      flush=True)
             if args.telemetry_format == "unreal-tr-v1":
                 print(TR_TELEMETRY_NOTICE, flush=True)
             try:

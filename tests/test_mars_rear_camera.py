@@ -77,9 +77,20 @@ def test_rear_camera_endpoint_only_serves_actual_rgb_frames():
             sender.sendall(packet[11:])
             front_sender.sendall(front)
             deadline = time.monotonic() + 2
-            while (service.feeds.frame("cam_rear") is None or service.feeds.frame("cam_central") is None) \
-                    and time.monotonic() < deadline:
-                time.sleep(0.01)
+            while time.monotonic() < deadline:
+                rear_seen = service.feeds.frame("cam_rear") is not None
+                front_seen = service.feeds.frame("cam_central") is not None
+                if rear_seen and front_seen:
+                    break
+                # The viewer deliberately drops a frame rather than blocking
+                # its producer on a busy display lock; real cameras stream.
+                if not rear_seen:
+                    sender.sendall(packet)
+                if not front_seen:
+                    front_sender.sendall(front)
+                time.sleep(0.02)
+            assert service.feeds.frame("cam_rear") is not None
+            assert service.feeds.frame("cam_central") is not None
             with urllib.request.urlopen(url) as response:
                 assert response.headers["X-Capture-Stamp-Ns"] == str(stamp)
                 assert Image.open(io.BytesIO(response.read())).convert("RGB").getpixel((3, 3))[0] > 200
