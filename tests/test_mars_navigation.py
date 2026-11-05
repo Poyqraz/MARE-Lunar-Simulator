@@ -1,4 +1,5 @@
 import importlib
+import json
 import math
 
 import numpy as np
@@ -89,6 +90,50 @@ def test_session_waits_for_both_sensors_and_stops_on_stale_data():
     assert details["ground_truth"]["reasons"] == ["arrival_stale"]
     event = session.mission.export()["events"][-1]
     assert event["details"]["sensors"] == details
+
+
+@pytest.mark.parametrize("fault,expected_error,expected_age", [
+    ("stale", "No fresh pose telemetry", 0.45),
+    ("invalid_pose", "Pose requires finite Unreal x,y,z,roll,pitch,yaw", 0.01),
+    ("nonfinite_age", "No fresh pose telemetry", None),
+])
+def test_pose_wait_records_the_decision_reason_without_resuming_motion(fault, expected_error, expected_age):
+    from mars_rover.planning import PlanningLimits, TerrainMap
+
+    grid = TerrainMap(np.zeros((10, 10)), 1, PlanningLimits(robot_radius_m=0))
+    config = {"schema_version": 1, "manifest_sha256": None,
+              "lidar": {"sensor_id": 0, "to_body": np.eye(4).tolist()},
+              "depth": {"camera_id": 4, "hfov_deg": 90, "to_body": np.eye(4).tolist()}}
+    session = nav().NavigationSession(grid, config, settle_s=0)
+    session.set_goal((8, 5))
+    telemetry = dict(x=-500, y=500, z=0, roll=0, pitch=0, yaw=180, t_ns="1700000000000000000")
+    status = {"connected": True, "connection_id": 1, "telemetry_age_s": 0.01,
+              "telemetry_unreal": telemetry, "last_error": None}
+    session.step(status, now=1.0)
+    bad = {**status, "telemetry_unreal": dict(telemetry)}
+    if fault == "stale":
+        bad["telemetry_age_s"] = 0.45
+    elif fault == "invalid_pose":
+        bad["telemetry_unreal"]["x"] = None
+    else:
+        bad["telemetry_age_s"] = float("nan")
+
+    assert session.step(bad, now=1.5) == (0, 0)
+    event = session.mission.export()["events"][-1]
+    assert event["status"] == "waiting_for_pose"
+    details = event["details"]["pose"]
+    assert details["observer_error"] == expected_error
+    assert details["bridge_telemetry_age_s"] == expected_age
+    assert details["bridge_telemetry_stamp_ns"] == telemetry["t_ns"]
+    assert details["last_pose_age_s"] == pytest.approx(0.51)
+    assert details["capture_clock_age_s"] == pytest.approx(0.5)
+    json.dumps(session.mission.export(), allow_nan=False)
+
+    # An immediately recovered snapshot does not erase the event's cause.
+    assert session.step(status, now=1.51) == (0, 0)
+    saved = [entry for entry in session.mission.export()["events"]
+             if entry.get("status") == "waiting_for_pose"]
+    assert len(saved) == 1 and saved[0]["details"]["pose"] == details
 
 
 def test_capture_time_boundary_tolerates_clock_precision_but_still_stops_for_stale_frames():
@@ -192,6 +237,16 @@ def test_missing_returns_never_erase_a_previous_hazard():
     revision = grid.revision
     grid.observe(np.full((100, 3), np.nan))
     assert grid.revision == revision and grid.blocked[10, 10]
+
+
+def test_replanned_rover_already_facing_goal_does_not_turn_back_to_cell_center():
+    p = importlib.import_module("mars_rover.planning")
+    grid = p.TerrainMap(np.zeros((10, 10)), 1, p.PlanningLimits(robot_radius_m=0))
+    start, goal = (5.01225, 4.58223), (5.0, 4.0)
+    follower = nav().RouteFollower(grid.plan(start, goal))
+    velocity, turn = follower.command((*start, -math.pi / 2))
+    assert velocity > 0
+    assert abs(turn) < 0.1
 
 
 def test_observed_obstacle_stops_then_replans_around_the_blocked_route():

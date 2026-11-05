@@ -4,8 +4,10 @@ The optional service lives in nav_service.py. Sensor validity/freshness is a
 separate gate from terrain planning. Ground-truth depth is labelled explicitly.
 """
 
-import math
 import copy
+from collections import deque
+from dataclasses import dataclass
+import math
 import threading
 import time
 
@@ -13,6 +15,7 @@ import numpy as np
 
 from .planning import NoRoute
 from .mission import MissionHistory
+from .fusion_shadow import bounded_sample, compare_sampled_clouds
 from .sensors import (
     CAPTURE_CLOCK_TOLERANCE_NS,
     PoseHistory,
@@ -23,12 +26,23 @@ from .sensors import (
 )
 
 LATE_DATA_ERROR = "Pose or sensor data expired during control processing"
+DEFAULT_ANGULAR_LIMIT_RAD_S = 0.6
+
+
+@dataclass(frozen=True)
+class PreparedGroundTruthFrame:
+    """Depth points in the camera frame; capture pose is applied later."""
+
+    frame_id: int
+    stamp_ns: int
+    points: np.ndarray
+    preparation_s: float
 
 
 class RouteFollower:
     """Low-speed waypoint tracker with rotate-in-place turns, for skid steering."""
 
-    def __init__(self, route, *, speed_m_s=0.15, angular_limit_rad_s=0.6):
+    def __init__(self, route, *, speed_m_s=0.15, angular_limit_rad_s=DEFAULT_ANGULAR_LIMIT_RAD_S):
         if len(route) < 1 or not 0 < speed_m_s <= 0.5 or not 0 < angular_limit_rad_s <= 2:
             raise ValueError("Invalid route/tracking speed")
         self.route = [tuple(map(float, p)) for p in route]
@@ -64,7 +78,12 @@ class NavigationSession:
         min_points=20,
         sensor_timeout_s=0.4,
         speed_m_s=0.15,
+        angular_limit_rad_s=DEFAULT_ANGULAR_LIMIT_RAD_S,
         settle_s=2.0,
+        obstacle_diagnostics=False,
+        fusion_shadow=False,
+        lidar_pose_source="telemetry",
+        prefer_short_direct=False,
     ):
         if (
             config.get("schema_version") != 1
@@ -74,7 +93,13 @@ class NavigationSession:
             or min_points < 1
             or not 0 < sensor_timeout_s <= 2
             or not 0 < speed_m_s <= 0.5
+            or type(angular_limit_rad_s) not in (int, float)
+            or not 0 < angular_limit_rad_s <= DEFAULT_ANGULAR_LIMIT_RAD_S
             or not 0 <= settle_s <= 30
+            or type(obstacle_diagnostics) is not bool
+            or type(fusion_shadow) is not bool
+            or lidar_pose_source not in ("telemetry", "cpu_capture")
+            or type(prefer_short_direct) is not bool
         ):
             raise ValueError("Sensor config must match this terrain; invalid navigation settings")
         try:
@@ -116,6 +141,9 @@ class NavigationSession:
             speed_m_s,
         )
         self.settle_s = settle_s
+        self.lidar_pose_source = lidar_pose_source
+        self.prefer_short_direct = prefer_short_direct
+        self.angular_limit_rad_s = float(angular_limit_rad_s)
         self.lock = threading.RLock()
         self.history = PoseHistory()
         self.connection_id = None
@@ -134,6 +162,14 @@ class NavigationSession:
         self.sensor_wait_details = {}
         self._pose_received_at = self._unique_pose_at = None
         self._late_decision = False
+        self.obstacle_diagnostics = obstacle_diagnostics
+        self._obstacle_frames = deque(maxlen=128)
+        self._obstacle_frames_evicted = 0
+        self._last_planning_failure = None
+        self.fusion_shadow = fusion_shadow
+        self._fusion_frames = {}
+        self._fusion_error = None
+        self._fusion_epoch = 0
 
     def set_goal(self, goal):
         with self.lock:
@@ -162,12 +198,35 @@ class NavigationSession:
         self.latest.clear()
         self.used.clear()
         self.health.clear()
+        self._invalidate_fusion()
+        self._fusion_error = None
         self.pose = None
         self._pose_received_at = self._unique_pose_at = None
         self.state = "new_session_requires_goal"
 
+    def _invalidate_fusion(self):
+        """Invalidate in-flight observational comparisons while holding the session lock."""
+        if self.fusion_shadow:
+            self._fusion_epoch += 1
+            self._fusion_frames.clear()
+
+    def invalidate_fusion(self):
+        """Invalidate comparison samples on an external sensor transport failure."""
+        with self.lock:
+            self._invalidate_fusion()
+
     def feed_lidar(self, scan, *, now=None):
         if scan.sensor_id == self.config["lidar"]["sensor_id"]:
+            # Do not silently fall back to a telemetry pose, or accidentally
+            # use a CPU-only packet as a GPU render-pose measurement.
+            has_capture = scan.cpu_capture_to_world is not None
+            if has_capture != (self.lidar_pose_source == "cpu_capture"):
+                with self.lock:
+                    self.latest.pop("lidar", None)
+                    self.used.pop("lidar", None)
+                    self.health.pop("lidar", None)
+                    self._invalidate_fusion()
+                raise ValueError("LiDAR packet pose source does not match the configured pose source")
             self._feed("lidar", scan, now)
 
     def feed_camera(self, frame, *, now=None):
@@ -177,7 +236,17 @@ class NavigationSession:
             settings = self.config["depth"]
             if "width" in settings and frame.pixels.shape[:2] != (settings["height"], settings["width"]):
                 raise ValueError("Depth resolution changed since calibration")
-            self._feed("ground_truth", frame, now)
+            received = time.monotonic() if now is None else now
+            if self.depth_source == "ground_truth":
+                # This camera-only projection needs neither the session lock
+                # nor the capture pose. Keep the original arrival time so the
+                # time spent here still counts against freshness.
+                started = time.monotonic()
+                points = depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
+                points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
+                frame = PreparedGroundTruthFrame(frame.frame_id, frame.stamp_ns, points,
+                                                 max(0.0, time.monotonic() - started))
+            self._feed("ground_truth", frame, received)
         if self.depth_source == "stereo" and frame.format == 1:
             from .stereo import stereo_pair_depth
 
@@ -222,7 +291,7 @@ class NavigationSession:
         # independently require fresh arrival and pose times as before.
         return self.pose.stamp_ns - stamp_ns > self.timeout * 1e9 + CAPTURE_CLOCK_TOLERANCE_NS
 
-    def _consume(self):
+    def _consume(self, now):
         depth_key = self.depth_source
         for key in ("lidar", depth_key):
             if key not in self.latest:
@@ -238,6 +307,7 @@ class NavigationSession:
             if self._capture_too_old(frame.stamp_ns):
                 self.health[key] = {"received_at": received, "valid_inside_points": 0,
                                     "capture_stale": True, "stamp_ns": frame.stamp_ns}
+                self._invalidate_fusion()
                 continue
             settings = (
                 self.config["lidar"]
@@ -246,9 +316,26 @@ class NavigationSession:
                 if key == "ground_truth"
                 else self.config["stereo"]
             )
-            points = frame.points if key == "lidar" else depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
-            points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
+            prepared = key == "ground_truth" and isinstance(frame, PreparedGroundTruthFrame)
+            if prepared:
+                points = frame.points
+            else:
+                points = frame.points if key == "lidar" else depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
+                points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
             matrix = pose.matrix @ transform_matrix(settings["to_body"])
+            if key == "lidar" and self.lidar_pose_source == "cpu_capture":
+                measured = transform_matrix(frame.cpu_capture_to_world)
+                # Catch the wrong rover, origin, or mount instead of placing
+                # its points on this map. This is a plausibility check, not a
+                # calibration or a substitute for synchronized telemetry.
+                translation = np.linalg.norm(measured[:3, 3] - matrix[:3, 3])
+                cosine = (np.trace(measured[:3, :3].T @ matrix[:3, :3]) - 1) / 2
+                angle = math.acos(float(np.clip(cosine, -1, 1)))
+                if translation > 0.3 or angle > math.radians(15):
+                    self.health.pop("lidar", None)
+                    self._invalidate_fusion()
+                    raise ValueError("CPU LiDAR capture pose disagrees with calibrated telemetry")
+                matrix = measured
             if key == "stereo" and len(points):
                 # A stated one-pixel disparity scenario, not measured error:
                 # sigma_Z ~= Z^2/(fx*baseline). Propagate along each viewing
@@ -258,18 +345,132 @@ class NavigationSession:
                 height_factor = np.abs((points @ matrix[:3, :3].T)[:, 2] / points[:, 2])
                 points = points[3 * sigma_z * height_factor <= self.grid.limits.obstacle_height_m / 2]
             world = transform_points(points, matrix)
-            report = self.grid.observe(world)
+            if self.obstacle_diagnostics:
+                focus = (pose.xy_heading[:2], self.goal) if self.goal else (pose.xy_heading[:2],)
+                report = self.grid.observe(world, source=key, diagnostics=True, diagnostic_focus=focus)
+                diagnostic = report.pop("diagnostics")
+                if report["map_changed"] or "collection_error" in diagnostic:
+                    self._obstacle_frames_evicted += int(len(self._obstacle_frames) == self._obstacle_frames.maxlen)
+                    self._obstacle_frames.append({
+                        "source": key, "frame_id": int(frame.frame_id), "stamp_ns": str(frame.stamp_ns),
+                        "session_id": self.mission.session_id,
+                        "mission_id": self.mission.current["mission_id"] if self.mission.active else None,
+                        "map_revision": self.grid.revision, "world_from_body": pose.matrix.tolist(),
+                        "sensor_to_body": transform_matrix(settings["to_body"]).tolist(),
+                        "world_from_sensor_used": matrix.tolist(),
+                        "pose_source": self.lidar_pose_source if key == "lidar" else "telemetry",
+                        "positive_obstacles": report["positive_obstacles"],
+                        "negative_obstacles": report["negative_obstacles"],
+                        "valid_inside_points": report["valid_inside_points"], **diagnostic,
+                    })
+            else:
+                report = self.grid.observe(world, source=key)
+            locked_processing = max(0.0, time.monotonic() - processing_started)
+            preparation = frame.preparation_s if prepared else 0.0
             self.health[key] = {**report, "received_at": received, "stamp_ns": frame.stamp_ns,
-                                "processing_s": max(0.0, time.monotonic() - processing_started)}
+                                "processing_s": preparation + locked_processing}
+            if key == "lidar":
+                self.health[key]["pose_source"] = self.lidar_pose_source
+            if prepared:
+                self.health[key].update(preparation_s=preparation, locked_processing_s=locked_processing)
             self.used[key] = signature
+            if self.fusion_shadow:
+                try:
+                    # Store a bounded immutable copy only for a fresh, valid
+                    # observation. Comparison runs on demand outside this lock.
+                    if 0 <= now - received <= self.timeout and report["valid_inside_points"] > 0:
+                        sampled, total = bounded_sample(world)
+                        self._fusion_frames[key] = {"stamp_ns": frame.stamp_ns, "frame_id": int(frame.frame_id),
+                                                    "received_at": received, "points": sampled,
+                                                    "total_points": total}
+                        self._fusion_error = None
+                    else:
+                        self._invalidate_fusion()
+                except Exception as error:  # Never alter mapping or motor decisions for a viewer diagnostic.
+                    self._invalidate_fusion()
+                    self._fusion_error = str(error)[:256]
+
+    def fusion_shadow_snapshot(self, *, now=None):
+        """Compare sampled fresh captures without changing either map or control."""
+        live_clock = now is None
+        now = time.monotonic() if now is None else now
+        with self.lock:
+            if not self.fusion_shadow:
+                return {"enabled": False, "status": "disabled"}
+            if self._fusion_error:
+                return {"enabled": True, "status": "diagnostic_error", "error": self._fusion_error}
+            if (not self.connected or self.pose is None or self.observer_error is not None
+                    or self._pose_received_at is None or self._unique_pose_at is None
+                    or not 0 <= now - self._pose_received_at <= 0.3
+                    or not 0 <= now - self._unique_pose_at <= 0.3):
+                return {"enabled": True, "status": "waiting_for_fresh_pose"}
+            session, epoch = self.mission.session_id, self._fusion_epoch
+            sources = ("lidar", self.depth_source)
+            records = [self._fusion_frames.get(key) for key in sources]
+            if any(record is None for record in records):
+                return {"enabled": True, "status": "waiting_for_sensor_samples"}
+            for key, record in zip(sources, records):
+                health = self.health.get(key) or {}
+                if (health.get("stamp_ns") != record["stamp_ns"] or health.get("capture_stale")
+                        or not health.get("valid_inside_points")
+                        or not 0 <= now - record["received_at"] <= self.timeout
+                        or self._capture_too_old(record["stamp_ns"])
+                        or record["stamp_ns"] - self.pose.stamp_ns > CAPTURE_CLOCK_TOLERANCE_NS):
+                    return {"enabled": True, "status": "waiting_for_fresh_sensor_samples"}
+            gap = abs(records[0]["stamp_ns"] - records[1]["stamp_ns"]) / 1e9
+            if gap > 0.25:
+                return {"enabled": True, "status": "capture_skew", "capture_skew_s": gap}
+            heights, resolution = self.grid.heights, self.grid.resolution_m
+            threshold = self.grid.limits.obstacle_height_m
+        try:
+            result = compare_sampled_clouds(records[0]["points"], records[1]["points"],
+                                             heights, resolution, threshold)
+        except Exception as error:
+            return {"enabled": True, "status": "diagnostic_error", "error": str(error)[:256]}
+        with self.lock:
+            # A normal newer capture does not invalidate the immutable pair
+            # being compared. Actual discontinuities increment the epoch.
+            if not self.connected or session != self.mission.session_id or epoch != self._fusion_epoch:
+                return {"enabled": True, "status": "samples_invalidated_during_processing"}
+            end = time.monotonic() if live_clock else now
+            if (self.pose is None or self.observer_error is not None
+                    or self._pose_received_at is None or self._unique_pose_at is None
+                    or not 0 <= end - self._pose_received_at <= 0.3
+                    or not 0 <= end - self._unique_pose_at <= 0.3
+                    or any(not 0 <= end - record["received_at"] <= self.timeout
+                           or self._capture_too_old(record["stamp_ns"])
+                           or record["stamp_ns"] - self.pose.stamp_ns > CAPTURE_CLOCK_TOLERANCE_NS
+                           for record in records)):
+                return {"enabled": True, "status": "samples_expired_during_processing"}
+            for key in sources:
+                current = self._fusion_frames.get(key)
+                health = self.health.get(key) or {}
+                if (current is None or health.get("stamp_ns") != current["stamp_ns"]
+                        or health.get("capture_stale") or not health.get("valid_inside_points")
+                        or not 0 <= end - current["received_at"] <= self.timeout
+                        or self._capture_too_old(current["stamp_ns"])
+                        or current["stamp_ns"] - self.pose.stamp_ns > CAPTURE_CLOCK_TOLERANCE_NS):
+                    return {"enabled": True, "status": "samples_invalidated_during_processing"}
+            newer_frames = any(self._fusion_frames.get(key) is not record for key, record in zip(sources, records))
+        return {"enabled": True, "status": "sampled_comparison", "session_id": session,
+                "depth_source": self.depth_source, "capture_skew_s": gap,
+                "lidar_stamp_ns": str(records[0]["stamp_ns"]), "depth_stamp_ns": str(records[1]["stamp_ns"]),
+                "lidar_input_points": records[0]["total_points"], "depth_input_points": records[1]["total_points"],
+                "lidar_arrival_age_s": end - records[0]["received_at"],
+                "depth_arrival_age_s": end - records[1]["received_at"],
+                "newer_frames_during_processing": newer_frames,
+                "sampling": "at most 8192 evenly selected points per source", **result}
 
     def _observe_bridge(self, bridge_status, now):
         connection = bridge_status.get("connection_id")
         if self.connection_id not in (None, 0) and connection != self.connection_id:
             self._reset_link()
         self.connection_id = connection
+        was_connected = self.connected
         self.connected = bool(bridge_status.get("connected"))
         if not self.connected:
+            if was_connected:
+                self._invalidate_fusion()
             if connection not in (None, 0):
                 self.mission.finish("disconnected")
                 self.goal, self.follower = None, None
@@ -277,6 +478,7 @@ class NavigationSession:
             return False
         age = bridge_status.get("telemetry_age_s")
         if type(age) not in (float, int) or not math.isfinite(age) or not 0 <= age <= 0.3:
+            self._invalidate_fusion()
             self.observer_error = "No fresh pose telemetry"
             if self.goal:
                 self.state = "waiting_for_pose"
@@ -300,6 +502,7 @@ class NavigationSession:
                     self.latest.clear()
                     self.used.clear()
                     self.health.clear()
+                    self._invalidate_fusion()
                     self.follower = None
             if self.pose is None or pose.stamp_ns != self.pose.stamp_ns:
                 self._unique_pose_at = now
@@ -311,12 +514,13 @@ class NavigationSession:
             if self.state == "disconnected" and not self.goal:
                 self.state = "idle"
             try:
-                self._consume()
+                self._consume(now)
                 self.sensor_observation_error = None
             except (ValueError, KeyError, TypeError) as error:
                 self.sensor_observation_error = str(error)
             return True
         except (ValueError, KeyError, TypeError) as error:
+            self._invalidate_fusion()
             self.observer_error = str(error)
             if self.goal:
                 self.state = "waiting_for_pose"
@@ -352,6 +556,30 @@ class NavigationSession:
                 if self.state == "waiting_for_sensors" and self.sensor_wait_details
                 else None
             )
+            if self.state == "waiting_for_pose":
+                # Preserve the reason at the control decision, before a later
+                # healthy snapshot overwrites the transient observer error.
+                def finite_number(value):
+                    return float(value) if type(value) in (int, float) and math.isfinite(value) else None
+
+                def elapsed(since):
+                    value = finite_number(since)
+                    return max(0.0, now - value) if value is not None else None
+
+                telemetry = bridge_status.get("telemetry_unreal")
+                raw_stamp = telemetry.get("t_ns") if isinstance(telemetry, dict) else None
+                stamp = str(raw_stamp) if type(raw_stamp) in (str, int) else ""
+                if not stamp.isascii() or not stamp.isdigit() or len(stamp) > 19 or not 0 < int(stamp) <= 2**63 - 1:
+                    stamp = None
+                bridge_error = bridge_status.get("last_error")
+                details = {"pose": {
+                    "observer_error": self.observer_error,
+                    "bridge_telemetry_age_s": finite_number(bridge_status.get("telemetry_age_s")),
+                    "bridge_telemetry_stamp_ns": stamp,
+                    "bridge_last_error": bridge_error[:256] if isinstance(bridge_error, str) else None,
+                    "last_pose_age_s": elapsed(self._pose_received_at),
+                    "capture_clock_age_s": elapsed(self._unique_pose_at),
+                }}
             self.mission.state(self.state, self.error, details=details)
             return command
 
@@ -393,7 +621,7 @@ class NavigationSession:
                 ):
                     self.state = "waiting_for_settle"
                     return 0, 0
-                self._consume()
+                self._consume(now)
                 self.sensor_wait_details = self._sensor_wait_reasons(now)
                 if self.sensor_wait_details:
                     self.state = "waiting_for_sensors"
@@ -406,8 +634,11 @@ class NavigationSession:
                         self.follower, self.state = None, "replanning"
                         return 0, 0  # send stop BEFORE the next planning cycle
                 if self.follower is None:
-                    route = self.grid.plan(xyh[:2], self.goal)
-                    self.follower = RouteFollower(route, speed_m_s=self.speed)
+                    route = (self.grid.plan(xyh[:2], self.goal, prefer_short_direct=True)
+                             if self.prefer_short_direct else self.grid.plan(xyh[:2], self.goal))
+                    self.follower = RouteFollower(
+                        route, speed_m_s=self.speed, angular_limit_rad_s=self.angular_limit_rad_s
+                    )
                     self.mission.plan(route, self.grid.revision)
                     self.plan_revision, self.replans = self.grid.revision, self.replans + 1
                     self.state, self.error = "following", None
@@ -444,6 +675,16 @@ class NavigationSession:
             except (ValueError, KeyError, TypeError) as error:
                 self.error = str(error)
                 self.state = "blocked" if isinstance(error, NoRoute) else "waiting_for_sensors"
+                if isinstance(error, NoRoute) and self.obstacle_diagnostics:
+                    try:
+                        self._last_planning_failure = {
+                            "mission_id": self.mission.current["mission_id"] if self.mission.current else None,
+                            "stamp_ns": str(self.pose.stamp_ns), "map_revision": self.grid.revision,
+                            "error": str(error), "start": self.grid.blockage_details(self.pose.xy_heading[:2]),
+                            "goal": self.grid.blockage_details(self.goal),
+                        }
+                    except Exception as diagnostic_error:  # Do not alter the stop on NoRoute.
+                        self._last_planning_failure = {"collection_error": str(diagnostic_error)[:256]}
                 return 0, 0
 
     def _sensor_wait_reasons(self, now):
@@ -484,6 +725,8 @@ class NavigationSession:
                 "replans": self.replans,
                 "map_revision": self.grid.revision,
                 "depth_source": self.depth_source,
+                "lidar_pose_source": self.lidar_pose_source,
+                "short_direct_route_enabled": self.prefer_short_direct,
                 "sensor_health": self.health.copy(),
                 "calibration_source": self.config.get("source"),
                 "pose_local_m": self.pose.xy_heading if self.pose else None,
@@ -529,6 +772,9 @@ class NavigationSession:
                     "sensor_health": health,
                     "sensor_wait_details": self.sensor_wait_details,
                     "depth_source": self.depth_source,
+                    "lidar_pose_source": self.lidar_pose_source,
+                    "short_direct_route_enabled": self.prefer_short_direct,
+                    "fusion_shadow_enabled": self.fusion_shadow,
                     "map_revision": self.grid.revision,
                     "wheel_command_m_s": (bridge_status or {}).get("wheel_command_m_s"),
                     "wire_command": (bridge_status or {}).get("wire_command"),
@@ -547,4 +793,11 @@ class NavigationSession:
     def mission_export(self):
         with self.lock:
             captured = self.mission.capture_export()
+            captured["short_direct_route_enabled"] = self.prefer_short_direct
+            if self.obstacle_diagnostics:
+                captured["obstacle_diagnostics"] = {
+                    "enabled": True, "max_frames": self._obstacle_frames.maxlen,
+                    "frames_evicted": self._obstacle_frames_evicted,
+                    "frames": list(self._obstacle_frames), "last_planning_failure": self._last_planning_failure,
+                }
         return copy.deepcopy(captured)

@@ -83,6 +83,11 @@ class TerrainMap:
         )
         self.raw_blocked[[0, -1], :] = True
         self.raw_blocked[:, [0, -1]] = True
+        # Preserve the immutable terrain prior and the first sensor that added
+        # each later cell. These are display provenance only: they do not
+        # influence occupancy, inflation or routing.
+        self.static_raw_blocked = self.raw_blocked.copy()
+        self.first_sensor_source = np.zeros(self.raw_blocked.shape, dtype=np.uint8)
         self.blocked = self._inflate(self.raw_blocked)
         self.revision = 0
 
@@ -145,7 +150,64 @@ class TerrainMap:
         except ValueError:
             return False
 
-    def plan(self, start, goal, *, max_expansions=1_000_000):
+    def _sampled_route_profile(self, route):
+        """Estimate 3-D length, slope-weighted cost and peak grid slope.
+
+        Both candidate and existing routes use identical quarter-cell samples.
+        Adjacent corner cells contribute their slope when a step crosses a
+        grid corner, as they do to the planner's conservative clearance check.
+        """
+        cost = peak_slope = 0.0
+        for a, b in zip(route, route[1:]):
+            steps = max(1, math.ceil(math.dist(a, b) / (self.resolution_m / 4)))
+            previous = None
+            for i in range(steps + 1):
+                fraction = i / steps
+                point = (float(a[0] + fraction * (b[0] - a[0])),
+                         float(a[1] + fraction * (b[1] - a[1])))
+                row, col = self.cell(point)
+                slope = float(self.slope_deg[row, col])
+                height = self.surface_height(point)
+                if not math.isfinite(slope) or not math.isfinite(height):
+                    return None
+                peak_slope = max(peak_slope, slope)
+                if previous is not None:
+                    old_point, old_height, old_row, old_col = previous
+                    slopes = [slope, float(self.slope_deg[old_row, old_col])]
+                    if row != old_row and col != old_col:
+                        slopes.extend((float(self.slope_deg[row, old_col]), float(self.slope_deg[old_row, col])))
+                    if any(not math.isfinite(value) for value in slopes):
+                        return None
+                    local_slope = max(slopes)
+                    peak_slope = max(peak_slope, local_slope)
+                    length = math.hypot(math.dist(old_point, point), height - old_height)
+                    weight = 1 + self.limits.slope_cost_weight * (local_slope / self.limits.max_slope_deg) ** 2
+                    cost += length * weight
+                    if not math.isfinite(cost):
+                        return None
+                previous = point, height, row, col
+        return cost, peak_slope
+
+    def _prefer_short_direct(self, route):
+        """Offer a bounded shortcut without clearing any blocked grid cells."""
+        if len(route) < 3 or len(route) > 33 or math.dist(route[0], route[-1]) > 8:
+            return route
+        direct = [route[0], route[-1]]
+        if not self.segment_clear(*direct):
+            return route
+        existing_profile = self._sampled_route_profile(route)
+        direct_profile = self._sampled_route_profile(direct)
+        if existing_profile is None or direct_profile is None:
+            return route
+        old_cost, _ = existing_profile
+        new_cost, new_peak = direct_profile
+        if new_cost <= old_cost + 1e-9 and new_peak <= self.limits.max_slope_deg + 1e-9:
+            return direct
+        return route
+
+    def plan(self, start, goal, *, max_expansions=1_000_000, prefer_short_direct=False):
+        if type(prefer_short_direct) is not bool:
+            raise ValueError("prefer_short_direct must be boolean")
         start, goal = tuple(map(float, start)), tuple(map(float, goal))
         first, last = self.cell(start), self.cell(goal)
         if self.blocked[first] or self.blocked[last]:
@@ -163,10 +225,15 @@ class TerrainMap:
                     cells.append(parent[cells[-1]])
                 route = [(col * r, row * r) for row, col in reversed(cells)]
                 route = [start, *route, goal]
+                # The first grid centre can be behind an off-centre rover.
+                # Bypass it only if the exact connection to the next point is
+                # clear under the same inflated-map and corner checks.
+                if route[1] != start and self.segment_clear(start, route[2]):
+                    del route[1]
                 route = [p for i, p in enumerate(route) if i == 0 or p != route[i - 1]]
                 if not all(self.segment_clear(a, b) for a, b in zip(route, route[1:])):
                     raise NoRoute("Exact start/goal connection intersects a blocked cell")
-                return route
+                return self._prefer_short_direct(route) if prefer_short_direct else route
             expanded += 1
             if expanded > max_expansions:
                 raise NoRoute("Planning expansion budget exceeded")
@@ -204,7 +271,10 @@ class TerrainMap:
             + dy * ((1 - dx) * self.heights[i + 1, j] + dx * self.heights[i + 1, j + 1])
         )
 
-    def observe(self, points):
+    def observe(self, points, *, source=None, diagnostics=False, diagnostic_focus=()):
+        source_codes = {None: 0, "lidar": 1, "ground_truth": 2, "stereo": 3}
+        if source not in source_codes:
+            raise ValueError("Unknown observation source")
         points = np.asarray(points, dtype=float)
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError("Observed points must be Nx3 local-map metres")
@@ -227,12 +297,14 @@ class TerrainMap:
         negative = int(np.sum(residual < -self.limits.obstacle_height_m))
         hazard = np.isfinite(residual) & (np.abs(residual) > self.limits.obstacle_height_m)
         rows, cols = np.floor(r[hazard] + 0.5).astype(int), np.floor(c[hazard] + 0.5).astype(int)
-        changed = bool(np.any(~self.raw_blocked[rows, cols]))
+        newly_blocked = ~self.raw_blocked[rows, cols]
+        changed = bool(np.any(newly_blocked))
+        self.first_sensor_source[rows[newly_blocked], cols[newly_blocked]] = source_codes[source]
         self.raw_blocked[rows, cols] = True
         if changed:
             self.blocked = self._inflate(self.raw_blocked)
             self.revision += 1
-        return {
+        report = {
             "positive_obstacles": positive,
             "negative_obstacles": negative,
             "valid_inside_points": int(np.isfinite(residual).sum()),
@@ -240,6 +312,56 @@ class TerrainMap:
             "unknown_is_free": False,
             "micro_geometry_complete": False,
         }
+        if diagnostics:
+            # Capture first evidence for each newly occupied raster cell. This
+            # is optional, bounded evidence, not a new classification rule.
+            try:
+                cells = []
+                total = 0
+                if changed:
+                    new_rows, new_cols = rows[newly_blocked], cols[newly_blocked]
+                    keys = new_rows * w + new_cols
+                    _, first, counts = np.unique(keys, return_index=True, return_counts=True)
+                    total = len(first)
+                    hazard_points = points[hazard][newly_blocked]
+                    hazard_residuals = residual[hazard][newly_blocked]
+                    selected = np.arange(total)
+                    if total > 256 and diagnostic_focus:
+                        cell_xy = np.column_stack((new_cols[first], new_rows[first])) * self.resolution_m
+                        distance = np.full(total, np.inf)
+                        for xy in diagnostic_focus:
+                            distance = np.minimum(distance, np.sum((cell_xy - xy) ** 2, axis=1))
+                        selected = np.argsort(distance, kind="stable")
+                    for n in selected[:256]:
+                        idx = first[n]
+                        cells.append({"cell_row_col": [int(new_rows[idx]), int(new_cols[idx])],
+                                      "hazard_points": int(counts[n]),
+                                      "sample_world_m": hazard_points[idx].tolist(),
+                                      "sample_residual_m": float(hazard_residuals[idx])})
+                report["diagnostics"] = {"new_cells_total": total, "new_cells": cells,
+                                         "new_cells_truncated": total - len(cells)}
+            except Exception as error:  # Diagnostics must not change the map/control result.
+                report["diagnostics"] = {"collection_error": str(error)[:256]}
+        return report
+
+    def blockage_details(self, xy):
+        """Describe occupied input cells contributing to an inflated endpoint."""
+        row, col = self.cell(xy)
+        radius = (self.limits.robot_radius_m / self.resolution_m + math.sqrt(2) / 2
+                  if self.limits.robot_radius_m else 0.0)
+        distance = math.ceil(radius)
+        contributors = []
+        if distance <= 8:  # Keep optional failure diagnostics bounded.
+            for dy in range(-distance, distance + 1):
+                for dx in range(-distance, distance + 1):
+                    r, c = row + dy, col + dx
+                    if (math.hypot(dx, dy) <= radius and 0 <= r < self.heights.shape[0]
+                            and 0 <= c < self.heights.shape[1] and self.raw_blocked[r, c]):
+                        contributors.append([r, c])
+        return {"cell_row_col": [row, col], "blocked": bool(self.blocked[row, col]),
+                "raw_blocked": bool(self.raw_blocked[row, col]),
+                "contributors_raw_row_col": contributors if distance <= 8 else None,
+                "contributors_omitted": distance > 8}
 
     def geographic_goal(self, longitude, latitude):
         if self.manifest is None or not (-180 <= longitude <= 360 and -90 <= latitude <= 90):

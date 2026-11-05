@@ -228,10 +228,9 @@ private:
 	// Creates the centre camera's glare-free twin (bStreamCenterNoGlare).
 	void AddCenterNoGlareCapture();
 
-	// Posts one render command per send: it moves finished readbacks to Ready,
-	// then starts this send's readbacks. The game thread never locks, waits on
-	// or frees a readback.
-	void PumpCaptures();
+	// Poll ready readbacks every tick; start new readbacks only when a capture
+	// is due. The game thread never locks, waits on or frees a readback.
+	void PumpCaptures(bool bStartReadbacks);
 
 	// Sender thread only, like all socket I/O: a blocking connect on the game
 	// thread would freeze the editor for the OS TCP timeout. Non-blocking, with

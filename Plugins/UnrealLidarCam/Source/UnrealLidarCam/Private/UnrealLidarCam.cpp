@@ -65,6 +65,43 @@ namespace
 		return S.Replace(TEXT("_"), TEXT("")).Replace(TEXT(" "), TEXT("")).ToLower();
 	}
 
+	// Opt-in, PIE-friendly diagnostics: compare this post-physics request pose
+	// with the rover Blueprint's telemetry carrying the same simulation stamp.
+	// A tag on the runtime actor enables it; normal scans do not log or change.
+	void LogMarsLidarPoseIfRequested(const AActor* Owner, double Stamp, uint64 FrameId)
+	{
+		if (!Owner || !Owner->ActorHasTag(FName(TEXT("MarsLidarPoseProbe"))))
+		{
+			return;
+		}
+		TArray<USceneComponent*> Components;
+		Owner->GetComponents<USceneComponent>(Components);
+		const USceneComponent* Body = nullptr;
+		for (const USceneComponent* Component : Components)
+		{
+			if (Component && NormalizeName(Component->GetName()) == TEXT("baselink"))
+			{
+				if (Body)
+				{
+					UE_LOG(LogTemp, Warning, TEXT("MARS_LIDAR_POSE: duplicate base_link; no pose logged."));
+					return;
+				}
+				Body = Component;
+			}
+		}
+		if (!Body)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("MARS_LIDAR_POSE: base_link not found; no pose logged."));
+			return;
+		}
+		const FVector Position = Body->GetComponentLocation();
+		const FRotator Rotation = Body->GetComponentRotation();
+		UE_LOG(LogTemp, Log, TEXT("MARS_LIDAR_POSE: {\"frame_id\":\"%llu\",\"stamp_ns\":\"%lld\","
+		       "\"x\":%.9f,\"y\":%.9f,\"z\":%.9f,\"roll\":%.9f,\"pitch\":%.9f,\"yaw\":%.9f}"),
+		       static_cast<unsigned long long>(FrameId), static_cast<long long>(Stamp * 1.0e9),
+		       Position.X, Position.Y, Position.Z, Rotation.Roll, Rotation.Pitch, Rotation.Yaw);
+	}
+
 	// Reflectivity 0-255 from a physical material named "PM_Reflectivity_<n>" (MetaLidar's convention).
 	float Reflectivity(const UPhysicalMaterial* Material)
 	{
@@ -527,7 +564,8 @@ void UUnrealLidarCam::ScanCpu(double Stamp)
 			}
 		}
 	});
-	Publish(Stamp, GFrameCounter, Range, Intensity);
+	// Sensor is the same immutable transform used for every CPU trace above.
+	Publish(Stamp, GFrameCounter, Range, Intensity, &Sensor);
 }
 
 void UUnrealLidarCam::ScanGpu(double Stamp)
@@ -550,6 +588,9 @@ void UUnrealLidarCam::ScanGpu(double Stamp)
 		Capture->CaptureScene();            // Queued on the render thread before the copy below
 		Targets.Add(Capture->TextureTarget->GameThread_GetRenderTargetResource());
 	}
+	// This records the body at the game-thread capture request, not the later
+	// GPU execution pose. It is silent unless the runtime owner has the tag.
+	LogMarsLidarPoseIfRequested(GetOwner(), Stamp, GFrameCounter);
 	TSharedPtr<FUnrealLidarCamGpuState, ESPMode::ThreadSafe> S = Gpu;
 	TArray<FIntPoint> Sizes = SectorSize;
 	const uint64 FrameId = GFrameCounter;
@@ -651,18 +692,20 @@ void UUnrealLidarCam::PumpGpu()
 }
 
 void UUnrealLidarCam::Publish(double Stamp, uint64 FrameId, const TArray<float>& Range,
-                              const TArray<float>& Intensity)
+                              const TArray<float>& Intensity, const FTransform* CpuCapturePose)
 {
 	const int32 Count = Beams.Num();
+	const bool bCpuPose = bSendCpuCapturePose && CpuCapturePose != nullptr && ActiveMode == EUnrealLidarCamMode::CPU;
+	const int32 PoseBytes = bCpuPose ? static_cast<int32>(12 * sizeof(double)) : 0;
 	TArray<uint8> Packet;
-	Packet.SetNumUninitialized(sizeof(FLidarHeader) + Count * sizeof(FLidarPoint));
+	Packet.SetNumUninitialized(sizeof(FLidarHeader) + PoseBytes + Count * sizeof(FLidarPoint));
 	FLidarHeader* Header = reinterpret_cast<FLidarHeader*>(Packet.GetData());
-	FLidarPoint* Points = reinterpret_cast<FLidarPoint*>(Packet.GetData() + sizeof(FLidarHeader));
+	FLidarPoint* Points = reinterpret_cast<FLidarPoint*>(Packet.GetData() + sizeof(FLidarHeader) + PoseBytes);
 
 	Header->Magic[0] = 'L'; Header->Magic[1] = 'I'; Header->Magic[2] = 'D'; Header->Magic[3] = 'R';
-	Header->Version = 1;
+	Header->Version = bCpuPose ? 2 : 1;
 	Header->SensorId = static_cast<uint8>(SensorId);
-	Header->Flags = 1;                      // Organized
+	Header->Flags = bCpuPose ? 3 : 1;      // Organized; bit 1: CPU trace pose
 	Header->FrameId = FrameId;
 	Header->Stamp = Stamp;
 	Header->HorizontalFov = HorizontalFOV;
@@ -671,6 +714,22 @@ void UUnrealLidarCam::Publish(double Stamp, uint64 FrameId, const TArray<float>&
 	Header->Rows = Rows;
 	Header->PointCount = Count;
 	Header->PointStep = sizeof(FLidarPoint);
+
+	if (bCpuPose)
+	{
+		// Convert Unreal's world axes (cm, X reflected in the Mars map) and
+		// sensor axes (Y right) to map metres and sensor FLU (Y left).
+		const FVector Forward = CpuCapturePose->GetRotation().RotateVector(FVector(1, 0, 0));
+		const FVector Left = CpuCapturePose->GetRotation().RotateVector(FVector(0, -1, 0));
+		const FVector Up = CpuCapturePose->GetRotation().RotateVector(FVector(0, 0, 1));
+		const FVector Position = CpuCapturePose->GetLocation();
+		const double Matrix[12] = {
+			-Forward.X, -Left.X, -Up.X, -Position.X / 100.0,
+			 Forward.Y,  Left.Y,  Up.Y,  Position.Y / 100.0,
+			 Forward.Z,  Left.Z,  Up.Z,  Position.Z / 100.0,
+		};
+		FMemory::Memcpy(Packet.GetData() + sizeof(FLidarHeader), Matrix, sizeof(Matrix));
+	}
 
 	const float NaN = std::numeric_limits<float>::quiet_NaN();
 	int32 Returns = 0;

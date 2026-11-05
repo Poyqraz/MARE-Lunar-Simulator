@@ -55,6 +55,7 @@ void UUnrealStereoCam::BeginPlay()
 	}
 
 	Stream = MakeShared<FStereoCamStreamState, ESPMode::ThreadSafe>();
+	UE_LOG(LogTemp, Log, TEXT("UnrealStereoCam: per-tick readback polling enabled; capture rate %.2f Hz."), SendHz);
 
 	// The sender thread runs regardless; it (re)dials the node every few
 	// seconds, so the start order of Unreal and ROS is irrelevant.
@@ -475,7 +476,8 @@ void UUnrealStereoCam::TickComponent(float DeltaTime, ELevelTick TickType,
 	{
 		LastSendTime = -1.0e9;
 	}
-	if (Now - LastSendTime >= 1.0 / FMath::Max(SendHz, 0.5f))
+	const bool bCaptureDue = Now - LastSendTime >= 1.0 / FMath::Max(SendHz, 0.5f);
+	if (bCaptureDue)
 	{
 		LastSendTime = Now;
 		if (bCaptureOnDemand)
@@ -488,8 +490,10 @@ void UUnrealStereoCam::TickComponent(float DeltaTime, ELevelTick TickType,
 				}
 			}
 		}
-		PumpCaptures();
 	}
+	// A GPU copy can finish well before the next capture is due. Poll it on
+	// every game tick without starting another capture or changing SendHz.
+	PumpCaptures(bCaptureDue);
 }
 
 namespace
@@ -507,45 +511,41 @@ namespace
 	};
 }
 
-void UUnrealStereoCam::PumpCaptures()
+void UUnrealStereoCam::PumpCaptures(bool bStartReadbacks)
 {
-	// Gather the render targets on the game thread, then post one render
-	// command that owns the whole readback lifecycle. It runs after this
-	// frame's renders (CaptureScene() or bCaptureEveryFrame), so the copies
-	// read them; the copies complete asynchronously on the GPU.
+	// Gather targets only for a scheduled capture. Every pump still polls
+	// previous readbacks on the render thread without waiting for the GPU.
 	TArray<FStereoCamCap> Caps;
-	for (FStereoCamResolved& Cam : Active)
+	if (bStartReadbacks)
 	{
-		if (!Cam.Capture || !Cam.Capture->TextureTarget)
+		for (FStereoCamResolved& Cam : Active)
 		{
-			continue;
+			if (!Cam.Capture || !Cam.Capture->TextureTarget)
+			{
+				continue;
+			}
+			FTextureRenderTargetResource* Resource =
+				Cam.Capture->TextureTarget->GameThread_GetRenderTargetResource();
+			if (Resource)
+			{
+				Caps.Add({ Resource, Cam.CamId, Cam.Format,
+				           Cam.Capture->TextureTarget->SizeX,
+				           Cam.Capture->TextureTarget->SizeY });
+			}
 		}
-		FTextureRenderTargetResource* Resource =
-			Cam.Capture->TextureTarget->GameThread_GetRenderTargetResource();
-		if (Resource)
-		{
-			Caps.Add({ Resource, Cam.CamId, Cam.Format,
-			           Cam.Capture->TextureTarget->SizeX,
-			           Cam.Capture->TextureTarget->SizeY });
-		}
-	}
-	if (Caps.Num() == 0)
-	{
-		return;
 	}
 
-	// One tick, one frame id: this is what pairs left/right as a rig. One capture
-	// time too, from the shared simulation clock.
-	const uint64 FrameId = GFrameCounter;
-	const int64 StampNs = GncSimTime::NowNs(this);
+	// Frame id and capture time are assigned only for new readbacks; polling a
+	// previous capture never changes its recorded id or timestamp.
+	const uint64 FrameId = bStartReadbacks ? GFrameCounter : 0;
+	const int64 StampNs = bStartReadbacks ? GncSimTime::NowNs(this) : 0;
 	TSharedPtr<FStereoCamStreamState, ESPMode::ThreadSafe> S = Stream;
 
 	ENQUEUE_RENDER_COMMAND(StereoCamPump)(
 		[S, Caps, FrameId, StampNs](FRHICommandListImmediate& RHICmdList)
 		{
-			// 1. Drain the readbacks started on a previous pump. At any real
-			//    SendHz they finished on the GPU long ago; IsReady() gates it
-			//    regardless. Lock/copy/Unlock all here on the render thread.
+			// Drain ready readbacks from previous captures. IsReady() gates the
+			// copy; Lock/copy/Unlock all occur on the render thread.
 			for (int32 i = S->Pending.Num() - 1; i >= 0; --i)
 			{
 				FPendingReadback& Job = S->Pending[i];

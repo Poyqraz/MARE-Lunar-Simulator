@@ -27,6 +27,16 @@ def nav_packet(pixels, *, version=2, frame=7, fmt=2, camera=4):
     return header + (struct.pack("<Q", 1700000000500000000) if version == 2 else b"") + pixels.tobytes()
 
 
+def test_preview_depth_stride_preserves_depth_conversion_and_invalids():
+    s = sensors()
+    pixels = np.array([[100, 0, 200], [300, 400, 500], [np.nan, 900, 1e7]], dtype=np.float32)
+    frame = s.CameraFrame(4, 1, 100, 2, pixels)
+    np.testing.assert_equal(frame.depth_m(stride=2), frame.depth_m()[::2, ::2])
+    for stride in (0, -1, 1.5, True):
+        with pytest.raises(ValueError, match="stride"):
+            frame.depth_m(stride=stride)
+
+
 def test_lidar_decoder_handles_fragmentation_coalescing_nan_and_epoch_time():
     s = sensors()
     packet = lidar_packet([[1, 2, 3], [np.nan, np.nan, np.nan]])

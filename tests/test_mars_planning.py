@@ -53,6 +53,34 @@ def test_exact_goal_is_preserved_and_outside_or_blocked_goal_is_rejected():
             grid.plan((2, 2), goal)
 
 
+def test_replan_near_goal_does_not_reverse_toward_start_cell_center():
+    p = planning()
+    grid = p.TerrainMap(np.zeros((10, 10)), 1, p.PlanningLimits(robot_radius_m=0))
+    start, goal = (5.01225, 4.58223), (5.0, 4.0)
+    route = grid.plan(start, goal)
+    assert route == [start, goal]
+    assert grid.segment_clear(*route)
+
+
+def test_replan_in_goal_cell_connects_exact_start_directly_to_goal():
+    p = planning()
+    grid = p.TerrainMap(np.zeros((10, 10)), 1, p.PlanningLimits(robot_radius_m=0))
+    start, goal = (5.1, 4.4), (5.1, 4.1)
+    route = grid.plan(start, goal)
+    assert route == [start, goal]
+    assert grid.segment_clear(*route)
+
+
+def test_shortening_start_connection_never_crosses_blocked_terrain():
+    p = planning()
+    grid = p.TerrainMap(np.zeros((10, 10)), 1, p.PlanningLimits(robot_radius_m=0))
+    grid.blocked[4, 5] = True
+    start, goal = (5.01225, 5.58223), (5.0, 3.0)
+    route = grid.plan(start, goal)
+    assert route[0] == start and route[-1] == goal
+    assert all(grid.segment_clear(a, b) for a, b in zip(route, route[1:]))
+
+
 def test_triangle_slope_catches_a_pit_that_central_gradient_misses():
     p = planning()
     z = np.zeros((9, 9))
