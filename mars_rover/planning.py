@@ -150,7 +150,64 @@ class TerrainMap:
         except ValueError:
             return False
 
-    def plan(self, start, goal, *, max_expansions=1_000_000):
+    def _sampled_route_profile(self, route):
+        """Estimate 3-D length, slope-weighted cost and peak grid slope.
+
+        Both candidate and existing routes use identical quarter-cell samples.
+        Adjacent corner cells contribute their slope when a step crosses a
+        grid corner, as they do to the planner's conservative clearance check.
+        """
+        cost = peak_slope = 0.0
+        for a, b in zip(route, route[1:]):
+            steps = max(1, math.ceil(math.dist(a, b) / (self.resolution_m / 4)))
+            previous = None
+            for i in range(steps + 1):
+                fraction = i / steps
+                point = (float(a[0] + fraction * (b[0] - a[0])),
+                         float(a[1] + fraction * (b[1] - a[1])))
+                row, col = self.cell(point)
+                slope = float(self.slope_deg[row, col])
+                height = self.surface_height(point)
+                if not math.isfinite(slope) or not math.isfinite(height):
+                    return None
+                peak_slope = max(peak_slope, slope)
+                if previous is not None:
+                    old_point, old_height, old_row, old_col = previous
+                    slopes = [slope, float(self.slope_deg[old_row, old_col])]
+                    if row != old_row and col != old_col:
+                        slopes.extend((float(self.slope_deg[row, old_col]), float(self.slope_deg[old_row, col])))
+                    if any(not math.isfinite(value) for value in slopes):
+                        return None
+                    local_slope = max(slopes)
+                    peak_slope = max(peak_slope, local_slope)
+                    length = math.hypot(math.dist(old_point, point), height - old_height)
+                    weight = 1 + self.limits.slope_cost_weight * (local_slope / self.limits.max_slope_deg) ** 2
+                    cost += length * weight
+                    if not math.isfinite(cost):
+                        return None
+                previous = point, height, row, col
+        return cost, peak_slope
+
+    def _prefer_short_direct(self, route):
+        """Offer a bounded shortcut without clearing any blocked grid cells."""
+        if len(route) < 3 or len(route) > 33 or math.dist(route[0], route[-1]) > 8:
+            return route
+        direct = [route[0], route[-1]]
+        if not self.segment_clear(*direct):
+            return route
+        existing_profile = self._sampled_route_profile(route)
+        direct_profile = self._sampled_route_profile(direct)
+        if existing_profile is None or direct_profile is None:
+            return route
+        old_cost, _ = existing_profile
+        new_cost, new_peak = direct_profile
+        if new_cost <= old_cost + 1e-9 and new_peak <= self.limits.max_slope_deg + 1e-9:
+            return direct
+        return route
+
+    def plan(self, start, goal, *, max_expansions=1_000_000, prefer_short_direct=False):
+        if type(prefer_short_direct) is not bool:
+            raise ValueError("prefer_short_direct must be boolean")
         start, goal = tuple(map(float, start)), tuple(map(float, goal))
         first, last = self.cell(start), self.cell(goal)
         if self.blocked[first] or self.blocked[last]:
@@ -176,7 +233,7 @@ class TerrainMap:
                 route = [p for i, p in enumerate(route) if i == 0 or p != route[i - 1]]
                 if not all(self.segment_clear(a, b) for a, b in zip(route, route[1:])):
                     raise NoRoute("Exact start/goal connection intersects a blocked cell")
-                return route
+                return self._prefer_short_direct(route) if prefer_short_direct else route
             expanded += 1
             if expanded > max_expansions:
                 raise NoRoute("Planning expansion budget exceeded")

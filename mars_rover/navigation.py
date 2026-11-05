@@ -83,6 +83,7 @@ class NavigationSession:
         obstacle_diagnostics=False,
         fusion_shadow=False,
         lidar_pose_source="telemetry",
+        prefer_short_direct=False,
     ):
         if (
             config.get("schema_version") != 1
@@ -98,6 +99,7 @@ class NavigationSession:
             or type(obstacle_diagnostics) is not bool
             or type(fusion_shadow) is not bool
             or lidar_pose_source not in ("telemetry", "cpu_capture")
+            or type(prefer_short_direct) is not bool
         ):
             raise ValueError("Sensor config must match this terrain; invalid navigation settings")
         try:
@@ -140,6 +142,7 @@ class NavigationSession:
         )
         self.settle_s = settle_s
         self.lidar_pose_source = lidar_pose_source
+        self.prefer_short_direct = prefer_short_direct
         self.angular_limit_rad_s = float(angular_limit_rad_s)
         self.lock = threading.RLock()
         self.history = PoseHistory()
@@ -631,7 +634,8 @@ class NavigationSession:
                         self.follower, self.state = None, "replanning"
                         return 0, 0  # send stop BEFORE the next planning cycle
                 if self.follower is None:
-                    route = self.grid.plan(xyh[:2], self.goal)
+                    route = (self.grid.plan(xyh[:2], self.goal, prefer_short_direct=True)
+                             if self.prefer_short_direct else self.grid.plan(xyh[:2], self.goal))
                     self.follower = RouteFollower(
                         route, speed_m_s=self.speed, angular_limit_rad_s=self.angular_limit_rad_s
                     )
@@ -722,6 +726,7 @@ class NavigationSession:
                 "map_revision": self.grid.revision,
                 "depth_source": self.depth_source,
                 "lidar_pose_source": self.lidar_pose_source,
+                "short_direct_route_enabled": self.prefer_short_direct,
                 "sensor_health": self.health.copy(),
                 "calibration_source": self.config.get("source"),
                 "pose_local_m": self.pose.xy_heading if self.pose else None,
@@ -768,6 +773,7 @@ class NavigationSession:
                     "sensor_wait_details": self.sensor_wait_details,
                     "depth_source": self.depth_source,
                     "lidar_pose_source": self.lidar_pose_source,
+                    "short_direct_route_enabled": self.prefer_short_direct,
                     "fusion_shadow_enabled": self.fusion_shadow,
                     "map_revision": self.grid.revision,
                     "wheel_command_m_s": (bridge_status or {}).get("wheel_command_m_s"),
@@ -787,6 +793,7 @@ class NavigationSession:
     def mission_export(self):
         with self.lock:
             captured = self.mission.capture_export()
+            captured["short_direct_route_enabled"] = self.prefer_short_direct
             if self.obstacle_diagnostics:
                 captured["obstacle_diagnostics"] = {
                     "enabled": True, "max_frames": self._obstacle_frames.maxlen,

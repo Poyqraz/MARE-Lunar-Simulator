@@ -132,6 +132,7 @@ class NavigationService:
         obstacle_diagnostics=False,
         fusion_shadow=False,
         lidar_pose_source="telemetry",
+        prefer_short_direct=False,
     ):
         self.session = NavigationSession(
             grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s,
@@ -139,6 +140,7 @@ class NavigationService:
             obstacle_diagnostics=obstacle_diagnostics,
             fusion_shadow=fusion_shadow,
             lidar_pose_source=lidar_pose_source,
+            prefer_short_direct=prefer_short_direct,
         )
         self.feeds = LiveFeeds(config, rear_camera_id=rear_camera_id)
         self.viewport = ViewportLink()
@@ -645,6 +647,8 @@ def main(argv=None):
                         help="display sampled LiDAR/depth comparison; never changes map or motion")
     parser.add_argument("--lidar-pose-source", choices=("telemetry", "cpu_capture"), default="telemetry",
                         help="experimental: cpu_capture requires a CPU-only LIDR v2 producer")
+    parser.add_argument("--prefer-short-direct", action="store_true",
+                        help="experimental: prefer a clear, lower sampled terrain-cost direct route up to 8 m")
     parser.add_argument("--max-turn-rate-deg-s", type=float, default=None,
                         help="limit commanded turns in degrees/s, no higher than the existing default (~34.38)")
     parser.add_argument("--rear-camera-id", type=int, default=None,
@@ -667,7 +671,8 @@ def main(argv=None):
                                rear_camera_id=args.rear_camera_id,
                                obstacle_diagnostics=args.obstacle_diagnostics,
                                fusion_shadow=args.fusion_shadow,
-                               lidar_pose_source=args.lidar_pose_source) as service:
+                               lidar_pose_source=args.lidar_pose_source,
+                               prefer_short_direct=args.prefer_short_direct) as service:
             if args.goal:
                 service.session.set_goal(args.goal)
             print("Navigation API http://127.0.0.1:8766; start Unreal Play after this line.", flush=True)
@@ -676,6 +681,9 @@ def main(argv=None):
             if args.lidar_pose_source == "cpu_capture":
                 print("Experimental CPU LiDAR capture-pose mode; LIDR v2 required. "
                       "Unreal runtime and obstacle coverage must be validated.", flush=True)
+            if args.prefer_short_direct:
+                print("Experimental short direct-route preference enabled; terrain costs are sampled, "
+                      "and unseen obstacles remain unverified.", flush=True)
             if args.max_turn_rate_deg_s is not None:
                 print(f"Commanded turn-rate limit: {args.max_turn_rate_deg_s:g} deg/s; "
                       "physical turning and acceleration are not limited by this setting.", flush=True)
