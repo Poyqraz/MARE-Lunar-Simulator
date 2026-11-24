@@ -31,7 +31,8 @@ def scene():
 @pytest.mark.parametrize("stop_kind", ["stale", "manual"])
 def test_navigation_applies_turn_limit_and_stops(scene, limit, stop_kind):
     grid, config = scene
-    session = NavigationSession(grid, config, min_points=1, settle_s=0, angular_limit_rad_s=limit)
+    session = NavigationSession(grid, config, min_points=1, settle_s=0, angular_limit_rad_s=limit,
+                                smooth_follow=False)  # the classic follower applies the limit at once
     session.set_goal((5, 10))
     stamp = 1700000000000000000
     status = {
@@ -56,6 +57,29 @@ def test_navigation_applies_turn_limit_and_stops(scene, limit, stop_kind):
         assert session.step(status, now=2) == (0, 0)  # stale observations stop immediately
 
 
+@pytest.mark.parametrize("limit", [DEFAULT_ANGULAR_LIMIT_RAD_S, math.radians(20)])
+def test_default_smooth_follower_ramps_up_to_but_never_past_the_turn_limit(scene, limit):
+    grid, config = scene
+    session = NavigationSession(grid, config, min_points=1, settle_s=0, angular_limit_rad_s=limit)
+    assert session.smooth_follow
+    session.set_goal((5, 10))
+    stamp = 1700000000000000000
+    depth = np.full((3, 3), np.nan, dtype="float32")
+    depth[2, 1] = 150
+    angular = []
+    for k in range(40):
+        capture = stamp + k * 33_333_335
+        status = {"connected": True, "connection_id": 1, "telemetry_age_s": 0,
+                  "telemetry_unreal": dict(x=-500, y=500, z=0, roll=0, pitch=0, yaw=180, t_ns=str(capture))}
+        session.feed_lidar(LidarScan(0, k + 1, capture, np.array([[2.0, 0, 0]]), 1, 1), now=1 + k * 0.05)
+        session.feed_camera(CameraFrame(4, k + 1, capture, 2, depth), now=1 + k * 0.05)
+        velocity, w = session.step(status, now=1 + k * 0.05)
+        assert velocity == 0  # goal 90 degrees left: rotate in place
+        angular.append(w)
+    assert max(angular) == pytest.approx(limit) and all(0 <= w <= limit + 1e-12 for w in angular)
+    assert 0 < angular[2] < limit  # ramped, not a step
+
+
 @pytest.mark.parametrize("limit", [0, -0.1, 0.60001, float("nan"), float("inf"), True, None, "0.2"])
 def test_navigation_rejects_invalid_or_above_existing_turn_limit(scene, limit):
     grid, config = scene
@@ -63,9 +87,11 @@ def test_navigation_rejects_invalid_or_above_existing_turn_limit(scene, limit):
         NavigationSession(grid, config, angular_limit_rad_s=limit)
 
 
-@pytest.mark.parametrize("extra,expected", [([], DEFAULT_ANGULAR_LIMIT_RAD_S),
-                                             (["--max-turn-rate-deg-s", "20"], math.radians(20))])
-def test_cli_passes_opt_in_limit_to_service(monkeypatch, tmp_path, extra, expected):
+@pytest.mark.parametrize("extra,expected,smooth", [([], DEFAULT_ANGULAR_LIMIT_RAD_S, True),
+                                                    (["--max-turn-rate-deg-s", "20"], math.radians(20), True),
+                                                    (["--smooth-follow"], DEFAULT_ANGULAR_LIMIT_RAD_S, True),
+                                                    (["--classic-follow"], DEFAULT_ANGULAR_LIMIT_RAD_S, False)])
+def test_cli_passes_opt_in_limit_to_service(monkeypatch, tmp_path, extra, expected, smooth):
     config = tmp_path / "config.json"
     config.write_text(json.dumps({}), encoding="utf-8")
     seen = {}
@@ -85,6 +111,7 @@ def test_cli_passes_opt_in_limit_to_service(monkeypatch, tmp_path, extra, expect
     monkeypatch.setattr(nav_service, "NavigationService", FakeService)
     nav_service.main(["--sensors", str(config), *extra])
     assert seen["angular_limit_rad_s"] == pytest.approx(expected)
+    assert seen["smooth_follow"] is smooth  # smooth following is the default; --classic-follow opts out
 
 
 @pytest.mark.parametrize("invalid", ["0", "-1", "35", "nan", "inf"])

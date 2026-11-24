@@ -181,7 +181,7 @@ class NavigationSession:
         fusion_shadow=False,
         lidar_pose_source="telemetry",
         prefer_short_direct=False,
-        smooth_follow=False,
+        smooth_follow=True,
     ):
         if (
             config.get("schema_version") != 1

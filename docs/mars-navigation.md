@@ -198,8 +198,12 @@ daha sonra NaN veya düz zemin dönmesiyle silinmez; yanlış poz/kalibrasyonla
 eklenen engel için oturumu yeniden başlatıp nedeni düzeltin.
 
 Yeni engel kalan rotayı keserse önce sıfır motor komutu, sonraki çevrimde
-yeniden A* gelir. Takipçi düşük hızda (0.15 m/s) ve çoğunlukla yerinde dönerek
-ilerler; kısa komut yayı da genişletilmiş haritada kontrol edilir. Hedefe
+yeniden A* gelir. Takipçi düşük hızda (0.15 m/s), varsayılan olarak rota üzerinde
+0.7 m ileriye bakarak ilerler. Yerinde dönüş yalnızca 45°'den büyük yön hatasında
+yapılır; hızlanma rampalıdır, yavaşlama ve durma anındadır
+([yumuşak takip](mars-smooth-following.md)). Her köşede yerinde dönen eski
+takipçi `--classic-follow` ile seçilir. Kısa komut yayı da genişletilmiş
+haritada kontrol edilir. Hedefe
 0.25 m içinde varınca durur. 15 s poz ilerlemesi yoksa veya görev 1800 s'yi
 aşarsa görev kilitlenerek durur; yeni hedef gerekir. Yeni Play bağlantısı eski
 hedefi iptal eder. HTTP durdurma aktif hedefi siler; geçersiz hedef/komut da

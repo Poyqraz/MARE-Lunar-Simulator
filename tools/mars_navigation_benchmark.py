@@ -15,7 +15,7 @@ import sys
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from mars_rover.navigation import RouteFollower  # noqa: E402
+from mars_rover.navigation import SmoothRouteFollower  # noqa: E402
 from mars_rover.planning import NoRoute, TerrainMap  # noqa: E402
 
 
@@ -26,7 +26,7 @@ def benchmark(grid):
         route = grid.plan(start, goal)
         if not all(grid.segment_clear(a, b) for a, b in zip(route, route[1:])):
             raise RuntimeError("A planned segment crosses the inflated blocked mask")
-        follower = RouteFollower(route)
+        follower = SmoothRouteFollower(route)  # the service default; the classic follower is covered by tests
         x, y, yaw = *start, 0.0
         steps = 0
         # Deliberately a planar, no-slip kinematic check. It is not a wheel,

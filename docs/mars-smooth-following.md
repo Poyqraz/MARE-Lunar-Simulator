@@ -1,4 +1,4 @@
-# Daha akıcı sürüş: kilit dışı derinlik işleme ve `--smooth-follow`
+# Daha akıcı sürüş: kilit dışı derinlik işleme ve varsayılan yumuşak takip
 
 Unreal sürüşlerinde rover kısa aralıklarla durup kalkıyordu. Kayıtlardan iki
 ayrı neden ölçüldü:
@@ -39,7 +39,13 @@ ayrı neden ölçüldü:
   sonucu değişmedi. `test_prepared_and_inline_observations_update_the_map_identically`
   iki yolun aynı haritayı verdiğini doğruluyor.
 
-**`--smooth-follow` (isteğe bağlı).** `SmoothRouteFollower` şunları yapıyor:
+**Yumuşak takip (2026-11-24'ten beri varsayılan).** Aşağıdaki A/B sonuçlarından sonra
+`SmoothRouteFollower` servisin varsayılan takipçisi oldu. Eski takipçiye dönmek için
+`--classic-follow` kullanılır. `--smooth-follow` mevcut komutlar bozulmasın diye hâlâ
+kabul ediliyor, ancak artık etkisi yok; iki bayrak birlikte verilemez.
+`tools/mars_navigation_benchmark.py` de varsayılan takipçiyi kullanıyor.
+
+`SmoothRouteFollower` şunları yapıyor:
 
 - Izgara köşesi yerine rota üzerinde 0,7 m ilerideki noktaya yöneliyor
   (pure pursuit).

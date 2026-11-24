@@ -133,7 +133,7 @@ class NavigationService:
         fusion_shadow=False,
         lidar_pose_source="telemetry",
         prefer_short_direct=False,
-        smooth_follow=False,
+        smooth_follow=True,
     ):
         self.session = NavigationSession(
             grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s,
@@ -694,9 +694,11 @@ def main(argv=None):
                         help="experimental: cpu_capture requires a CPU-only LIDR v2 producer")
     parser.add_argument("--prefer-short-direct", action="store_true",
                         help="experimental: prefer a clear, lower sampled terrain-cost direct route up to 8 m")
-    parser.add_argument("--smooth-follow", action="store_true",
-                        help="experimental: lookahead route following with curvature/approach slowdown and "
-                             "acceleration-limited speed-up; stops stay immediate")
+    follow = parser.add_mutually_exclusive_group()
+    follow.add_argument("--classic-follow", action="store_true",
+                        help="use the earlier waypoint follower that stops and rotates at each grid corner")
+    follow.add_argument("--smooth-follow", action="store_true",
+                        help="the default: lookahead route following; accepted for existing commands")
     parser.add_argument("--max-turn-rate-deg-s", type=float, default=None,
                         help="limit commanded turns in degrees/s, no higher than the existing default (~34.38)")
     parser.add_argument("--rear-camera-id", type=int, default=None,
@@ -721,7 +723,7 @@ def main(argv=None):
                                fusion_shadow=args.fusion_shadow,
                                lidar_pose_source=args.lidar_pose_source,
                                prefer_short_direct=args.prefer_short_direct,
-                               smooth_follow=args.smooth_follow) as service:
+                               smooth_follow=not args.classic_follow) as service:
             if args.goal:
                 service.session.set_goal(args.goal)
             print("Navigation API http://127.0.0.1:8766; start Unreal Play after this line.", flush=True)
@@ -733,9 +735,11 @@ def main(argv=None):
             if args.prefer_short_direct:
                 print("Experimental short direct-route preference enabled; terrain costs are sampled, "
                       "and unseen obstacles remain unverified.", flush=True)
-            if args.smooth_follow:
-                print("Experimental smooth following: 0.7 m lookahead, curvature/approach slowdown, "
-                      "ramped speed-up; stops and safety gates are unchanged.", flush=True)
+            if args.classic_follow:
+                print("Classic waypoint following: stops and rotates in place at grid corners.", flush=True)
+            else:
+                print("Smooth following: 0.7 m lookahead, curvature/approach slowdown, ramped speed-up; "
+                      "stops and safety gates are unchanged.", flush=True)
             if args.max_turn_rate_deg_s is not None:
                 print(f"Commanded turn-rate limit: {args.max_turn_rate_deg_s:g} deg/s; "
                       "physical turning and acceleration are not limited by this setting.", flush=True)
