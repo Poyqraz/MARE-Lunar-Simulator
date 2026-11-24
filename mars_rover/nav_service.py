@@ -164,6 +164,7 @@ class NavigationService:
         self._depth_feed_lock = threading.Lock()
         self._depth_pending = None
         self._depth_generation = 0
+        self._depth_superseded = 0
         self._lidar_timing_samples = deque(maxlen=16)
         self._lidar_timing_evicted = 0
         self._lidar_timing_error = None
@@ -188,12 +189,13 @@ class NavigationService:
             raise
 
     def _camera_received(self, frame):
-        depth = self.session.config["depth"]
-        if (self.session.depth_source == "ground_truth" and frame.camera_id == depth["camera_id"]
-                and frame.format == 2):
+        received = time.monotonic()  # arrival: projection, queueing and classification count against freshness
+        # Projection stays on the reader as before; only pose-dependent classification is handed off.
+        prepared = self.session.prepare_depth(frame)
+        if prepared is not None:
             with self._depth_cv:
-                # Arrival is stamped here, so queueing and preparation count against freshness.
-                self._depth_pending = (frame, time.monotonic(), self._depth_generation)
+                self._depth_superseded += int(self._depth_pending is not None)
+                self._depth_pending = (prepared, received, self._depth_generation)
                 self._depth_cv.notify()
         else:
             self.session.feed_camera(frame)
@@ -315,6 +317,8 @@ class NavigationService:
         # service process; the last detailed error can precede a later recovery.
         with self.session.lock:
             result = {key: details.copy() for key, details in self._sensor_transport.items()}
+        with self._depth_cv:
+            result["camera"]["depth_frames_superseded"] = self._depth_superseded
         for key, listener in (("lidar", self.lidar), ("camera", self.camera)):
             if listener is not None:
                 with listener.lock:

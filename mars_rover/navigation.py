@@ -335,23 +335,40 @@ class NavigationSession:
             received = time.monotonic() if now is None else now  # before preparation: it counts against freshness
             self._feed("lidar", scan, received, prepared=self._prepare_observation("lidar", scan))
 
+    def prepare_depth(self, frame):
+        """Project a ground-truth depth frame to camera-frame points; None for any other frame.
+
+        Needs neither the session lock nor the capture pose, so the camera
+        reader can run it and hand the result to feed_camera.
+        """
+        if (self.depth_source != "ground_truth" or frame.camera_id != self.config["depth"]["camera_id"]
+                or frame.format != 2):
+            return None
+        if frame.stamp_ns is None:
+            raise ValueError("Unstamped NAVF v1 is playback-only; navigation needs capture time")
+        settings = self.config["depth"]
+        if "width" in settings and frame.pixels.shape[:2] != (settings["height"], settings["width"]):
+            raise ValueError("Depth resolution changed since calibration")
+        started = time.monotonic()
+        points = depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
+        points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
+        return PreparedGroundTruthFrame(frame.frame_id, frame.stamp_ns, points, max(0.0, time.monotonic() - started))
+
     def feed_camera(self, frame, *, now=None):
+        if isinstance(frame, PreparedGroundTruthFrame):  # projected earlier by prepare_depth
+            received = time.monotonic() if now is None else now
+            self._feed("ground_truth", frame, received, prepared=self._prepare_observation("ground_truth", frame))
+            return
         if frame.stamp_ns is None:
             raise ValueError("Unstamped NAVF v1 is playback-only; navigation needs capture time")
         if frame.camera_id == self.config["depth"]["camera_id"] and frame.format == 2:
             settings = self.config["depth"]
             if "width" in settings and frame.pixels.shape[:2] != (settings["height"], settings["width"]):
                 raise ValueError("Depth resolution changed since calibration")
+            # Keep the original arrival time so projection still counts against freshness.
             received = time.monotonic() if now is None else now
             if self.depth_source == "ground_truth":
-                # This camera-only projection needs neither the session lock
-                # nor the capture pose. Keep the original arrival time so the
-                # time spent here still counts against freshness.
-                started = time.monotonic()
-                points = depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
-                points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
-                frame = PreparedGroundTruthFrame(frame.frame_id, frame.stamp_ns, points,
-                                                 max(0.0, time.monotonic() - started))
+                frame = self.prepare_depth(frame)
             self._feed("ground_truth", frame, received,
                        prepared=self._prepare_observation("ground_truth", frame)
                        if self.depth_source == "ground_truth" else None)
@@ -450,8 +467,10 @@ class NavigationSession:
             if problem:
                 return None
             epoch = self._observation_epoch
+        started = time.monotonic()
         world = transform_points(self._frame_points(key, frame), matrix)
-        return epoch, matrix, world, self.grid.classify(world)
+        classified = self.grid.classify(world)
+        return epoch, matrix, world, classified, max(0.0, time.monotonic() - started)
 
     def _capture_too_old(self, stamp_ns):
         # Sensor and pose clocks are represented at different precisions. This
@@ -486,9 +505,9 @@ class NavigationSession:
                 self._invalidate_fusion()
                 raise ValueError(problem)
             cached = self._prepared.pop(key, None)
-            classified = None
+            classified, classification = None, None
             if key != "stereo" and cached and cached[0] == signature and np.array_equal(cached[1], matrix):
-                points, world, classified = None, cached[2], cached[3]
+                points, world, classified, classification = None, cached[2], cached[3], cached[4]
             elif key == "stereo" or (key == "ground_truth" and not prepared):
                 points = depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
                 points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
@@ -533,6 +552,8 @@ class NavigationSession:
                 self.health[key]["pose_source"] = self.lidar_pose_source
             if prepared:
                 self.health[key].update(preparation_s=preparation, locked_processing_s=locked_processing)
+            if classification is not None:  # done before publication, outside the lock
+                self.health[key]["classification_s"] = classification
             self.used[key] = signature
             if self.fusion_shadow:
                 try:

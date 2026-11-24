@@ -136,7 +136,7 @@ def test_prepared_and_inline_observations_update_the_map_identically():
         with session.lock:
             session._consume(1.0)
         assert not session._prepared
-        health = {k: {kk: vv for kk, vv in v.items() if "processing" not in kk and kk != "preparation_s"}
+        health = {k: {kk: vv for kk, vv in v.items() if not kk.endswith("_s")}  # durations differ
                   for k, v in session.health.items()}
         results.append((session.grid.raw_blocked.copy(), session.grid.revision, health))
     np.testing.assert_array_equal(results[0][0], results[1][0])

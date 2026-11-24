@@ -23,12 +23,18 @@ ayrı neden ölçüldü:
 - `_consume` bu sonucu yalnızca aynı kare, aynı gözlem dönemi (epoch) ve aynı
   yakalama matrisi için kullanıyor. Aksi halde eskisi gibi tam işi kendisi
   yapıyor.
-- Servis, GT karelerini kamera bağlantısının tek okuma iş parçacığından ayrı
-  bir işçide işliyor:
-  - Her zaman en yeni kare işleniyor.
+- GT işi iki iş parçacığına bölünüyor:
+  - Kamera okuma iş parçacığı, eskisi gibi pozdan bağımsız projeksiyonu
+    yapıyor (~65 ms).
+  - Ayrı bir işçi yalnızca poza bağlı sınıflandırmayı yapıyor (medyan
+    63–78 ms).
+  - İşçide en yeni kare kazanıyor. Atlanan kareler
+    `sensor_transport.camera.depth_frames_superseded` ile sayılıyor.
   - Varış zamanı okuma anında damgalanıyor; bekleme ve işleme süresi tazelik
     hesabına dahil.
   - Bir taşıma hatası bekleyen kareyi düşürüyor (nesil sayacı).
+  - Sınıflandırma süresi sağlık raporunda `classification_s` olarak
+    görünüyor.
 - Eşikler, 8 m menzil, tazelik, CPU poz tutarlılık kontrolü ve harita
   sonucu değişmedi. `test_prepared_and_inline_observations_update_the_map_identically`
   iki yolun aynı haritayı verdiğini doğruluyor.
@@ -72,41 +78,56 @@ GNC-Moon-Simulator ayrıntıları:
 Hiçbir repoda Nav2 yapılandırması bulunamadı. Unreal Blueprint tekerlek
 mantığı ve RaphCore firmware'i incelenemedi.
 
-## Native karşılaştırma (aynı seviye, geçici küp, `--allow-replan`)
+## Native A/B (2026-11-24)
 
-Her iki sürüş de spawn noktasından (126, 116) hedefine gitti. Değerler
-telemetriden ölçüldü.
+Koşullar her sürüşte aynıydı: seviye, geçici küp, CPU LiDAR, (126, 116) hedefi,
+`--allow-replan`, sırası karıştırılmış sürüşler. Her sürüş için servis ve Play
+yeniden başlatıldı. Taban, `b8145f8` kodunun scratchpad'e çıkarılmış hâliyle
+çalıştırıldı. Değerler telemetriden ve görev kaydından ölçüldü. Tablodaki
+bütün sürüşler hedefe vardı.
 
-| | Klasik takipçi (`056de721…`) | Kilit dışı + `--smooth-follow` (`29aa5d42…`) |
-|---|---|---|
-| Sonuç | vardı, 130 s | vardı, 94 s |
-| Hareket süresi / ortalama hız | 111 s / 0,114 m/s | 87 s / 0,135 m/s |
-| Ham durma geçişi | 17 | 1 |
-| 0,05 m/s altında geçen süre | %10 | %3 |
-| 50 ms'yi aşan kontrol turu | 693 / 2177 | 0 / 2643 |
-| En uzun tur | 219 ms | 32 ms |
-| Süresi dolmuş karar | 7 | 2 |
-| Pitch standart sapması | 2,12° | 1,37° |
-| Rotadan en büyük sapma | 0,12 m | 0,15 m |
-| GT'nin eklediği hücre | 0 | 0 |
+| Yapılandırma (sürüş) | Varış | Durma geçişi | 0,05 m/s altına düşüş | Pitch std | 50 ms aşan tur | Süresi dolmuş karar |
+|---|---|---|---|---|---|---|
+| Taban, klasik (b1, b2) | 91 / 97 s | 4 / 6 | 2 / 16 | 2,36 / 1,79° | %29 / %31 | 0 / 0 |
+| Kilit dışı, klasik (o3, o4) | 91 / 88 s | 5 / 2 | 10 / 1 | 1,70 / 2,38° | 0 / 0 | 0 / 0 |
+| Kilit dışı + `--smooth-follow` (s3, s4) | 89 / 94 s | **0 / 0** | 7 / 17 | **1,14 / 1,19°** | 0 / 0 | 1 / 0 |
 
-Kayıtlar: `Saved/Mars/gorev-izleme-*-ba5b5817…json` ve
-`…-fe1c53a8…json`.
+Sonuçlar:
 
-Ara sürüm (`1154f222…`), sınıflandırmayı kamera okuma iş parçacığında ve
-kare yayımlandıktan sonra yapıyordu. Önbellek ıskaladı, GT yakalama yaşı
-0,43–0,50 s'ye çıktı ve sürüş 7,4 s'de `sensor_wait_limit` ile durdu. Mevcut
-tasarım bu iki hatayı gideriyor.
+- **Dur-kalkı `--smooth-follow` gideriyor.** Durma geçişi 2–6'dan 0'a indi,
+  pitch salınımı yaklaşık %40 azaldı. Birleşik tasarımdaki üç sürüş de aynı
+  yöndeydi: 1, 0 ve 0 durma; pitch std 1,15–1,37°.
+- **Kilit dışı işleme kontrol turlarının gecikmesini kaldırıyor** (%30 → 0,
+  en uzun tur 94–141 ms → 16–31 ms). İki sürüşle durma sayısına net bir
+  etkisi ayırt edilemiyor.
+- Varış süreleri benzer (88–97 s), çünkü düz kesimlerdeki hız sınırı aynı
+  (0,15 m/s).
+- Rotadan en büyük sapma her yapılandırmada 0,09–0,14 m.
+- Daha önceki tek taban sürüşü (`056de721…`) 130 s ve 17 durmaydı. Sürüşler
+  arası değişkenlik büyük; tek sürüşlük karşılaştırma yanıltıcı olabilir.
+
+**İlk işçi tasarımı neden kötüydü?** İlk sürümde projeksiyon ve
+sınıflandırma aynı işçide yapılıyordu (`150046a`, sürüşler o1, o2). GT verisi
+sık sık 0,4 s sınırını aştı: 79 ve 22 sensör beklemesi, 9 ve 5 süresi dolmuş
+karar, 104–112 s varış. Taban sürüşlerinde bu beklemelerden hiç yoktu. İş iki
+iş parçacığına bölününce beklemeler 6 ve 0'a, süresi dolmuş kararlar 0'a indi.
+Ölçülen atlanan kare sayısı 0. Eski sürümde kare atlandığı bir hipotezdir;
+sayaç o sürümde yoktu.
+
+Ondan önceki ara sürüm (`1154f222…`), sınıflandırmayı kamera okuma iş
+parçacığında ve kare yayımlandıktan sonra yapıyordu. Önbellek ıskaladı ve
+sürüş 7,4 s'de `sensor_wait_limit` ile durdu.
 
 ## Sınırlar
 
-- Her yapılandırma için yalnızca birer native sürüş var. İki değişikliğin
-  etkisi ayrı ayrı ölçülmedi.
+- Her yapılandırma için iki sürüş var. Durma sayısındaki farklar
+  istatistiksel olarak sınanmadı; yalnızca `--smooth-follow` farkı tutarlı.
+- `--smooth-follow` kilit dışı işleme olmadan ölçülmedi.
 - Takipçi kinematik olarak test edildi: gerçek arazi rotalarında rota
   ortasında 0 durma, koridor dışına çıkış yok. Bu fizik, kayma veya çarpışma
   doğrulaması değildir.
-- Hareketsiz durumda GT yakalama yaşı 0,2–0,37 s ölçüldü. 0,4 s sınırına
-  pay az; 5 Hz kare aralığı ve Unreal'ın render gecikmesi bunun çoğunu
-  oluşturuyor.
+- GT yakalama yaşı 0,4 s sınırına yakın. s4'te 23 kısa GT bekleme olayı
+  vardı; durma geçişi 0 olsa da pay az. 5 Hz kare aralığı ve Unreal'ın render
+  gecikmesi bu payın çoğunu tüketiyor.
 - Köşelerde rota 0,1–0,15 m kesilebiliyor. Şişirilmiş harita ve 1 s'lik yay
   kontrolü bunu sınırlıyor, ancak rotanın güvenli olduğunu kanıtlamıyor.
