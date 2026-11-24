@@ -85,21 +85,24 @@ def preview(static, context, goal):
     }
 
 
-def goal_chooser(static, goal, *, expect_session=None, expect_map_revision=None):
+def goal_chooser(static, goal, *, expect_session=None, expect_map_revision=None, allow_replan=False):
     def choose(context):
         if expect_session is not None and (context["session_id"] != expect_session
                                            or context["map_revision"] != expect_map_revision):
             raise ValueError("Oturum veya harita revizyonu onizlemeden farkli; once yeniden onizleme yapin")
         result = preview(static, context, goal)
         length = result["route_length_m"]
+        # Replans may lengthen the route; widen the sampled bounds but keep them finite.
+        scale = 2.0 if allow_replan else 1.0
         return {
             "goal_m": goal,
             "details": {k: result[k] for k in ("route_length_m", "direct_segment_open", "test_type")},
             "preview": result,
             "route_m": [tuple(p) for p in result["route_m"]],
             "max_cross_track_m": MAX_CROSS_TRACK_M,
-            "limits": {"duration_s": min(MAX_DURATION_S, 2 * length / FOLLOW_SPEED_M_S + 20.0),
-                       "displacement_m": length + 0.5, "sampled_path_m": 1.3 * length + 1.0},
+            "allow_replan": allow_replan,
+            "limits": {"duration_s": min(MAX_DURATION_S, scale * 2 * length / FOLLOW_SPEED_M_S + 20.0),
+                       "displacement_m": scale * length + 0.5, "sampled_path_m": scale * 1.3 * length + 1.0},
         }
     return choose
 
@@ -112,6 +115,9 @@ def main(argv=None, *, get=short.common._get, post=short.common._post, log=print
     parser.add_argument("--send", action="store_true", help="Send the goal after repeating the preflight")
     parser.add_argument("--expect-session", help="session_id printed by the read-only preview (required with --send)")
     parser.add_argument("--expect-map-revision", type=int, help="map_revision printed by the preview")
+    parser.add_argument("--allow-replan", action="store_true",
+                        help="Continue through service replans (newly observed cells); cross-track then uses the "
+                             "active plan and plan revisions are reported. Default stops on any replan.")
     args = parser.parse_args(argv)
     if not all(math.isfinite(v) for v in args.goal):
         parser.error("--goal must be finite")
@@ -127,7 +133,7 @@ def main(argv=None, *, get=short.common._get, post=short.common._post, log=print
             log("Hedef gonderilmedi (salt okunur onizleme).")
             return ready["preview"]
         chooser = goal_chooser(static, goal, expect_session=args.expect_session,
-                               expect_map_revision=args.expect_map_revision)
+                               expect_map_revision=args.expect_map_revision, allow_replan=args.allow_replan)
         summary = short.run(get=get, post=post, log=log, choose_goal=chooser)
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise SystemExit("ON_KONTROL_BASARISIZ: " + str(error) + "; hedef gonderilmedi.") from error

@@ -119,8 +119,9 @@ def run(*, get=common._get, post=common._post, now=time.monotonic, sleep=time.sl
     limits = {"duration_s": MAX_DURATION_S, "displacement_m": MAX_DISPLACEMENT_M,
               "sampled_path_m": MAX_SAMPLED_PATH_M, **ready.get("limits", {})}
     route = ready.get("route_m")
+    allow_replan = ready.get("allow_replan") is True
     max_cross_track = 0.0 if route else None
-    map_revisions = []
+    map_revisions, plan_revisions = [], []
     attempted = confirmed = stop_ok = False
     reason, error, mission_id, final_status = "timeout", None, None, None
     first_position = tuple(ready["position_m"][:2])
@@ -177,12 +178,18 @@ def run(*, get=common._get, post=common._post, now=time.monotonic, sleep=time.sl
                 reason = "distance_limit"
                 break
             if route:
+                active = mission.get("active_plan")
+                if allow_replan and isinstance(active, list) and len(active) >= 2:
+                    # After a replan the service follows its new plan; measure against that.
+                    route = [tuple(p[:2]) for p in active]
                 max_cross_track = max(max_cross_track, _cross_track_m(current_xy, route))
                 if max_cross_track > ready["max_cross_track_m"]:
                     reason = "route_deviation"
                     break
             if snapshot.get("map_revision") not in map_revisions:
                 map_revisions.append(snapshot.get("map_revision"))
+            if mission.get("plan_revision") not in plan_revisions:
+                plan_revisions.append(mission.get("plan_revision"))
             message = (state, mission.get("plan_revision"), snapshot.get("map_revision"))
             if message != last_message:
                 log(f"{now() - started:.1f} s | durum={state} | poz={list(current_xy)} | "
@@ -191,14 +198,15 @@ def run(*, get=common._get, post=common._post, now=time.monotonic, sleep=time.sl
             if state in ("arrived", "blocked", "stalled_or_timed_out", "disconnected"):
                 reason = str(state)
                 break
-            if state == "replanning" or (type(mission.get("plan_revision")) is int
-                                          and mission["plan_revision"] > 1):
+            if not allow_replan and (state == "replanning" or (type(mission.get("plan_revision")) is int
+                                                               and mission["plan_revision"] > 1)):
                 reason = "replanning_detected"
                 break
-            if state in ("waiting_for_pose", "waiting_for_fresh_data"):
+            if state == "waiting_for_pose":
                 reason = str(state)
                 break
-            if state == "waiting_for_sensors":
+            # The service already commands zero in both states; bound only how long they last continuously.
+            if state in ("waiting_for_sensors", "waiting_for_fresh_data"):
                 wait_started = now() if wait_started is None else wait_started
                 if now() - wait_started > MAX_SENSOR_WAIT_S:
                     reason = "sensor_wait_limit"
@@ -228,7 +236,8 @@ def run(*, get=common._get, post=common._post, now=time.monotonic, sleep=time.sl
             "stop_request_succeeded": stop_ok, "start_session_id": ready["session_id"],
             "mission_id": mission_id, "goal_m": ready["goal_m"], "start_position_m": ready["position_m"],
             "sampled_path_m": sampled_path, "max_cross_track_m": max_cross_track,
-            "map_revisions_seen": map_revisions, "final_status": final_status}
+            "map_revisions_seen": map_revisions, "plan_revisions_seen": plan_revisions,
+            "replans_allowed": allow_replan, "final_status": final_status}
 
 
 def main():

@@ -110,13 +110,21 @@ def test_preflight_never_sends_motion_for_invalid_or_stale_inputs(invalid):
 
 @pytest.mark.parametrize("state,reason", [("replanning", "replanning_detected"),
                                           ("blocked", "blocked"),
-                                          ("waiting_for_sensors", "sensor_wait_limit")])
+                                          ("waiting_for_sensors", "sensor_wait_limit"),
+                                          ("waiting_for_fresh_data", "sensor_wait_limit")])
 def test_replan_block_or_persistent_sensor_wait_stops_the_test(state, reason):
     sim = Simulation()
     sim.states = [state]
     result = sim.run()
     assert result["reason"] == reason
     assert result["stop_request_succeeded"]
+    assert sim.calls == ["/goal", "/stop"]
+
+
+def test_brief_fresh_data_wait_recovers_and_the_drive_continues():
+    sim = Simulation()
+    sim.states = ["following", "waiting_for_fresh_data", "following", "arrived"]
+    assert sim.run()["reason"] == "arrived"
     assert sim.calls == ["/goal", "/stop"]
 
 

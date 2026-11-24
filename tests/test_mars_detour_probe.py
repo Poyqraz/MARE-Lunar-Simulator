@@ -78,6 +78,17 @@ def test_supervised_detour_arrives_and_reports_route_metrics():
     assert result["map_revisions_seen"] == [0]
 
 
+@pytest.mark.parametrize("allow,reason", [(False, "replanning_detected"), (True, "arrived")])
+def test_replans_stop_by_default_and_are_reported_when_allowed(allow, reason):
+    static, sim = scene()
+    sim.states = ["following", "replanning", "following", "arrived"]
+    chooser = probe.goal_chooser(static, GOAL, expect_session="session", expect_map_revision=0, allow_replan=allow)
+    result = short.run(get=sim.get, post=sim.post, now=sim.now, sleep=sim.sleep, log=lambda _: None,
+                       choose_goal=chooser)
+    assert result["reason"] == reason and result["replans_allowed"] is allow
+    assert sim.calls == ["/goal", "/stop"] and result["stop_request_succeeded"]
+
+
 def test_cross_track_deviation_stops_the_drive():
     static, sim = scene()
     sim.position = [4.0, 5.0, 1.0]  # 1 m behind the route start

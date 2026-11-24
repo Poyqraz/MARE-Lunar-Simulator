@@ -84,3 +84,35 @@ this probe deliberately stops on. A 2026-11-23 offline reconstruction of the
 2026-11-05 cube record (bundled DEM plus its three recorded LiDAR cells,
 start/goal from the later preview) reproduced the earlier 12.131 m route; that
 is not a native drive.
+
+`--allow-replan` keeps driving through service replans caused by newly
+observed cells; cross-track is then measured against the service's active
+plan and the summary lists plan and map revisions. Brief
+`waiting_for_fresh_data` states (a control decision whose inputs expired, sent
+as a zero command) share the existing 3 s continuous sensor-wait bound instead
+of ending the probe at once.
+
+Native run, 2026-11-24, level `JezeroRover_5c8b3fa632eb`, temporary unsaved
+1 m cube at UE (-12590, 11830, 570) cm, CPU LiDAR 160x120 at 5 Hz with capture
+pose, session `f8125483-1985-4386-94ae-3134553d78c7`:
+
+- Without `--allow-replan` the probe stopped after 3.4 s: ground-truth depth
+  first saw the cube's second row (cell [118,126], residual 0.55 m) and the
+  service replanned correctly.
+- With `--allow-replan`, mission `07e1823a…` drove 1.3 m and stopped on the old
+  immediate `waiting_for_fresh_data` rule; mission `791b82c8…` then continued
+  from (127.0, 124.85) and `arrived` after 87 s: 10.90 m XY, final error
+  0.248 m, maximum sampled cross-track 0.16 m, no replan, closest rover centre
+  1.60 m from the cube footprint. Records:
+  `Saved/Mars/gorev-izleme-*-239bd88a4a334395a67a88b26d2f7304.json`.
+- An earlier session (`b504fcfb…`, mission `93f1bedc…`) stopped when
+  ground-truth depth added six ground-level cells in a band near 8 m
+  (residual 0.150-0.159 m) during the initial turn-in-place, with frame body
+  pitch -5.6 deg. Bridge telemetry during turns showed pitch from -6 to +7 deg
+  and up to 2.1 deg change between consecutive 33 ms samples, so a one-sample
+  capture/pose offset explains this magnitude at 8 m. This is a measured
+  hypothesis, not a proven cause; it is unresolved.
+
+This shows following a planned route around one known, already mapped
+positive obstacle in simulation. It is not validation of small rocks, negative
+hazards, depth false positives, or obstacles introduced during motion.
