@@ -271,10 +271,12 @@ class TerrainMap:
             + dy * ((1 - dx) * self.heights[i + 1, j] + dx * self.heights[i + 1, j + 1])
         )
 
-    def observe(self, points, *, source=None, diagnostics=False, diagnostic_focus=()):
-        source_codes = {None: 0, "lidar": 1, "ground_truth": 2, "stereo": 3}
-        if source not in source_codes:
-            raise ValueError("Unknown observation source")
+    def classify(self, points):
+        """Height residuals and hazard cells of map points; reads only the immutable DEM.
+
+        Pure, so a sensor thread can run it outside the session lock and hand
+        the result to ``observe(classified=...)``.
+        """
         points = np.asarray(points, dtype=float)
         if points.ndim != 2 or points.shape[1] != 3:
             raise ValueError("Observed points must be Nx3 local-map metres")
@@ -293,10 +295,23 @@ class TerrainMap:
             (1 - dx) * self.heights[i + 1, j] + dx * self.heights[i + 1, j + 1]
         )
         residual = points[:, 2] - heights
-        positive = int(np.sum(residual > self.limits.obstacle_height_m))
-        negative = int(np.sum(residual < -self.limits.obstacle_height_m))
         hazard = np.isfinite(residual) & (np.abs(residual) > self.limits.obstacle_height_m)
-        rows, cols = np.floor(r[hazard] + 0.5).astype(int), np.floor(c[hazard] + 0.5).astype(int)
+        return {"points": points, "residual": residual, "hazard": hazard,
+                "rows": np.floor(r[hazard] + 0.5).astype(int), "cols": np.floor(c[hazard] + 0.5).astype(int),
+                "positive": int(np.sum(residual > self.limits.obstacle_height_m)),
+                "negative": int(np.sum(residual < -self.limits.obstacle_height_m)),
+                "obstacle_height_m": self.limits.obstacle_height_m}
+
+    def observe(self, points, *, source=None, diagnostics=False, diagnostic_focus=(), classified=None):
+        source_codes = {None: 0, "lidar": 1, "ground_truth": 2, "stereo": 3}
+        if source not in source_codes:
+            raise ValueError("Unknown observation source")
+        if classified is None or classified.get("obstacle_height_m") != self.limits.obstacle_height_m:
+            classified = self.classify(points)
+        h, w = self.heights.shape
+        points, residual, hazard = classified["points"], classified["residual"], classified["hazard"]
+        rows, cols = classified["rows"], classified["cols"]
+        positive, negative = classified["positive"], classified["negative"]
         newly_blocked = ~self.raw_blocked[rows, cols]
         changed = bool(np.any(newly_blocked))
         self.first_sensor_source[rows[newly_blocked], cols[newly_blocked]] = source_codes[source]

@@ -52,7 +52,7 @@ class RouteFollower:
         self.speed, self.angular_limit = speed_m_s, angular_limit_rad_s
         self.arrived = False
 
-    def command(self, pose):
+    def command(self, pose, now=None):
         x, y, heading = pose
         if not all(math.isfinite(v) for v in pose):
             raise ValueError("Non-finite tracking pose")
@@ -66,6 +66,103 @@ class RouteFollower:
         w = max(-self.angular_limit, min(self.angular_limit, 2 * error))
         v = self.speed * max(0, math.cos(error)) if abs(error) < 0.25 else 0
         return v, w
+
+    def sent(self, v, w, now):
+        """The session overrode the command (e.g. arc check); stateless here."""
+
+
+class SmoothRouteFollower(RouteFollower):
+    """Regulated pure pursuit on the grid polyline, after Nav2's RegulatedPurePursuitController.
+
+    Steers to a carrot LOOKAHEAD_M ahead on the route instead of each grid
+    vertex, so 45-degree grid corners are taken as arcs rather than stop,
+    rotate, go. Speed drops with path curvature and near the goal; it rotates
+    in place only for large heading errors (start, replans). Speed increases
+    are acceleration-limited; any decrease, and every stop the session issues,
+    is immediate. Safety gates stay in NavigationSession (freshness, inflated
+    map, 1 s arc check, arrival tolerance).
+    """
+
+    LOOKAHEAD_M = 0.7
+    ROTATE_ABOVE_RAD = math.radians(45)    # Nav2 rotate_to_heading_min_angle 0.785
+    ROTATE_UNTIL_RAD = math.radians(20)    # hysteresis, so a rotation is finished cleanly
+    APPROACH_M = 0.6                       # Nav2 approach_velocity_scaling_dist
+    MIN_APPROACH_M_S = 0.05                # Nav2 min_approach_linear_velocity
+    LINEAR_ACCEL_M_S2 = 0.25
+    ANGULAR_ACCEL_RAD_S2 = 0.8
+    RAMP_RESET_S = 0.2                     # a longer gap means the session already stopped the rover
+
+    def __init__(self, route, **kwargs):
+        super().__init__(route, **kwargs)
+        self.rotating = False
+        self._last = (0.0, 0.0, None)
+
+    def _carrot(self, x, y):
+        """Advance the vertex index by projection; return the lookahead point."""
+        route = self.route
+        if len(route) == 1:
+            return route[0]
+        best = None
+        for k in range(max(1, self.index), min(len(route), self.index + 3)):
+            (ax, ay), (bx, by) = route[k - 1], route[k]
+            dx, dy = bx - ax, by - ay
+            length2 = dx * dx + dy * dy
+            t = 0.0 if length2 == 0 else max(0.0, min(1.0, ((x - ax) * dx + (y - ay) * dy) / length2))
+            distance = math.hypot(ax + t * dx - x, ay + t * dy - y)
+            if best is None or distance < best[0] - 1e-9:
+                best = (distance, k, t)
+        _, k, t = best
+        self.index = k if t < 1 or k == len(route) - 1 else k + 1
+        (ax, ay), (bx, by) = route[k - 1], route[k]
+        point, remaining = (ax + t * (bx - ax), ay + t * (by - ay)), self.LOOKAHEAD_M
+        while True:
+            step = math.dist(point, route[k])
+            if step >= remaining or k == len(route) - 1:
+                f = 1.0 if step == 0 else min(1.0, remaining / step)
+                return point[0] + f * (route[k][0] - point[0]), point[1] + f * (route[k][1] - point[1])
+            remaining -= step
+            point, k = route[k], k + 1
+
+    def command(self, pose, now=None):
+        x, y, heading = pose
+        if not all(math.isfinite(v) for v in pose):
+            raise ValueError("Non-finite tracking pose")
+        if self.arrived or math.dist((x, y), self.route[-1]) <= 0.25:
+            self.arrived = True
+            self._last = (0.0, 0.0, now)
+            return 0, 0
+        cx, cy = self._carrot(x, y)
+        alpha = (math.atan2(cy - y, cx - x) - heading + math.pi) % (2 * math.pi) - math.pi
+        self.rotating = abs(alpha) > (self.ROTATE_UNTIL_RAD if self.rotating else self.ROTATE_ABOVE_RAD)
+        if self.rotating:
+            v, w = 0.0, max(-self.angular_limit, min(self.angular_limit, 2 * alpha))
+        else:
+            distance = max(math.dist((x, y), (cx, cy)), 1e-6)
+            curvature = 2 * math.sin(alpha) / distance
+            goal = math.dist((x, y), self.route[-1])
+            v = min(self.speed * math.cos(alpha),
+                    self.angular_limit / abs(curvature) if curvature else self.speed,
+                    max(self.MIN_APPROACH_M_S, self.speed * goal / self.APPROACH_M))
+            w = max(-self.angular_limit, min(self.angular_limit, v * curvature))
+        return self._ramp(v, w, now)
+
+    def _ramp(self, v, w, now):
+        last_v, last_w, last_at = self._last
+        dt = None if now is None or last_at is None else now - last_at
+        if dt is None or not 0 <= dt <= self.RAMP_RESET_S:
+            last_v = last_w = 0.0
+            dt = 0.05 if now is not None else None
+        if dt is not None:
+            if v > last_v:
+                v = min(v, last_v + self.LINEAR_ACCEL_M_S2 * dt)
+            if abs(w) > abs(last_w) or w * last_w < 0:
+                base = last_w if w * last_w > 0 else 0.0
+                w = math.copysign(min(abs(w), abs(base) + self.ANGULAR_ACCEL_RAD_S2 * dt), w)
+        self._last = (v, w, now)
+        return v, w
+
+    def sent(self, v, w, now):
+        self._last = (float(v), float(w), now)
 
 
 class NavigationSession:
@@ -84,6 +181,7 @@ class NavigationSession:
         fusion_shadow=False,
         lidar_pose_source="telemetry",
         prefer_short_direct=False,
+        smooth_follow=False,
     ):
         if (
             config.get("schema_version") != 1
@@ -100,6 +198,7 @@ class NavigationSession:
             or type(fusion_shadow) is not bool
             or lidar_pose_source not in ("telemetry", "cpu_capture")
             or type(prefer_short_direct) is not bool
+            or type(smooth_follow) is not bool
         ):
             raise ValueError("Sensor config must match this terrain; invalid navigation settings")
         try:
@@ -143,6 +242,7 @@ class NavigationSession:
         self.settle_s = settle_s
         self.lidar_pose_source = lidar_pose_source
         self.prefer_short_direct = prefer_short_direct
+        self.smooth_follow = smooth_follow
         self.angular_limit_rad_s = float(angular_limit_rad_s)
         self.lock = threading.RLock()
         self.history = PoseHistory()
@@ -170,6 +270,9 @@ class NavigationSession:
         self._fusion_frames = {}
         self._fusion_error = None
         self._fusion_epoch = 0
+        # Frames transformed and classified outside the lock; see _prepare_observation.
+        self._prepared = {}
+        self._observation_epoch = 0
 
     def set_goal(self, goal):
         with self.lock:
@@ -195,6 +298,7 @@ class NavigationSession:
         self.mission.new_session(reason)
         self.stop()
         self.history = PoseHistory()
+        self._drop_prepared()
         self.latest.clear()
         self.used.clear()
         self.health.clear()
@@ -222,12 +326,14 @@ class NavigationSession:
             has_capture = scan.cpu_capture_to_world is not None
             if has_capture != (self.lidar_pose_source == "cpu_capture"):
                 with self.lock:
+                    self._drop_prepared()
                     self.latest.pop("lidar", None)
                     self.used.pop("lidar", None)
                     self.health.pop("lidar", None)
                     self._invalidate_fusion()
                 raise ValueError("LiDAR packet pose source does not match the configured pose source")
-            self._feed("lidar", scan, now)
+            received = time.monotonic() if now is None else now  # before preparation: it counts against freshness
+            self._feed("lidar", scan, received, prepared=self._prepare_observation("lidar", scan))
 
     def feed_camera(self, frame, *, now=None):
         if frame.stamp_ns is None:
@@ -246,7 +352,9 @@ class NavigationSession:
                 points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
                 frame = PreparedGroundTruthFrame(frame.frame_id, frame.stamp_ns, points,
                                                  max(0.0, time.monotonic() - started))
-            self._feed("ground_truth", frame, received)
+            self._feed("ground_truth", frame, received,
+                       prepared=self._prepare_observation("ground_truth", frame)
+                       if self.depth_source == "ground_truth" else None)
         if self.depth_source == "stereo" and frame.format == 1:
             from .stereo import stereo_pair_depth
 
@@ -277,13 +385,73 @@ class NavigationSession:
                             # input, including time spent computing disparity.
                             self._feed("stereo", depth, min(left_received, right_received))
 
-    def _feed(self, key, value, now):
+    def _feed(self, key, value, now, prepared=None):
         received = time.monotonic() if now is None else now
         with self.lock:
             old = self.latest.get(key)
             if old and value.stamp_ns < old[0].stamp_ns:
                 return
             self.latest[key] = value, received
+            # Published with the frame, so _consume never sees it without its cache.
+            if prepared is not None and prepared[0] == self._observation_epoch:
+                self._prepared[key] = ((value.frame_id, value.stamp_ns), *prepared[1:])
+            else:
+                self._prepared.pop(key, None)
+
+    def _drop_prepared(self):
+        self._observation_epoch += 1
+        self._prepared.clear()
+
+    def _settings(self, key):
+        return (self.config["lidar"] if key == "lidar"
+                else self.config["depth"] if key == "ground_truth" else self.config["stereo"])
+
+    def _capture_matrix(self, key, frame, pose):
+        """World-from-sensor for a capture and a problem string when the CPU pose is implausible."""
+        matrix = pose.matrix @ transform_matrix(self._settings(key)["to_body"])
+        if key == "lidar" and self.lidar_pose_source == "cpu_capture":
+            measured = transform_matrix(frame.cpu_capture_to_world)
+            # Catch the wrong rover, origin, or mount instead of placing
+            # its points on this map. This is a plausibility check, not a
+            # calibration or a substitute for synchronized telemetry.
+            translation = np.linalg.norm(measured[:3, 3] - matrix[:3, 3])
+            cosine = (np.trace(measured[:3, :3].T @ matrix[:3, :3]) - 1) / 2
+            angle = math.acos(float(np.clip(cosine, -1, 1)))
+            if translation > 0.3 or angle > math.radians(15):
+                return None, "CPU LiDAR capture pose disagrees with calibrated telemetry"
+            return measured, None
+        return matrix, None
+
+    @staticmethod
+    def _frame_points(key, frame):
+        """In-range sensor-frame points of a LiDAR scan or prepared ground-truth frame."""
+        if key == "ground_truth" and isinstance(frame, PreparedGroundTruthFrame):
+            return frame.points
+        points = frame.points
+        return points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
+
+    def _prepare_observation(self, key, frame):
+        """Transform and classify a frame before it is published, without the session lock.
+
+        A large depth frame used to occupy the control loop for ~0.1 s inside
+        _consume. The map update and all freshness and pose checks stay in
+        _consume, which reuses this result only for the same frame,
+        observation epoch and capture matrix. Without a bracketing pose yet
+        (or for an unprepared depth frame) it returns None and _consume does
+        the full work as before.
+        """
+        if key == "ground_truth" and not isinstance(frame, PreparedGroundTruthFrame):
+            return None
+        with self.lock:
+            try:
+                matrix, problem = self._capture_matrix(key, frame, self.history.at(frame.stamp_ns))
+            except ValueError:
+                return None
+            if problem:
+                return None
+            epoch = self._observation_epoch
+        world = transform_points(self._frame_points(key, frame), matrix)
+        return epoch, matrix, world, self.grid.classify(world)
 
     def _capture_too_old(self, stamp_ns):
         # Sensor and pose clocks are represented at different precisions. This
@@ -309,33 +477,23 @@ class NavigationSession:
                                     "capture_stale": True, "stamp_ns": frame.stamp_ns}
                 self._invalidate_fusion()
                 continue
-            settings = (
-                self.config["lidar"]
-                if key == "lidar"
-                else self.config["depth"]
-                if key == "ground_truth"
-                else self.config["stereo"]
-            )
+            settings = self._settings(key)
             prepared = key == "ground_truth" and isinstance(frame, PreparedGroundTruthFrame)
-            if prepared:
-                points = frame.points
-            else:
-                points = frame.points if key == "lidar" else depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
+            matrix, problem = self._capture_matrix(key, frame, pose)
+            if problem:
+                self._prepared.pop(key, None)
+                self.health.pop("lidar", None)
+                self._invalidate_fusion()
+                raise ValueError(problem)
+            cached = self._prepared.pop(key, None)
+            classified = None
+            if key != "stereo" and cached and cached[0] == signature and np.array_equal(cached[1], matrix):
+                points, world, classified = None, cached[2], cached[3]
+            elif key == "stereo" or (key == "ground_truth" and not prepared):
+                points = depth_points(frame.depth_m(), hfov_deg=settings["hfov_deg"])
                 points = points[np.isfinite(points).all(axis=1) & (np.linalg.norm(points, axis=1) <= 8)]
-            matrix = pose.matrix @ transform_matrix(settings["to_body"])
-            if key == "lidar" and self.lidar_pose_source == "cpu_capture":
-                measured = transform_matrix(frame.cpu_capture_to_world)
-                # Catch the wrong rover, origin, or mount instead of placing
-                # its points on this map. This is a plausibility check, not a
-                # calibration or a substitute for synchronized telemetry.
-                translation = np.linalg.norm(measured[:3, 3] - matrix[:3, 3])
-                cosine = (np.trace(measured[:3, :3].T @ matrix[:3, :3]) - 1) / 2
-                angle = math.acos(float(np.clip(cosine, -1, 1)))
-                if translation > 0.3 or angle > math.radians(15):
-                    self.health.pop("lidar", None)
-                    self._invalidate_fusion()
-                    raise ValueError("CPU LiDAR capture pose disagrees with calibrated telemetry")
-                matrix = measured
+            else:
+                points = self._frame_points(key, frame)
             if key == "stereo" and len(points):
                 # A stated one-pixel disparity scenario, not measured error:
                 # sigma_Z ~= Z^2/(fx*baseline). Propagate along each viewing
@@ -344,10 +502,12 @@ class NavigationSession:
                 sigma_z = points[:, 2] ** 2 / (fx * settings["baseline_m"])
                 height_factor = np.abs((points @ matrix[:3, :3].T)[:, 2] / points[:, 2])
                 points = points[3 * sigma_z * height_factor <= self.grid.limits.obstacle_height_m / 2]
-            world = transform_points(points, matrix)
+            if classified is None:
+                world = transform_points(points, matrix)
             if self.obstacle_diagnostics:
                 focus = (pose.xy_heading[:2], self.goal) if self.goal else (pose.xy_heading[:2],)
-                report = self.grid.observe(world, source=key, diagnostics=True, diagnostic_focus=focus)
+                report = self.grid.observe(world, source=key, diagnostics=True, diagnostic_focus=focus,
+                                           classified=classified)
                 diagnostic = report.pop("diagnostics")
                 if report["map_changed"] or "collection_error" in diagnostic:
                     self._obstacle_frames_evicted += int(len(self._obstacle_frames) == self._obstacle_frames.maxlen)
@@ -364,7 +524,7 @@ class NavigationSession:
                         "valid_inside_points": report["valid_inside_points"], **diagnostic,
                     })
             else:
-                report = self.grid.observe(world, source=key)
+                report = self.grid.observe(world, source=key, classified=classified)
             locked_processing = max(0.0, time.monotonic() - processing_started)
             preparation = frame.preparation_s if prepared else 0.0
             self.health[key] = {**report, "received_at": received, "stamp_ns": frame.stamp_ns,
@@ -500,6 +660,7 @@ class NavigationSession:
                     # A missing interval is not a bracketing pose or a clear
                     # corridor. Fresh sensor captures must re-establish health.
                     self.history = PoseHistory()
+                    self._drop_prepared()
                     self.latest.clear()
                     self.used.clear()
                     self.health.clear()
@@ -654,7 +815,7 @@ class NavigationSession:
                 if self.follower is None:
                     route = (self.grid.plan(xyh[:2], self.goal, prefer_short_direct=True)
                              if self.prefer_short_direct else self.grid.plan(xyh[:2], self.goal))
-                    self.follower = RouteFollower(
+                    self.follower = (SmoothRouteFollower if self.smooth_follow else RouteFollower)(
                         route, speed_m_s=self.speed, angular_limit_rad_s=self.angular_limit_rad_s
                     )
                     self.mission.plan(route, self.grid.revision)
@@ -666,7 +827,7 @@ class NavigationSession:
                 if not self.grid.segment_clear(xyh[:2], self.follower.route[self.follower.index]):
                     self.follower, self.state = None, "replanning"
                     return 0, 0
-                command = self.follower.command(xyh)
+                command = self.follower.command(xyh, now)
                 if self.follower.arrived:
                     self.state = "arrived"
                     return 0, 0
@@ -688,6 +849,7 @@ class NavigationSession:
                     y += command[0] * math.sin(yaw) * 0.1
                     yaw += command[1] * 0.1
                     if not self.grid.segment_clear(previous, (x, y)):
+                        self.follower.sent(0, command[1], now)
                         return 0, command[1]
                 return command
             except (ValueError, KeyError, TypeError) as error:

@@ -318,3 +318,55 @@ def test_observed_obstacle_stops_then_replans_around_the_blocked_route():
     assert session.status()["replans"] == 2
     assert any(y != 5 for x, y in route)
     assert all(grid.segment_clear(a, b) for a, b in zip(route, route[1:]))
+
+
+def _drive(follower, pose, dt=0.05, steps=4000):
+    x, y, yaw = pose
+    log = []
+    for k in range(steps):
+        v, w = follower.command((x, y, yaw), k * dt)
+        if follower.arrived:
+            break
+        log.append((x, y, v, w))
+        x, y, yaw = x + v * math.cos(yaw) * dt, y + v * math.sin(yaw) * dt, yaw + w * dt
+    return log
+
+
+def test_smooth_follower_takes_grid_corners_without_stopping_and_stays_near_the_route():
+    route = [(0, 0), (1, 0), (2, 1), (3, 1), (4, 2), (4, 3), (5, 4)]
+    follower = nav().SmoothRouteFollower(route, speed_m_s=0.15, angular_limit_rad_s=math.radians(20))
+    log = _drive(follower, (0.0, 0.0, 0.0))
+    assert follower.arrived
+    speeds = [v for _, _, v, _ in log]
+    cruising = next(i for i, v in enumerate(speeds) if v >= 0.04)  # after the start-up ramp
+    assert min(speeds[cruising:]) >= 0.04  # approach floor, never a corner stop
+    from tools.mars_cpu_lidar_short_probe import _cross_track_m
+    assert max(_cross_track_m((x, y), route) for x, y, _, _ in log) < 0.3
+    classic = nav().RouteFollower(route, speed_m_s=0.15, angular_limit_rad_s=math.radians(20))
+    assert sum(v < 0.01 for _, _, v, _ in _drive(classic, (0.0, 0.0, 0.0))) > 10
+
+
+def test_smooth_follower_ramps_speed_up_but_drops_it_at_once():
+    follower = nav().SmoothRouteFollower([(0, 0), (10, 0)], speed_m_s=0.15)
+    v0, _ = follower.command((0.0, 0.0, 0.0), 0.0)
+    v1, _ = follower.command((0.0, 0.0, 0.0), 0.05)
+    assert v0 == pytest.approx(0.0125) and v1 == pytest.approx(0.025)
+    for k in range(2, 40):
+        v, _ = follower.command((0.0, 0.0, 0.0), k * 0.05)
+    assert v == pytest.approx(0.15)
+    v, _ = follower.command((0.0, 0.0, math.radians(30)), 2.0)  # heading error: slower at once
+    assert v < 0.15 * math.cos(math.radians(30)) + 1e-9
+    v, _ = follower.command((0.0, 0.0, 0.0), 2.6)  # a gap > 0.2 s: the session had stopped us
+    assert v == pytest.approx(0.0125)
+    follower.sent(0, 0, 2.65)  # an overridden command is also the ramp's new base
+    assert follower.command((0.0, 0.0, 0.0), 2.7)[0] == pytest.approx(0.0125)
+
+
+def test_smooth_follower_rotates_in_place_only_for_large_heading_errors():
+    follower = nav().SmoothRouteFollower([(0, 0), (0, 5)], speed_m_s=0.15)
+    v, w = follower.command((0.0, 0.0, 0.0))  # carrot 90 degrees left
+    assert v == 0 and w > 0 and follower.rotating
+    v, _ = follower.command((0.0, 0.0, math.radians(60)))  # still rotating until within 20 degrees
+    assert v == 0
+    v, _ = follower.command((0.0, 0.0, math.radians(80)))
+    assert v > 0 and not follower.rotating

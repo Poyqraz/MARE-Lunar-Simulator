@@ -133,6 +133,7 @@ class NavigationService:
         fusion_shadow=False,
         lidar_pose_source="telemetry",
         prefer_short_direct=False,
+        smooth_follow=False,
     ):
         self.session = NavigationSession(
             grid, config, min_points=min_points, depth_source=depth_source, settle_s=settle_s,
@@ -141,6 +142,7 @@ class NavigationService:
             fusion_shadow=fusion_shadow,
             lidar_pose_source=lidar_pose_source,
             prefer_short_direct=prefer_short_direct,
+            smooth_follow=smooth_follow,
         )
         self.feeds = LiveFeeds(config, rear_camera_id=rear_camera_id)
         self.viewport = ViewportLink()
@@ -156,6 +158,12 @@ class NavigationService:
         self._timing = {"cycles": 0, "last_cycle_s": None, "max_cycle_s": 0.0,
                         "cycles_over_50ms": 0, "cycles_over_250ms": 0, "expired_decisions": 0}
         self._lidar_timing_lock = threading.Lock()
+        # Ground-truth depth is prepared on its own thread so the single camera
+        # connection keeps reading colour/stereo frames (latest frame wins).
+        self._depth_cv = threading.Condition()
+        self._depth_feed_lock = threading.Lock()
+        self._depth_pending = None
+        self._depth_generation = 0
         self._lidar_timing_samples = deque(maxlen=16)
         self._lidar_timing_evicted = 0
         self._lidar_timing_error = None
@@ -180,7 +188,15 @@ class NavigationService:
             raise
 
     def _camera_received(self, frame):
-        self.session.feed_camera(frame)
+        depth = self.session.config["depth"]
+        if (self.session.depth_source == "ground_truth" and frame.camera_id == depth["camera_id"]
+                and frame.format == 2):
+            with self._depth_cv:
+                # Arrival is stamped here, so queueing and preparation count against freshness.
+                self._depth_pending = (frame, time.monotonic(), self._depth_generation)
+                self._depth_cv.notify()
+        else:
+            self.session.feed_camera(frame)
         self.feeds.sync_session(self.session.mission.session_id)
         self.feeds.camera(frame)
 
@@ -248,7 +264,30 @@ class NavigationService:
                     "samples_evicted": self._lidar_timing_evicted,
                     "collection_error": self._lidar_timing_error, "samples": list(self._lidar_timing_samples)}
 
+    def _depth_loop(self):
+        while not self.ending.is_set():
+            with self._depth_cv:
+                if self._depth_pending is None:
+                    self._depth_cv.wait(0.1)
+                item, self._depth_pending = self._depth_pending, None
+            if item is None:
+                continue
+            frame, received, generation = item
+            failure = None
+            with self._depth_feed_lock:
+                if generation == self._depth_generation:  # not from a transport that has since failed
+                    try:
+                        self.session.feed_camera(frame, now=received)
+                    except (ValueError, KeyError, TypeError) as error:
+                        failure = str(error)
+            if failure:
+                self._sensor_error(self.session.depth_source, failure)
+
     def _sensor_error(self, key, error):
+        if key != "lidar":
+            with self._depth_feed_lock, self._depth_cv:
+                self._depth_generation += 1
+                self._depth_pending = None
         with self.session.lock:
             self.last_transport_error = str(error)
             details = self._sensor_transport["lidar" if key == "lidar" else "camera"]
@@ -608,7 +647,7 @@ class NavigationService:
         self.bridge.start()
         self.lidar.start()
         self.camera.start()
-        for target in (self.http.serve_forever, self._control):
+        for target in (self.http.serve_forever, self._control, self._depth_loop):
             thread = threading.Thread(target=target, daemon=True)
             thread.start()
             self.threads.append(thread)
@@ -651,6 +690,9 @@ def main(argv=None):
                         help="experimental: cpu_capture requires a CPU-only LIDR v2 producer")
     parser.add_argument("--prefer-short-direct", action="store_true",
                         help="experimental: prefer a clear, lower sampled terrain-cost direct route up to 8 m")
+    parser.add_argument("--smooth-follow", action="store_true",
+                        help="experimental: lookahead route following with curvature/approach slowdown and "
+                             "acceleration-limited speed-up; stops stay immediate")
     parser.add_argument("--max-turn-rate-deg-s", type=float, default=None,
                         help="limit commanded turns in degrees/s, no higher than the existing default (~34.38)")
     parser.add_argument("--rear-camera-id", type=int, default=None,
@@ -674,7 +716,8 @@ def main(argv=None):
                                obstacle_diagnostics=args.obstacle_diagnostics,
                                fusion_shadow=args.fusion_shadow,
                                lidar_pose_source=args.lidar_pose_source,
-                               prefer_short_direct=args.prefer_short_direct) as service:
+                               prefer_short_direct=args.prefer_short_direct,
+                               smooth_follow=args.smooth_follow) as service:
             if args.goal:
                 service.session.set_goal(args.goal)
             print("Navigation API http://127.0.0.1:8766; start Unreal Play after this line.", flush=True)
@@ -686,6 +729,9 @@ def main(argv=None):
             if args.prefer_short_direct:
                 print("Experimental short direct-route preference enabled; terrain costs are sampled, "
                       "and unseen obstacles remain unverified.", flush=True)
+            if args.smooth_follow:
+                print("Experimental smooth following: 0.7 m lookahead, curvature/approach slowdown, "
+                      "ramped speed-up; stops and safety gates are unchanged.", flush=True)
             if args.max_turn_rate_deg_s is not None:
                 print(f"Commanded turn-rate limit: {args.max_turn_rate_deg_s:g} deg/s; "
                       "physical turning and acceleration are not limited by this setting.", flush=True)

@@ -93,3 +93,52 @@ def test_preparation_time_counts_towards_freshness_and_cannot_start_motion(monke
     assert session.step(status, now=clock.value) == (0, 0)
     assert session.state == "waiting_for_sensors"
     assert "arrival_stale" in session.sensor_wait_details["ground_truth"]["reasons"]
+
+
+def _posed_session(stamp):
+    session = make_session()
+    status = {"connected": True, "connection_id": 1, "telemetry_age_s": 0,
+              "telemetry_unreal": dict(x=-500, y=500, z=0, roll=0, pitch=0, yaw=180, t_ns=str(stamp))}
+    session.step(status, now=1.0)
+    return session
+
+
+def test_depth_classification_runs_outside_the_session_lock(monkeypatch):
+    stamp = 1700000000000000000
+    session = _posed_session(stamp)
+    original, lock_free = session.grid.classify, []
+
+    def classify(points):
+        probe = threading.Thread(target=lambda: lock_free.append(session.lock.acquire(timeout=0.5)
+                                                                 and (session.lock.release() or True)))
+        probe.start()
+        probe.join()
+        return original(points)
+
+    monkeypatch.setattr(session.grid, "classify", classify)
+    depth = np.full((3, 3), 150, dtype=np.float32)
+    session.feed_camera(CameraFrame(4, 1, stamp, 2, depth), now=1.0)
+    assert lock_free == [True], "control loop would wait for depth classification"
+    assert session._prepared["ground_truth"][0] == (1, stamp)
+
+
+def test_prepared_and_inline_observations_update_the_map_identically():
+    stamp = 1700000000000000000
+    depth = np.full((3, 3), 150, dtype=np.float32)
+    depth[2, 1] = 90  # a return well below the DEM: a hazard cell
+    results = []
+    for prepare in (True, False):
+        session = _posed_session(stamp)
+        if not prepare:
+            session._prepare_observation = lambda key, frame: None
+        session.feed_camera(CameraFrame(4, 1, stamp, 2, depth), now=1.0)
+        session.feed_lidar(LidarScan(0, 1, stamp, np.array([[2.0, 0, 0]]), 1, 1), now=1.0)
+        with session.lock:
+            session._consume(1.0)
+        assert not session._prepared
+        health = {k: {kk: vv for kk, vv in v.items() if "processing" not in kk and kk != "preparation_s"}
+                  for k, v in session.health.items()}
+        results.append((session.grid.raw_blocked.copy(), session.grid.revision, health))
+    np.testing.assert_array_equal(results[0][0], results[1][0])
+    assert results[0][1:] == results[1][1:]
+    assert results[0][0].any()
