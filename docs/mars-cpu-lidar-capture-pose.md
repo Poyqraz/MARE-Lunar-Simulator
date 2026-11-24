@@ -60,3 +60,27 @@ after any goal attempt. The recorder is read-only. A sampled distance limit and
 synchronous HTTP timeouts are not hard real-time guarantees; supervise Unreal
 and keep its Stop control available. A successful run does not validate small
 obstacle coverage or prove future routes safe.
+
+## Known-obstacle detour check
+
+`tools/mars_detour_probe.py --goal X Y` reuses the same preflight but plans to
+an operator-chosen local goal on the service's live inflated `/map` with this
+checkout's planner, and prints `MARS_ROTA_ONIZLEME` without sending anything.
+It fails closed if the service manifest hash, grid size or static terrain
+blocks differ from the local bundle. `test_type` is
+`pre_existing_obstacle_detour` only when the straight segment is closed on the
+inflated live map; that is a planner label, not verification of the obstacle.
+
+Repeat with `--send --expect-session <id> --expect-map-revision <n>` copied
+from a fresh preview. The goal is sent only if the repeated preflight sees the
+same session and map revision. Motion stops on any replan, session/mission
+change, stale pose, lost CPU LiDAR, route-derived time/distance bounds, or a
+sampled cross-track error above 0.75 m from the previewed route; stop is
+requested after any goal attempt. `MARS_ENGEL_DOLASMA` reports the stop reason,
+maximum sampled cross-track error and map revisions seen. A pass is evidence of
+following a route around an obstacle already in the map; detecting an obstacle
+introduced during motion and the subsequent replan is a separate test, which
+this probe deliberately stops on. A 2026-11-23 offline reconstruction of the
+2026-11-05 cube record (bundled DEM plus its three recorded LiDAR cells,
+start/goal from the later preview) reproduced the earlier 12.131 m route; that
+is not a native drive.

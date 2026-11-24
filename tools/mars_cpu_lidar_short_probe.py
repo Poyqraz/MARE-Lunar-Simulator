@@ -33,7 +33,28 @@ def _cpu(snapshot):
         raise common.SensorPreflightNotReady("Gecerli CPU LiDAR capture pozu bekleniyor")
 
 
-def _preflight(get, *, now):
+def _straight_goal(context):
+    """Default goal: 2 m ahead with a 25 degree offset, on an open inflated segment."""
+    position, direction = context["position_m"], context["heading_rad"] + OFFSET_RAD
+    goal = (position[0] + DISTANCE_M * math.cos(direction),
+            position[1] + DISTANCE_M * math.sin(direction))
+    if not common._segment_is_open(context["grid"], position[:2], goal):
+        raise ValueError("Kisa testin haritadaki sisirilmis yolunda kapali hucre var")
+    return {"goal_m": goal, "details": {"heading_offset_deg": math.degrees(OFFSET_RAD)}}
+
+
+def _cross_track_m(point, route):
+    """Horizontal distance from a sampled pose to the planned polyline."""
+    best = math.inf
+    for a, b in zip(route, route[1:]):
+        dx, dy = b[0] - a[0], b[1] - a[1]
+        length2 = dx * dx + dy * dy
+        t = 0.0 if length2 == 0 else max(0.0, min(1.0, ((point[0] - a[0]) * dx + (point[1] - a[1]) * dy) / length2))
+        best = min(best, math.dist(point, (a[0] + t * dx, a[1] + t * dy)))
+    return best
+
+
+def _preflight(get, *, now, choose_goal=_straight_goal):
     first = get("/mission/snapshot")
     _cpu(first)
     start, heading, _ = common._stationary(first)
@@ -52,11 +73,8 @@ def _preflight(get, *, now):
             or second.get("map_revision") != grid.get("revision")
             or math.dist(start[:2], position[:2]) > 0.02 or angular_drift > 0.02):
         raise ValueError("Oturum, harita veya roverin durgunlugu degisti")
-    direction = current_heading + OFFSET_RAD
-    goal = (position[0] + DISTANCE_M * math.cos(direction),
-            position[1] + DISTANCE_M * math.sin(direction))
-    if not common._segment_is_open(grid, position[:2], goal):
-        raise ValueError("Kisa testin haritadaki sisirilmis yolunda kapali hucre var")
+    plan = choose_goal({"session_id": session, "map_revision": revision, "grid": grid, "snapshot": second,
+                        "position_m": position, "heading_rad": current_heading})
     # Count preflight processing and response time against the existing
     # freshness limits; a slow HTTP call must not authorize an old snapshot.
     elapsed = max(0.0, now() - snapshot_started)
@@ -69,15 +87,15 @@ def _preflight(get, *, now):
         if sensor["received_age_s"] + elapsed > 0.35 or lag_s + elapsed > 0.35:
             raise common.SensorPreflightNotReady(f"{name} verisi on kontrol sirasinda eskidi")
     return {"session_id": session, "position_m": position, "heading_rad": current_heading,
-            "goal_m": goal, "map_revision": grid.get("revision")}
+            "map_revision": grid.get("revision"), **plan}
 
 
-def _wait_for_preflight(get, *, now, sleep, log, wait_s=10):
+def _wait_for_preflight(get, *, now, sleep, log, wait_s=10, choose_goal=_straight_goal):
     deadline = now() + wait_s
     announced = False
     while True:
         try:
-            ready = _preflight(get, now=now)
+            ready = _preflight(get, now=now, choose_goal=choose_goal)
             if now() > deadline:
                 raise common.SensorPreflightNotReady("On kontrol suresi doldu")
             return ready
@@ -91,12 +109,18 @@ def _wait_for_preflight(get, *, now, sleep, log, wait_s=10):
             sleep(min(0.25, remaining))
 
 
-def run(*, get=common._get, post=common._post, now=time.monotonic, sleep=time.sleep, log=print):
-    ready = _wait_for_preflight(get, now=now, sleep=sleep, log=log)
+def run(*, get=common._get, post=common._post, now=time.monotonic, sleep=time.sleep, log=print,
+        choose_goal=_straight_goal):
+    ready = _wait_for_preflight(get, now=now, sleep=sleep, log=log, choose_goal=choose_goal)
     log("MARS_CPU_ON_KONTROL: " + json.dumps({"session_id": ready["session_id"],
                                              "start_m": ready["position_m"], "goal_m": ready["goal_m"],
-                                             "heading_offset_deg": math.degrees(OFFSET_RAD),
+                                             **ready.get("details", {}),
                                              "map_revision": ready["map_revision"]}, ensure_ascii=False))
+    limits = {"duration_s": MAX_DURATION_S, "displacement_m": MAX_DISPLACEMENT_M,
+              "sampled_path_m": MAX_SAMPLED_PATH_M, **ready.get("limits", {})}
+    route = ready.get("route_m")
+    max_cross_track = 0.0 if route else None
+    map_revisions = []
     attempted = confirmed = stop_ok = False
     reason, error, mission_id, final_status = "timeout", None, None, None
     first_position = tuple(ready["position_m"][:2])
@@ -112,7 +136,7 @@ def run(*, get=common._get, post=common._post, now=time.monotonic, sleep=time.sl
                 or math.dist(goal_ack, ready["goal_m"]) > 1e-6):
             raise ValueError("Hedef yaniti onaylanmadi")
         confirmed = True
-        while now() - started < MAX_DURATION_S:
+        while now() - started < limits["duration_s"]:
             snapshot = get("/mission/snapshot")
             mission = snapshot.get("mission") or {}
             live = snapshot.get("live_pose") or {}
@@ -148,9 +172,17 @@ def run(*, get=common._get, post=common._post, now=time.monotonic, sleep=time.sl
             current_xy = tuple(current[:2])
             sampled_path += math.dist(previous_position, current_xy)
             previous_position = current_xy
-            if math.dist(first_position, current_xy) > MAX_DISPLACEMENT_M or sampled_path > MAX_SAMPLED_PATH_M:
+            if (math.dist(first_position, current_xy) > limits["displacement_m"]
+                    or sampled_path > limits["sampled_path_m"]):
                 reason = "distance_limit"
                 break
+            if route:
+                max_cross_track = max(max_cross_track, _cross_track_m(current_xy, route))
+                if max_cross_track > ready["max_cross_track_m"]:
+                    reason = "route_deviation"
+                    break
+            if snapshot.get("map_revision") not in map_revisions:
+                map_revisions.append(snapshot.get("map_revision"))
             message = (state, mission.get("plan_revision"), snapshot.get("map_revision"))
             if message != last_message:
                 log(f"{now() - started:.1f} s | durum={state} | poz={list(current_xy)} | "
@@ -195,7 +227,8 @@ def run(*, get=common._get, post=common._post, now=time.monotonic, sleep=time.sl
     return {"reason": reason, "error": error, "goal_confirmed": confirmed,
             "stop_request_succeeded": stop_ok, "start_session_id": ready["session_id"],
             "mission_id": mission_id, "goal_m": ready["goal_m"], "start_position_m": ready["position_m"],
-            "sampled_path_m": sampled_path, "final_status": final_status}
+            "sampled_path_m": sampled_path, "max_cross_track_m": max_cross_track,
+            "map_revisions_seen": map_revisions, "final_status": final_status}
 
 
 def main():
