@@ -102,6 +102,45 @@ def test_lidar_applies_measured_mount_and_filters_invalid_points():
     assert feeds.lidar_view() is None
 
 
+def test_resent_capture_stamp_does_not_extend_display_freshness():
+    from mars_rover.dashboard_bridge import LiveFeeds
+
+    clock = [10.0]
+    feeds = LiveFeeds(config(), clock=lambda: clock[0])
+    bgra = np.zeros((4, 4, 4), dtype=np.uint8)
+    feeds.camera(CameraFrame(0, 1, 100, 1, bgra))
+    feeds.lidar(LidarScan(0, 1, 100, np.array([[2., 0., 0.]]), 1, 1))
+    clock[0] = 11.0  # a frozen capture clock re-sends the same stamps
+    feeds.camera(CameraFrame(0, 2, 100, 1, bgra))
+    feeds.lidar(LidarScan(0, 2, 100, np.array([[2., 0., 0.]]), 1, 1))
+    clock[0] = 11.6  # 1.6 s after the capture was first received
+    assert feeds.frame("cam_central") is None
+    assert feeds.lidar_view() is None
+    feeds.camera(CameraFrame(0, 3, 101, 1, bgra))
+    feeds.lidar(LidarScan(0, 3, 101, np.array([[2., 0., 0.]]), 1, 1))
+    assert feeds.frame("cam_central").stamp_ns == 101
+    assert feeds.lidar_view()["count"] == 1
+
+
+def test_new_navigation_session_accepts_restarted_capture_stamps():
+    from mars_rover.dashboard_bridge import LiveFeeds
+
+    feeds = LiveFeeds(config(), clock=lambda: 1.0)
+    bgra = np.zeros((4, 4, 4), dtype=np.uint8)
+    feeds.sync_session("play-1")
+    feeds.camera(CameraFrame(0, 1, 9_000, 1, bgra))
+    feeds.lidar(LidarScan(0, 1, 9_000, np.array([[2., 0., 0.]]), 1, 1))
+    feeds.sync_session("play-1")  # same session: nothing is dropped
+    assert feeds.frame("cam_central").stamp_ns == 9_000
+    # A new Play restarts simulation time while the sensor sockets stay open.
+    feeds.sync_session("play-2")
+    assert feeds.frame("cam_central") is None and feeds.lidar_view() is None
+    feeds.camera(CameraFrame(0, 2, 50, 1, bgra))
+    feeds.lidar(LidarScan(0, 2, 50, np.array([[2., 0., 0.]]), 1, 1))
+    assert feeds.frame("cam_central").stamp_ns == 50
+    assert feeds.lidar_view()["count"] == 1
+
+
 def test_disconnect_while_encoding_never_returns_an_old_frame(monkeypatch):
     from mars_rover.dashboard_bridge import LiveFeeds
 

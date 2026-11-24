@@ -15,6 +15,8 @@ is relative to the rover-body origin; neither is a calibrated terrain analysis.
 The displayed pose update rate is the browser's rate, not raw telemetry rate.
 The local 3D view is sampled ground-truth depth, not an independently
 validated hazard classification. Missing or expired data is not free space.
+Camera, depth and LiDAR tiles expire 1.5 s after their newest capture stamp
+was first received; re-sent frames with an unchanged stamp do not renew that.
 Camera JPEG previews are subsampled to a maximum of 320 by 240 pixels (for
 example, 640 by 480 becomes 320 by 240); full-resolution sensor frames remain
 available to navigation. Sampling can hide small features in the preview.

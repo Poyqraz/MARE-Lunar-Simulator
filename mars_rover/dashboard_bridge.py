@@ -178,6 +178,7 @@ class LiveFeeds:
         self.frames, self.cache, self.scan = {}, {}, None
         self.frame_history = {"cam_central": deque(maxlen=3), "depth_gt": deque(maxlen=3)}
         self.camera_generation = self.lidar_generation = 0
+        self.session_id = None
 
     def camera(self, frame):
         name = self.ids.get((frame.camera_id, frame.format))
@@ -185,7 +186,8 @@ class LiveFeeds:
             return
         try:
             old = self.frames.get(name)
-            if old is None or frame.stamp_ns >= old[0].stamp_ns:
+            # Freshness is receive time, so a re-sent capture stamp must not renew it.
+            if old is None or frame.stamp_ns > old[0].stamp_ns:
                 record = (frame, self.clock())
                 self.frames[name] = record
                 if name in self.frame_history and (old is None or frame.stamp_ns > old[0].stamp_ns):
@@ -197,10 +199,17 @@ class LiveFeeds:
         if scan.sensor_id != self.lidar_id or not self.lock.acquire(blocking=False):
             return
         try:
-            if self.scan is None or scan.stamp_ns >= self.scan[0].stamp_ns:
+            if self.scan is None or scan.stamp_ns > self.scan[0].stamp_ns:
                 self.scan = (scan, self.clock())
         finally:
             self.lock.release()
+
+    def sync_session(self, session_id):
+        """Drop frames from an earlier navigation session; a new Play restarts capture stamps."""
+        if session_id != self.session_id:
+            self.session_id = session_id
+            self.clear_camera()
+            self.clear_lidar()
 
     def clear_camera(self):
         with self.lock:

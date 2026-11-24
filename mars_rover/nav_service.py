@@ -181,6 +181,7 @@ class NavigationService:
 
     def _camera_received(self, frame):
         self.session.feed_camera(frame)
+        self.feeds.sync_session(self.session.mission.session_id)
         self.feeds.camera(frame)
 
     def _lidar_received(self, scan):
@@ -212,6 +213,7 @@ class NavigationService:
                 self._lidar_timing_error = str(error)[:256]
         else:
             self.session.feed_lidar(scan)
+        self.feeds.sync_session(self.session.mission.session_id)
         self.feeds.lidar(scan)
 
     def _pose_reference(self):
