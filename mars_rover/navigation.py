@@ -486,6 +486,7 @@ class NavigationSession:
         try:
             pose = pose_from_telemetry(bridge_status.get("telemetry_unreal") or {})
             previous = self.pose
+            continuous = False
             if previous:
                 dt = (pose.stamp_ns - previous.stamp_ns) / 1e9
                 moved = math.dist(pose.xy_heading[:2], previous.xy_heading[:2])
@@ -504,6 +505,23 @@ class NavigationSession:
                     self.health.clear()
                     self._invalidate_fusion()
                     self.follower = None
+                elif dt > 0:
+                    continuous = True
+            if continuous:
+                # Control polls skip telemetry samples. Keep those between the
+                # two polls so a capture stamp gets its own pose rather than an
+                # interpolation across a skipped one (1 deg = 0.14 m at 8 m).
+                for item in bridge_status.get("telemetry_recent") or ():
+                    raw = item.get("t_ns") if isinstance(item, dict) else None
+                    # Cheap stamp filter first: parsing every buffered sample costs ~13 ms per poll.
+                    if (not isinstance(raw, (str, int)) or isinstance(raw, bool) or not str(raw).strip().isdigit()
+                            or not self.history.samples
+                            or not self.history.samples[-1].stamp_ns < int(raw) < pose.stamp_ns):
+                        continue
+                    try:
+                        self.history.add(pose_from_telemetry(item))
+                    except ValueError:
+                        continue
             if self.pose is None or pose.stamp_ns != self.pose.stamp_ns:
                 self._unique_pose_at = now
             self.pose = pose

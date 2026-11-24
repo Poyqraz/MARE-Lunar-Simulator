@@ -572,7 +572,7 @@ class NavigationService:
                     # The status age is sampled after this instant; using the
                     # earlier instant makes reconstructed receive time conservative.
                     snapshot_started = time.monotonic()
-                    v, w = self.session.step(self.bridge.status(), now=snapshot_started, wall_clock=time.monotonic)
+                    v, w = self.session.step(self.bridge.status(include_recent=True), now=snapshot_started, wall_clock=time.monotonic)
                     if active:
                         if v == 0 and w == 0:
                             expired = self.session._late_decision

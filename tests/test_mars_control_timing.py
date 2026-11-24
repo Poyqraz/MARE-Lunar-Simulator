@@ -43,7 +43,7 @@ def test_control_scheduler_includes_processing_time_in_its_period(monkeypatch, p
                                 lidar_port=0, camera_port=0)
     clock = SimpleNamespace(value=100.0)
     monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: clock.value))
-    monkeypatch.setattr(service.bridge, "status", lambda: {"connected": False})
+    monkeypatch.setattr(service.bridge, "status", lambda **_: {"connected": False})
 
     def work(*_args, **_kwargs):
         clock.value += processing_s
@@ -90,7 +90,7 @@ def test_slow_control_tick_does_not_dispatch_a_late_motion_command(monkeypatch, 
     }
     service.bridge.state.connect()
     service.bridge.connection_id = 1
-    monkeypatch.setattr(service.bridge, "status", lambda: {"connected": True, "connection_id": 1})
+    monkeypatch.setattr(service.bridge, "status", lambda **_: {"connected": True, "connection_id": 1})
 
     def slow_step(*_args, **_kwargs):
         clock.value += processing_delay
@@ -135,7 +135,7 @@ def test_control_dispatch_checks_connection_and_preserves_the_observation_deadli
     }
     service.bridge.state.connect()
     service.bridge.connection_id = 1
-    monkeypatch.setattr(service.bridge, "status", lambda: {"connected": True, "connection_id": 1})
+    monkeypatch.setattr(service.bridge, "status", lambda **_: {"connected": True, "connection_id": 1})
 
     def step(*_args, **_kwargs):
         clock.value = 100.05
@@ -199,7 +199,7 @@ def test_slow_real_sensor_observation_cannot_submit_stale_motion(monkeypatch):
     stamp = 1700000000000000000
     telemetry = dict(x=-500, y=500, z=0, roll=0, pitch=0, yaw=180, t_ns=str(stamp))
     status = {"connected": True, "connection_id": 1, "telemetry_age_s": 0, "telemetry_unreal": telemetry}
-    monkeypatch.setattr(service.bridge, "status", lambda: status)
+    monkeypatch.setattr(service.bridge, "status", lambda **_: status)
     depth = np.full((3, 3), np.nan, dtype="float32")
     depth[2, 1] = 150
 
@@ -249,7 +249,7 @@ def test_control_timing_observes_slow_cycles_without_creating_a_goal(monkeypatch
                                 lidar_port=0, camera_port=0)
     clock = SimpleNamespace(value=100.0)
     monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: clock.value))
-    monkeypatch.setattr(service.bridge, "status", lambda: {"connected": False})
+    monkeypatch.setattr(service.bridge, "status", lambda **_: {"connected": False})
 
     def slow_step(*_args, **_kwargs):
         clock.value += 0.26

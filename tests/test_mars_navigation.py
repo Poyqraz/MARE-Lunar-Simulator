@@ -197,6 +197,32 @@ def test_capture_time_boundary_tolerates_clock_precision_but_still_stops_for_sta
     assert event["details"]["sensors"] == details
 
 
+def test_capture_pose_uses_telemetry_received_between_control_polls():
+    # Native 2026-11-24: control polls skipped the exact-stamp sample, and a
+    # rocking turn interpolated 1.05 degrees wrong (0.15 m at 8 m depth range).
+    from mars_rover.planning import PlanningLimits, TerrainMap
+    from mars_rover.sensors import pose_from_telemetry
+
+    grid = TerrainMap(np.zeros((20, 20)), 1, PlanningLimits(robot_radius_m=0))
+    config = {"schema_version": 1, "manifest_sha256": None,
+              "lidar": {"sensor_id": 0, "to_body": np.eye(4).tolist()},
+              "depth": {"camera_id": 4, "hfov_deg": 90, "to_body": np.eye(4).tolist()}}
+    session = nav().NavigationSession(grid, config, min_points=1, settle_s=0)
+    stamp, step = 1700000000000000000, 33333335
+    samples = [dict(x=-500, y=500, z=0, roll=0, pitch=pitch, yaw=180, t_ns=str(stamp + i * step))
+               for i, pitch in enumerate((0.0, 2.0, 0.0))]
+
+    def status(latest, recent):
+        return {"connected": True, "connection_id": 1, "telemetry_age_s": 0,
+                "telemetry_unreal": latest, "telemetry_recent": recent}
+
+    session.step(status(samples[0], samples[:1]), now=1.0)
+    # The middle sample was never the latest; malformed or already-seen ones are ignored.
+    session.step(status(samples[2], [{"t_ns": "bad"}, *samples]), now=1.07)
+    used = session.history.at(stamp + step).matrix
+    np.testing.assert_allclose(used, pose_from_telemetry(samples[1]).matrix, atol=1e-12)
+
+
 def test_new_play_connection_cancels_the_old_goal():
     p = importlib.import_module("mars_rover.planning")
     grid = p.TerrainMap(np.zeros((10, 10)), 1, p.PlanningLimits(robot_radius_m=0))

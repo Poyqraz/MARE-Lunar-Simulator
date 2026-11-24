@@ -108,11 +108,53 @@ pose, session `f8125483-1985-4386-94ae-3134553d78c7`:
 - An earlier session (`b504fcfb…`, mission `93f1bedc…`) stopped when
   ground-truth depth added six ground-level cells in a band near 8 m
   (residual 0.150-0.159 m) during the initial turn-in-place, with frame body
-  pitch -5.6 deg. Bridge telemetry during turns showed pitch from -6 to +7 deg
-  and up to 2.1 deg change between consecutive 33 ms samples, so a one-sample
-  capture/pose offset explains this magnitude at 8 m. This is a measured
-  hypothesis, not a proven cause; it is unresolved.
+  pitch -5.6 deg.
+
+### Ground-truth depth band: skipped telemetry samples
+
+Cause found from the records. The navigation loop read only the bridge's
+latest telemetry at control rate, so `PoseHistory` lacked samples Unreal had
+sent in between. Both later ground-truth map-change frames had a capture stamp
+equal to a skipped telemetry sample; their recorded body pose is exactly
+(0.000 deg) the interpolation across it, between samples -1/+1 and -1/+3. While
+the rover rocked during turns this was 0.40 and 1.05 deg wrong; 1.05 deg is
+0.147 m at the 8 m depth limit. Re-projecting the recorded representative
+points with the exact-stamp sample moved the negative cell [118,131] from
+-0.150 to -0.001 m, while the real cube cell [118,126] stayed at 0.489 m.
+Attempt 1 had no telemetry log, so its six cells are attributed by the same
+pattern, not replayed.
+
+The bridge now keeps the last 64 telemetry samples per connection (about 2 s at
+30 Hz; not in HTTP `/status`), and each control poll adds the unseen samples
+between the previous and current pose to the history. Gaps over 0.25 s,
+teleports and clock resets keep their existing behaviour. Thresholds, the
+8 m range and freshness checks are unchanged.
+
+Native check, 2026-11-24, same level and temporary cube, two drives from
+spawn to (126, 116) with `--allow-replan`:
+
+- Session `056de721…`, mission `26156b19…`: arrived after 130 s, 12.10 m
+  sampled path, maximum cross-track 0.12 m. Ground truth changed no cells; one
+  LiDAR replan was the cube (cell [118,126], residual 0.40 m). Control
+  lifetime: 7 expired decisions in 2177 cycles. Record
+  `Saved/Mars/gorev-izleme-*-ba5b5817010444b990a0fb6aec3fefbe.json`.
+- In that run the service's pose for a moving LiDAR frame equalled the
+  exact-stamp telemetry sample (0.0000 deg). The CPU capture pose equalled
+  the *next* sample (+33 ms) to 0.001 deg and 0.0000 m: telemetry is the
+  pre-physics pose and the post-physics LiDAR captures one step later, which
+  `cpu_capture` already handles. The navigation camera calls `CaptureScene()`
+  in the default during-physics tick, i.e. before physics results are applied;
+  the replay above agrees (t: -0.001 m, t+1: -0.096 m), but this rests on one
+  representative point, not a render-pose measurement.
+- Session `d6cfde9d…` (mission `f69a2dc8…`, record `…405a8c6e…`) also
+  arrived and had no ground-truth cells, but it ran a first version that
+  parsed all 64 samples every poll (about 13 ms): 87 expired decisions. The
+  committed version filters by stamp first (under 1 ms per poll).
+
+Two drives without a ground-truth false cell are consistent with the fix but
+cannot prove the band is gone; it previously appeared in two of four runs.
 
 This shows following a planned route around one known, already mapped
 positive obstacle in simulation. It is not validation of small rocks, negative
-hazards, depth false positives, or obstacles introduced during motion.
+hazards, depth false positives in general, or obstacles introduced during
+motion.
