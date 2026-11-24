@@ -450,10 +450,12 @@ class TestBoundedSensorWait(unittest.TestCase):
                 return {"status": "matched", "matched_frames": 10}
             return {"status": "matched", "last_capture_stamp_ns": str(STAMP - 200_000_000 + int(sim.clock * 1e8))}
 
-        runner = lambda path, expected_session, preflight_deadline: probe.run(
-            path, get=get, post=sim.post, analyzer=analyzer, now=sim.now, sleep=sim.sleep,
-            expected_session=expected_session, preflight_deadline=preflight_deadline,
-        )
+        def runner(path, expected_session, preflight_deadline):
+            return probe.run(
+                path, get=get, post=sim.post, analyzer=analyzer, now=sim.now, sleep=sim.sleep,
+                expected_session=expected_session, preflight_deadline=preflight_deadline,
+            )
+
         result = probe._run_with_sensor_wait("fake.log", "session-a", run_probe=runner,
                                              now=sim.now, sleep=sim.sleep,
                                              notify=lambda *_args, **_kwargs: None)

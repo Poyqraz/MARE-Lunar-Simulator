@@ -107,14 +107,22 @@ class TestTickAlignmentProbe(unittest.TestCase):
     def test_unready_or_moving_rover_never_changes_groups(self):
         for case in ("mission", "pose", "speed", "wheel", "bridge_wheel", "angular", "clock", "disconnected"):
             unreal, rover, lidar, camera, _, snapshot, bridge, get = sim()
-            if case == "mission": snapshot["mission"] = {"closed": False}
-            if case == "pose": snapshot["pose_fresh"] = False
-            if case == "speed": snapshot["speed_estimate_m_s"] = 0.02
-            if case == "wheel": snapshot["wheel_command_m_s"]["FL"] = 0.1
-            if case == "bridge_wheel": bridge["wheel_command_m_s"]["FR"] = 0.1
-            if case == "angular": bridge["telemetry_unreal"]["wz"] = 0.1
-            if case == "clock": bridge["telemetry_unreal"]["t_ns"] = "1700000001000000000"
-            if case == "disconnected": bridge["connected"] = False
+            if case == "mission":
+                snapshot["mission"] = {"closed": False}
+            if case == "pose":
+                snapshot["pose_fresh"] = False
+            if case == "speed":
+                snapshot["speed_estimate_m_s"] = 0.02
+            if case == "wheel":
+                snapshot["wheel_command_m_s"]["FL"] = 0.1
+            if case == "bridge_wheel":
+                bridge["wheel_command_m_s"]["FR"] = 0.1
+            if case == "angular":
+                bridge["telemetry_unreal"]["wz"] = 0.1
+            if case == "clock":
+                bridge["telemetry_unreal"]["t_ns"] = "1700000001000000000"
+            if case == "disconnected":
+                bridge["connected"] = False
             with self.subTest(case=case), self.assertRaises(ValueError):
                 probe.apply(unreal_module=unreal, get_json=get)
             self.assertEqual((rover.calls, lidar.calls, camera.calls), ([], [], []))
