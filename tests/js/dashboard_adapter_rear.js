@@ -25,7 +25,7 @@ async function fetch(url) {
   if (url === '/mission/events') return response({events: []});
   throw Error('Unexpected request: ' + url);
 }
-const sandbox = {window: {}, fetch, console, setTimeout: f => timers.push(f)};
+const sandbox = {window: {}, fetch, console, AbortSignal, setTimeout: f => timers.push(f)};
 vm.runInNewContext(fs.readFileSync(path.resolve(__dirname, '../../mars_rover/dashboard_assets/mars-adapter.js'), 'utf8'),
                    sandbox);
 const socket = sandbox.window.io();

@@ -792,6 +792,7 @@ function showRover(r) {
   const chip = $('rover-unreal');
   chip.className = '';
   if (r.busy) { chip.textContent = 'switching…'; }
+  else if (r.unknown) { chip.textContent = 'Unreal: unknown (API unreachable)'; chip.title = ''; }
   else if (!r.unreal_linked) { chip.textContent = 'Unreal: not linked'; chip.title = ''; }
   else if (!r.unreal) { chip.textContent = 'Unreal: not playing'; chip.title = ''; }
   else if (r.match) { chip.textContent = `Unreal: ${r.unreal_label} ✓`; chip.className = 'ok'; chip.title = ''; }

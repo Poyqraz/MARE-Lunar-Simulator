@@ -8,7 +8,9 @@
     const names = ['cam_central', 'cam_left', 'cam_right', 'cam_rear', 'depth_gt'];
     let snapshot = null, mapLoaded = false, previousSession = null, lastLidar = null;
     let busy = false, lastEvents = 0, centreWarned = false, encoderWarned = false;
-    let occupancyRevision = null, occupancySession = null;
+    let occupancyRevision = null, occupancySession = null, apiReachable = null;
+    // Every request is bounded so one hung reply cannot freeze polling or hold a later STOP for long.
+    const limit = () => AbortSignal.timeout(2000);
 
     function on(name, fn) {
       if (!listeners.has(name)) listeners.set(name, []);
@@ -24,14 +26,17 @@
       dispatch('log', {level, text, node: 'mars_python', stamp: Date.now() / 1000});
     }
     async function json(path) {
-      const response = await fetch(path, {cache: 'no-store'});
+      const response = await fetch(path, {cache: 'no-store', signal: limit()});
       if (!response.ok) throw Error(`${path}: HTTP ${response.status}`);
       return response.json();
     }
     async function post(path, data) {
-      const response = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'},
-                                          body: JSON.stringify(data)});
-      const result = await response.json();
+      let response;
+      try {
+        response = await fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                      body: JSON.stringify(data), signal: limit()});
+      } catch (e) { e.uncertain = true; throw e; } // No reply: the service may still have acted on it.
+      const result = await response.json().catch(() => ({}));
       if (!response.ok) throw Error(result.error || `HTTP ${response.status}`);
       return result;
     }
@@ -47,10 +52,13 @@
         if (name === 'send_goal' && (!snapshot || !snapshot.pose_fresh || !snapshot.capture_clock_advancing)) {
           dispatch('command_error', 'Fresh Unreal telemetry is required before selecting a goal.'); return;
         }
-        const path = name === 'send_goal' ? '/goal' : '/stop';
+        const path = name === 'send_goal' ? '/goal' : '/stop', what = name === 'send_goal' ? 'Goal' : 'Stop';
         const payload = name === 'send_goal' ? {x: data.x, y: data.y} : {};
-        post(path, payload).then(() => log('INFO', name === 'send_goal' ? 'Goal accepted.' : 'Stop accepted.'))
-          .catch(e => dispatch('command_error', e.message));
+        // Never gated on the poll or an earlier command, and never retried automatically.
+        post(path, payload).then(() => log('INFO', what + ' accepted.'))
+          .catch(e => e.uncertain
+            ? log('WARN', `${what} command result unknown (${e.message}); check rover state before resending.`)
+            : dispatch('command_error', e.message));
       }
     }
     async function loadMap() {
@@ -139,7 +147,7 @@
         }
         if (seen.get(name) === f.stamp_ns) return;
         try {
-          const response = await fetch('/dashboard/camera/' + name + '.jpg', {cache: 'no-store'});
+          const response = await fetch('/dashboard/camera/' + name + '.jpg', {cache: 'no-store', signal: limit()});
           if (!response.ok) return;
           const image = await response.arrayBuffer(), captured = response.headers.get('X-Capture-Stamp-Ns');
           if (!captured) return;
@@ -151,14 +159,14 @@
       if (seen.has('cam_central') && activePlan) {
         try {
           const response = await fetch('/dashboard/path-overlay?stamp=' + encodeURIComponent(seen.get('cam_central')),
-                                       {cache: 'no-store'});
+                                       {cache: 'no-store', signal: limit()});
           dispatch('path_overlay', response.ok ? await response.json() : null);
         } catch (_) { dispatch('path_overlay', null); }
       } else dispatch('path_overlay', null);
       if (seen.has('depth_gt')) {
         try {
           const response = await fetch('/dashboard/local-dem?stamp=' + encodeURIComponent(seen.get('depth_gt')),
-                                       {cache: 'no-store'});
+                                       {cache: 'no-store', signal: limit()});
           if (response.ok) dispatch('local_dem', await response.json()); else dispatch('local_dem_lost');
         } catch (_) { dispatch('local_dem_lost'); }
       } else dispatch('local_dem_lost');
@@ -185,14 +193,18 @@
       }
       dispatch('timeline', events);
     }
+    function setLink(up) {
+      if (socket.connected !== up) { socket.connected = up; dispatch(up ? 'connect' : 'disconnect'); }
+    }
     async function poll() {
       if (busy) return;
       busy = true;
       try {
         const s = await receiveState();
-        if (!socket.connected) {
-          socket.connected = true; dispatch('connect'); dispatch('config', {depth_max_distance: 8});
-        }
+        if (apiReachable === false) log('INFO', 'Dashboard API reachable again.');
+        if (apiReachable !== true) { apiReachable = true; dispatch('config', {depth_max_distance: 8}); }
+        // LINK is the rover bridge as the service reports it, not merely a reachable dashboard API.
+        setLink(s.state !== 'disconnected');
         await receiveFeeds(s);
         if (s.fusion_shadow_enabled) {
           try { dispatch('fusion_shadow', await json('/dashboard/fusion-shadow')); }
@@ -202,8 +214,11 @@
         if (!mapLoaded) await loadMap();
         if (mapLoaded) await receiveOccupancy(s);
         if (Date.now() - lastEvents >= 2000) { await receiveEvents(); lastEvents = Date.now(); }
-      } catch (_) {
-        if (socket.connected) { socket.connected = false; dispatch('disconnect'); }
+      } catch (e) {
+        if (apiReachable !== false) log('ERROR', `Dashboard API unreachable (${e.message}); rover state unknown.`);
+        apiReachable = false; snapshot = null; setLink(false);
+        dispatch('rover', {label: 'Reference', unknown: true});
+        dispatch('mission', {state: 'unknown', goal: null, reason: 'dashboard API unreachable'});
         dispatch('odom_lost');
         for (const name of seen.keys()) dispatch('feed_lost', name);
         seen.clear(); dispatch('path_overlay', null); dispatch('local_dem_lost');
