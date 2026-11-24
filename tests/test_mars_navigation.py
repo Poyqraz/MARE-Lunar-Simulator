@@ -370,3 +370,23 @@ def test_smooth_follower_rotates_in_place_only_for_large_heading_errors():
     assert v == 0
     v, _ = follower.command((0.0, 0.0, math.radians(80)))
     assert v > 0 and not follower.rotating
+
+
+def test_snapshot_reports_attitude_in_unreal_convention_only_while_the_pose_is_fresh():
+    from mars_rover.planning import PlanningLimits, TerrainMap
+
+    grid = TerrainMap(np.zeros((20, 20)), 1, PlanningLimits(robot_radius_m=0))
+    config = {"schema_version": 1, "manifest_sha256": None,
+              "lidar": {"sensor_id": 0, "to_body": np.eye(4).tolist()},
+              "depth": {"camera_id": 4, "hfov_deg": 90, "to_body": np.eye(4).tolist()}}
+    session = nav().NavigationSession(grid, config)
+    status = {"connected": True, "connection_id": 1, "telemetry_age_s": 0,
+              "telemetry_unreal": dict(x=-500, y=500, z=0, roll=-6, pitch=7, yaw=37, t_ns="1700000000000000000")}
+    session.step(status, now=1.0)
+    snap = session.mission_snapshot(now=1.05)
+    assert snap["attitude_deg"]["roll"] == pytest.approx(-6)
+    assert snap["attitude_deg"]["pitch"] == pytest.approx(7)
+    assert snap["attitude_deg"]["tilt"] == pytest.approx(math.degrees(math.acos(math.cos(math.radians(6))
+                                                                             * math.cos(math.radians(7)))))
+    assert snap["tilt_limit_deg"] == grid.limits.max_slope_deg
+    assert session.mission_snapshot(now=2.0)["attitude_deg"] is None  # stale pose: no live-looking attitude

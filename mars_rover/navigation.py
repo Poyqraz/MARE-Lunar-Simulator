@@ -939,6 +939,12 @@ class NavigationSession:
                 "terrain_manifest_sha256": self.grid.manifest_sha256,
             }
 
+    def _attitude_deg(self):
+        forward, left, up = self.pose.matrix[:3, 0], self.pose.matrix[:3, 1], self.pose.matrix[:3, 2]
+        return {"roll": math.degrees(math.atan2(left[2], up[2])),
+                "pitch": math.degrees(math.asin(float(np.clip(forward[2], -1, 1)))),
+                "tilt": math.degrees(math.acos(float(np.clip(up[2], -1, 1))))}
+
     def mission_snapshot(self, bridge_status=None, *, now=None):
         now = time.monotonic() if now is None else now
         with self.lock:
@@ -959,6 +965,10 @@ class NavigationSession:
                     "coordinate_frame_id": "mars_local_east_north_up_metres",
                     "terrain_manifest_sha256": self.grid.manifest_sha256,
                     "live_pose": self.mission.latest,
+                    # Display only, in Unreal's convention (pitch nose-up, roll as the telemetry
+                    # reports it); tilt is the body up-axis angle from vertical.
+                    "attitude_deg": self._attitude_deg() if fresh and advancing else None,
+                    "tilt_limit_deg": self.grid.limits.max_slope_deg,
                     "pose_fresh": fresh,
                     "pose_age_s": age,
                     "capture_clock_advancing": advancing,
