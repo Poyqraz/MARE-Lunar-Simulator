@@ -116,6 +116,9 @@ def test_bridge_counts_capture_gaps_and_resets_statistics_on_new_connection():
             assert stats["duplicate_stamps"] == 1
             assert stats["backward_stamps"] == 1
             assert stats["invalid_stamps"] == 1
+            recent = bridge.status(include_recent=True)["telemetry_recent"]
+            assert [item["t_ns"] for item in recent] == timestamps
+            assert "telemetry_recent" not in bridge.status()  # HTTP /status payload unchanged
             assert all(v == 0 for v in bridge.status()["wheel_command_m_s"].values())
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline and bridge.status()["connected"]:
@@ -132,3 +135,4 @@ def test_bridge_counts_capture_gaps_and_resets_statistics_on_new_connection():
             assert state["connection_id"] == 2
             assert state["telemetry_timing"]["frames_parsed"] == 1
             assert state["telemetry_timing"]["capture_gaps_over_250ms"] == 0
+            assert [item["t_ns"] for item in bridge.status(include_recent=True)["telemetry_recent"]] == [str(start)]

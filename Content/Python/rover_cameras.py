@@ -52,7 +52,9 @@ MIN_GROUND_CLEARANCE_CM = 60.0
 BLEND_S = 1.5                      # viewport blend between cameras
 STATE = "_rover_cameras_state"     # kept in builtins across imports
 CAMERA_TAG = "RoverOrbitCamera"    # the level's camera this script moves (install())
-DASHBOARD_URL = "http://127.0.0.1:5001/viewport_camera"   # the overview's port
+# Tried in order until one answers: the Mars navigation service (mars_rover.nav_service,
+# HTTP 8766) and the ROS mission-control overview (5001).
+DASHBOARD_URLS = ("http://127.0.0.1:8766/viewport_camera", "http://127.0.0.1:5001/viewport_camera")
 POLL_S = 0.5                       # dashboard polling period
 RETRY_S = 1.0                      # retry an orbit that could not start (Play still starting)
 LINK = "_rover_cameras_link"       # the dashboard link, in builtins
@@ -308,6 +310,8 @@ def _poll_loop(link):
             link["wanted"] = mode if mode in ("follow", "orbit", "top") else None
         except Exception:
             link["wanted"] = None                        # dashboard not running: leave the view alone
+            urls = link["urls"]                          # and try the next known dashboard next time
+            link["url"] = urls[(urls.index(link["url"]) + 1) % len(urls)]
         link["stop"].wait(POLL_S)
 
 
@@ -347,17 +351,18 @@ def _link_tick(delta_seconds):
             unreal.log_warning(f"[rover cameras] dashboard link: {error}")
 
 
-def start_dashboard_link(url=DASHBOARD_URL):
-    """Follows the dashboard's viewport camera choice (idempotent)."""
+def start_dashboard_link(url=None):
+    """Follows the dashboard's viewport camera choice (idempotent); url pins one dashboard."""
     if _link():
         return
-    link = {"url": url, "wanted": None, "applied": "idle", "world": None, "tried": 0.0,
+    urls = (url,) if url else DASHBOARD_URLS
+    link = {"url": urls[0], "urls": urls, "wanted": None, "applied": "idle", "world": None, "tried": 0.0,
             "rover": "none", "rover_world": None, "rover_tried": 0.0,
             "stop": threading.Event(), "handle": None}
     setattr(builtins, LINK, link)
     threading.Thread(target=_poll_loop, args=(link,), name="rover_cameras_link", daemon=True).start()
     link["handle"] = unreal.register_slate_post_tick_callback(_link_tick)
-    unreal.log(f"[rover cameras] following the dashboard's viewport camera ({url}).")
+    unreal.log(f"[rover cameras] following the dashboard's viewport camera ({' or '.join(urls)}).")
 
 
 def stop_dashboard_link():

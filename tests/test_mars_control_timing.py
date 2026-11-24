@@ -43,7 +43,7 @@ def test_control_scheduler_includes_processing_time_in_its_period(monkeypatch, p
                                 lidar_port=0, camera_port=0)
     clock = SimpleNamespace(value=100.0)
     monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: clock.value))
-    monkeypatch.setattr(service.bridge, "status", lambda: {"connected": False})
+    monkeypatch.setattr(service.bridge, "status", lambda **_: {"connected": False})
 
     def work(*_args, **_kwargs):
         clock.value += processing_s
@@ -90,7 +90,7 @@ def test_slow_control_tick_does_not_dispatch_a_late_motion_command(monkeypatch, 
     }
     service.bridge.state.connect()
     service.bridge.connection_id = 1
-    monkeypatch.setattr(service.bridge, "status", lambda: {"connected": True, "connection_id": 1})
+    monkeypatch.setattr(service.bridge, "status", lambda **_: {"connected": True, "connection_id": 1})
 
     def slow_step(*_args, **_kwargs):
         clock.value += processing_delay
@@ -135,7 +135,7 @@ def test_control_dispatch_checks_connection_and_preserves_the_observation_deadli
     }
     service.bridge.state.connect()
     service.bridge.connection_id = 1
-    monkeypatch.setattr(service.bridge, "status", lambda: {"connected": True, "connection_id": 1})
+    monkeypatch.setattr(service.bridge, "status", lambda **_: {"connected": True, "connection_id": 1})
 
     def step(*_args, **_kwargs):
         clock.value = 100.05
@@ -199,7 +199,7 @@ def test_slow_real_sensor_observation_cannot_submit_stale_motion(monkeypatch):
     stamp = 1700000000000000000
     telemetry = dict(x=-500, y=500, z=0, roll=0, pitch=0, yaw=180, t_ns=str(stamp))
     status = {"connected": True, "connection_id": 1, "telemetry_age_s": 0, "telemetry_unreal": telemetry}
-    monkeypatch.setattr(service.bridge, "status", lambda: status)
+    monkeypatch.setattr(service.bridge, "status", lambda **_: status)
     depth = np.full((3, 3), np.nan, dtype="float32")
     depth[2, 1] = 150
 
@@ -218,9 +218,9 @@ def test_slow_real_sensor_observation_cannot_submit_stale_motion(monkeypatch):
         feed(2)
         original_observe = grid.observe
 
-        def delayed_observe(points):
+        def delayed_observe(points, **kwargs):
             clock.value += 0.2
-            return original_observe(points)
+            return original_observe(points, **kwargs)
 
         monkeypatch.setattr(grid, "observe", delayed_observe)
         submitted = []
@@ -249,7 +249,7 @@ def test_control_timing_observes_slow_cycles_without_creating_a_goal(monkeypatch
                                 lidar_port=0, camera_port=0)
     clock = SimpleNamespace(value=100.0)
     monkeypatch.setattr(module, "time", SimpleNamespace(monotonic=lambda: clock.value))
-    monkeypatch.setattr(service.bridge, "status", lambda: {"connected": False})
+    monkeypatch.setattr(service.bridge, "status", lambda **_: {"connected": False})
 
     def slow_step(*_args, **_kwargs):
         clock.value += 0.26
@@ -299,7 +299,7 @@ def test_arrival_requires_fresh_pose_after_observation(monkeypatch, delay, arriv
         return True
 
     monkeypatch.setattr(session, "_observe_bridge", slow_observation)
-    monkeypatch.setattr(session, "_consume", lambda: None)
+    monkeypatch.setattr(session, "_consume", lambda _now: None)
     assert session.step({}, now=100.0, wall_clock=lambda: clock.value) == (0, 0)
     assert session.state == ("arrived" if arrives else "waiting_for_fresh_data")
     assert session.mission.active is (not arrives)
@@ -351,3 +351,63 @@ def test_stereo_result_keeps_the_older_input_arrival_time(monkeypatch):
     session.feed_camera(CameraFrame(1, 1, stamp, 1, pixels), now=100.0)
     session.feed_camera(CameraFrame(2, 1, stamp, 1, pixels), now=100.2)
     assert session.latest["stereo"][1] == 100.0
+
+
+def _depth_service():
+    grid = TerrainMap(np.zeros((10, 10)), 1, PlanningLimits(robot_radius_m=0))
+    config = {"schema_version": 1, "manifest_sha256": None,
+              "lidar": {"sensor_id": 0, "to_body": np.eye(4).tolist()},
+              "depth": {"camera_id": 4, "to_body": np.eye(4).tolist(), "hfov_deg": 90}}
+    return NavigationService(grid, config, tcp_port=0, bridge_http_port=0, http_port=0, lidar_port=0, camera_port=0)
+
+
+def test_depth_frames_are_prepared_off_the_camera_reader_with_reader_arrival_time(monkeypatch):
+    import threading
+    import time
+
+    service = _depth_service()
+    fed, release = [], threading.Event()
+
+    def slow_feed(frame, *, now=None):
+        assert release.wait(2)
+        fed.append((frame.frame_id, now, threading.current_thread()))
+
+    monkeypatch.setattr(service.session, "feed_camera", slow_feed)
+    worker = threading.Thread(target=service._depth_loop, daemon=True)
+    worker.start()
+    try:
+        before = time.monotonic()
+        service._camera_received(CameraFrame(4, 1, 1700000000000000000, 2, np.ones((2, 2), dtype=np.float32)))
+        assert time.monotonic() - before < 0.5 and not fed  # the reader did not wait for preparation
+        release.set()
+        deadline = time.monotonic() + 2
+        while not fed and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert fed[0][0] == 1 and before <= fed[0][1] <= time.monotonic() and fed[0][2] is worker
+    finally:
+        service.ending.set()
+        worker.join(2)
+        service.close()
+
+
+def test_sensor_failure_discards_a_pending_depth_frame(monkeypatch):
+    import threading
+    import time
+
+    service = _depth_service()
+    fed = []
+    monkeypatch.setattr(service.session, "feed_camera", lambda frame, *, now=None: fed.append(frame))
+    try:
+        service._camera_received(CameraFrame(4, 1, 1700000000000000000, 2, np.ones((2, 2), dtype=np.float32)))
+        stale = service._depth_pending
+        service._sensor_error("ground_truth", "Sensor connection closed")
+        assert service._depth_pending is None and stale[2] != service._depth_generation
+        service._depth_pending = stale  # even if a worker picked it up, its generation is old
+        worker = threading.Thread(target=service._depth_loop, daemon=True)
+        worker.start()
+        time.sleep(0.3)
+        service.ending.set()
+        worker.join(2)
+        assert fed == []
+    finally:
+        service.close()

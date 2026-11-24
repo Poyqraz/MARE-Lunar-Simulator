@@ -1,4 +1,5 @@
 import importlib
+import json
 import math
 
 import numpy as np
@@ -91,6 +92,50 @@ def test_session_waits_for_both_sensors_and_stops_on_stale_data():
     assert event["details"]["sensors"] == details
 
 
+@pytest.mark.parametrize("fault,expected_error,expected_age", [
+    ("stale", "No fresh pose telemetry", 0.45),
+    ("invalid_pose", "Pose requires finite Unreal x,y,z,roll,pitch,yaw", 0.01),
+    ("nonfinite_age", "No fresh pose telemetry", None),
+])
+def test_pose_wait_records_the_decision_reason_without_resuming_motion(fault, expected_error, expected_age):
+    from mars_rover.planning import PlanningLimits, TerrainMap
+
+    grid = TerrainMap(np.zeros((10, 10)), 1, PlanningLimits(robot_radius_m=0))
+    config = {"schema_version": 1, "manifest_sha256": None,
+              "lidar": {"sensor_id": 0, "to_body": np.eye(4).tolist()},
+              "depth": {"camera_id": 4, "hfov_deg": 90, "to_body": np.eye(4).tolist()}}
+    session = nav().NavigationSession(grid, config, settle_s=0)
+    session.set_goal((8, 5))
+    telemetry = dict(x=-500, y=500, z=0, roll=0, pitch=0, yaw=180, t_ns="1700000000000000000")
+    status = {"connected": True, "connection_id": 1, "telemetry_age_s": 0.01,
+              "telemetry_unreal": telemetry, "last_error": None}
+    session.step(status, now=1.0)
+    bad = {**status, "telemetry_unreal": dict(telemetry)}
+    if fault == "stale":
+        bad["telemetry_age_s"] = 0.45
+    elif fault == "invalid_pose":
+        bad["telemetry_unreal"]["x"] = None
+    else:
+        bad["telemetry_age_s"] = float("nan")
+
+    assert session.step(bad, now=1.5) == (0, 0)
+    event = session.mission.export()["events"][-1]
+    assert event["status"] == "waiting_for_pose"
+    details = event["details"]["pose"]
+    assert details["observer_error"] == expected_error
+    assert details["bridge_telemetry_age_s"] == expected_age
+    assert details["bridge_telemetry_stamp_ns"] == telemetry["t_ns"]
+    assert details["last_pose_age_s"] == pytest.approx(0.51)
+    assert details["capture_clock_age_s"] == pytest.approx(0.5)
+    json.dumps(session.mission.export(), allow_nan=False)
+
+    # An immediately recovered snapshot does not erase the event's cause.
+    assert session.step(status, now=1.51) == (0, 0)
+    saved = [entry for entry in session.mission.export()["events"]
+             if entry.get("status") == "waiting_for_pose"]
+    assert len(saved) == 1 and saved[0]["details"]["pose"] == details
+
+
 def test_capture_time_boundary_tolerates_clock_precision_but_still_stops_for_stale_frames():
     from mars_rover.planning import PlanningLimits, TerrainMap
     from mars_rover.sensors import CameraFrame, LidarScan
@@ -152,6 +197,32 @@ def test_capture_time_boundary_tolerates_clock_precision_but_still_stops_for_sta
     assert event["details"]["sensors"] == details
 
 
+def test_capture_pose_uses_telemetry_received_between_control_polls():
+    # Native 2026-11-24: control polls skipped the exact-stamp sample, and a
+    # rocking turn interpolated 1.05 degrees wrong (0.15 m at 8 m depth range).
+    from mars_rover.planning import PlanningLimits, TerrainMap
+    from mars_rover.sensors import pose_from_telemetry
+
+    grid = TerrainMap(np.zeros((20, 20)), 1, PlanningLimits(robot_radius_m=0))
+    config = {"schema_version": 1, "manifest_sha256": None,
+              "lidar": {"sensor_id": 0, "to_body": np.eye(4).tolist()},
+              "depth": {"camera_id": 4, "hfov_deg": 90, "to_body": np.eye(4).tolist()}}
+    session = nav().NavigationSession(grid, config, min_points=1, settle_s=0)
+    stamp, step = 1700000000000000000, 33333335
+    samples = [dict(x=-500, y=500, z=0, roll=0, pitch=pitch, yaw=180, t_ns=str(stamp + i * step))
+               for i, pitch in enumerate((0.0, 2.0, 0.0))]
+
+    def status(latest, recent):
+        return {"connected": True, "connection_id": 1, "telemetry_age_s": 0,
+                "telemetry_unreal": latest, "telemetry_recent": recent}
+
+    session.step(status(samples[0], samples[:1]), now=1.0)
+    # The middle sample was never the latest; malformed or already-seen ones are ignored.
+    session.step(status(samples[2], [{"t_ns": "bad"}, *samples]), now=1.07)
+    used = session.history.at(stamp + step).matrix
+    np.testing.assert_allclose(used, pose_from_telemetry(samples[1]).matrix, atol=1e-12)
+
+
 def test_new_play_connection_cancels_the_old_goal():
     p = importlib.import_module("mars_rover.planning")
     grid = p.TerrainMap(np.zeros((10, 10)), 1, p.PlanningLimits(robot_radius_m=0))
@@ -192,6 +263,16 @@ def test_missing_returns_never_erase_a_previous_hazard():
     revision = grid.revision
     grid.observe(np.full((100, 3), np.nan))
     assert grid.revision == revision and grid.blocked[10, 10]
+
+
+def test_replanned_rover_already_facing_goal_does_not_turn_back_to_cell_center():
+    p = importlib.import_module("mars_rover.planning")
+    grid = p.TerrainMap(np.zeros((10, 10)), 1, p.PlanningLimits(robot_radius_m=0))
+    start, goal = (5.01225, 4.58223), (5.0, 4.0)
+    follower = nav().RouteFollower(grid.plan(start, goal))
+    velocity, turn = follower.command((*start, -math.pi / 2))
+    assert velocity > 0
+    assert abs(turn) < 0.1
 
 
 def test_observed_obstacle_stops_then_replans_around_the_blocked_route():
@@ -237,3 +318,75 @@ def test_observed_obstacle_stops_then_replans_around_the_blocked_route():
     assert session.status()["replans"] == 2
     assert any(y != 5 for x, y in route)
     assert all(grid.segment_clear(a, b) for a, b in zip(route, route[1:]))
+
+
+def _drive(follower, pose, dt=0.05, steps=4000):
+    x, y, yaw = pose
+    log = []
+    for k in range(steps):
+        v, w = follower.command((x, y, yaw), k * dt)
+        if follower.arrived:
+            break
+        log.append((x, y, v, w))
+        x, y, yaw = x + v * math.cos(yaw) * dt, y + v * math.sin(yaw) * dt, yaw + w * dt
+    return log
+
+
+def test_smooth_follower_takes_grid_corners_without_stopping_and_stays_near_the_route():
+    route = [(0, 0), (1, 0), (2, 1), (3, 1), (4, 2), (4, 3), (5, 4)]
+    follower = nav().SmoothRouteFollower(route, speed_m_s=0.15, angular_limit_rad_s=math.radians(20))
+    log = _drive(follower, (0.0, 0.0, 0.0))
+    assert follower.arrived
+    speeds = [v for _, _, v, _ in log]
+    cruising = next(i for i, v in enumerate(speeds) if v >= 0.04)  # after the start-up ramp
+    assert min(speeds[cruising:]) >= 0.04  # approach floor, never a corner stop
+    from tools.mars_cpu_lidar_short_probe import _cross_track_m
+    assert max(_cross_track_m((x, y), route) for x, y, _, _ in log) < 0.3
+    classic = nav().RouteFollower(route, speed_m_s=0.15, angular_limit_rad_s=math.radians(20))
+    assert sum(v < 0.01 for _, _, v, _ in _drive(classic, (0.0, 0.0, 0.0))) > 10
+
+
+def test_smooth_follower_ramps_speed_up_but_drops_it_at_once():
+    follower = nav().SmoothRouteFollower([(0, 0), (10, 0)], speed_m_s=0.15)
+    v0, _ = follower.command((0.0, 0.0, 0.0), 0.0)
+    v1, _ = follower.command((0.0, 0.0, 0.0), 0.05)
+    assert v0 == pytest.approx(0.0125) and v1 == pytest.approx(0.025)
+    for k in range(2, 40):
+        v, _ = follower.command((0.0, 0.0, 0.0), k * 0.05)
+    assert v == pytest.approx(0.15)
+    v, _ = follower.command((0.0, 0.0, math.radians(30)), 2.0)  # heading error: slower at once
+    assert v < 0.15 * math.cos(math.radians(30)) + 1e-9
+    v, _ = follower.command((0.0, 0.0, 0.0), 2.6)  # a gap > 0.2 s: the session had stopped us
+    assert v == pytest.approx(0.0125)
+    follower.sent(0, 0, 2.65)  # an overridden command is also the ramp's new base
+    assert follower.command((0.0, 0.0, 0.0), 2.7)[0] == pytest.approx(0.0125)
+
+
+def test_smooth_follower_rotates_in_place_only_for_large_heading_errors():
+    follower = nav().SmoothRouteFollower([(0, 0), (0, 5)], speed_m_s=0.15)
+    v, w = follower.command((0.0, 0.0, 0.0))  # carrot 90 degrees left
+    assert v == 0 and w > 0 and follower.rotating
+    v, _ = follower.command((0.0, 0.0, math.radians(60)))  # still rotating until within 20 degrees
+    assert v == 0
+    v, _ = follower.command((0.0, 0.0, math.radians(80)))
+    assert v > 0 and not follower.rotating
+
+
+def test_snapshot_reports_attitude_in_unreal_convention_only_while_the_pose_is_fresh():
+    from mars_rover.planning import PlanningLimits, TerrainMap
+
+    grid = TerrainMap(np.zeros((20, 20)), 1, PlanningLimits(robot_radius_m=0))
+    config = {"schema_version": 1, "manifest_sha256": None,
+              "lidar": {"sensor_id": 0, "to_body": np.eye(4).tolist()},
+              "depth": {"camera_id": 4, "hfov_deg": 90, "to_body": np.eye(4).tolist()}}
+    session = nav().NavigationSession(grid, config)
+    status = {"connected": True, "connection_id": 1, "telemetry_age_s": 0,
+              "telemetry_unreal": dict(x=-500, y=500, z=0, roll=-6, pitch=7, yaw=37, t_ns="1700000000000000000")}
+    session.step(status, now=1.0)
+    snap = session.mission_snapshot(now=1.05)
+    assert snap["attitude_deg"]["roll"] == pytest.approx(-6)
+    assert snap["attitude_deg"]["pitch"] == pytest.approx(7)
+    assert snap["attitude_deg"]["tilt"] == pytest.approx(math.degrees(math.acos(math.cos(math.radians(6))
+                                                                             * math.cos(math.radians(7)))))
+    assert snap["tilt_limit_deg"] == grid.limits.max_slope_deg
+    assert session.mission_snapshot(now=2.0)["attitude_deg"] is None  # stale pose: no live-looking attitude

@@ -7,6 +7,7 @@ and raw pose telemetry. The optional nav_service adds camera/lidar decoders.
 
 import argparse
 import codecs
+from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import math
@@ -197,6 +198,8 @@ class BridgeServer:
         self.state = CommandState(calibration, timeout_s)
         self.telemetry = None
         self.telemetry_received_at = None
+        # ~2 s at 30 Hz: navigation polls slower than telemetry and needs every capture-stamped pose.
+        self.telemetry_recent = deque(maxlen=64)
         self.telemetry_timing = TelemetryTiming()
         self.last_error = None
         self.connection_id = 0
@@ -275,9 +278,10 @@ class BridgeServer:
 
         return Handler
 
-    def status(self):
+    def status(self, *, include_recent=False):
         with self.state.lock:
             telemetry = self.telemetry
+            recent = list(self.telemetry_recent) if include_recent else None
             pose = None
             if telemetry and all(k in telemetry for k in ("x", "y", "z", "yaw")):
                 try:
@@ -303,6 +307,7 @@ class BridgeServer:
                 if self.telemetry_received_at is None
                 else time.monotonic() - self.telemetry_received_at,
                 "last_error": self.last_error,
+                **({"telemetry_recent": recent} if include_recent else {}),
             }
 
     def start(self):
@@ -327,6 +332,7 @@ class BridgeServer:
                 with self.state.lock:
                     self.telemetry = None
                     self.telemetry_received_at = None
+                    self.telemetry_recent.clear()
                     self.telemetry_timing = TelemetryTiming()
                     self.last_error = None
                     self.connection_id += 1
@@ -348,6 +354,7 @@ class BridgeServer:
                                 json.dumps(telemetry, allow_nan=False)
                                 with self.state.lock:
                                     self.telemetry = telemetry
+                                    self.telemetry_recent.append(telemetry)
                                     self.telemetry_received_at = time.monotonic()
                                     self.telemetry_timing.observe(telemetry, self.telemetry_received_at)
                 except (OSError, ValueError, UnicodeError) as error:

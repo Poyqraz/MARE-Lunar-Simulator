@@ -93,6 +93,9 @@ def configure_and_export(unreal, rover, manifest_path, output):
 
         body = map_frame(find("base_link"))
         lidar, streamer = current_lidar(), current_streamer()
+        rgb_ids = [int(streamer.get_editor_property(k + "_cam_id")) for k in ("left", "right", "center")]
+        if any(not 0 <= value <= 255 for value in rgb_ids) or len(set(rgb_ids)) != 3:
+            raise ValueError("RGB camera IDs must be distinct values in 0..255")
         left, right, center = [find(streamer.get_editor_property(k + "_capture_name"))
                                for k in ("left", "right", "center")]
         cameras = [left, right, center]
@@ -130,6 +133,7 @@ def configure_and_export(unreal, rover, manifest_path, output):
             },
             "depth": {
                 "camera_id": int(streamer.get_editor_property("depth_cam_id")),
+                "color_camera_id": rgb_ids[2],
                 "to_body": relative_frame(body, map_frame(center, optical=True)),
                 "hfov_deg": fovs[2],
                 "width": shapes[2][0],
@@ -138,8 +142,8 @@ def configure_and_export(unreal, rover, manifest_path, output):
                 "source": "Unreal central ground-truth planar depth",
             },
             "stereo": {
-                "left_id": int(streamer.get_editor_property("left_cam_id")),
-                "right_id": int(streamer.get_editor_property("right_cam_id")),
+                "left_id": rgb_ids[0],
+                "right_id": rgb_ids[1],
                 "to_body": relative_frame(body, left_frame),
                 "hfov_deg": fovs[0],
                 "width": shapes[0][0],

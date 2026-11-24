@@ -38,6 +38,10 @@
 //   48     ...   points: x, y, z (f32, metres), intensity (f32, 0-255), ring (u16), column (u16)
 // Points are in the sensor frame with the ROS convention: x forward, y left,
 // z up. Row 0 is the top channel, column 0 the leftmost beam.
+// Optional CPU-only version 2 uses flags = 3 and inserts 12 little-endian
+// doubles before the points: a row-major 3x4 sensor-FLU to local-map matrix.
+// This extension is for the Mars Python service; the ROS receiver needs v1.
+// GPU capture/render pose is not measured and is never sent as CPU v2.
 
 #pragma once
 
@@ -89,6 +93,12 @@ public:
 	// Tags every packet, for several lidars on one link.
 	UPROPERTY(EditAnywhere, Category = "Lidar|Network", meta = (ClampMin = "0", ClampMax = "255"))
 	int32 SensorId = 0;
+
+	// Mars Python navigation only: include the exact CPU line-trace sensor pose.
+	// This changes the wire protocol and requires its cpu_capture pose mode.
+	// It has no effect in GPU mode; leave disabled for the ROS receiver.
+	UPROPERTY(EditAnywhere, Category = "Lidar|Network", AdvancedDisplay)
+	bool bSendCpuCapturePose = false;
 
 	// --------------------------------------------------------------- Mounting
 	// Optional: scan from this camera / scene capture's pose (dropdown of the
@@ -180,7 +190,8 @@ private:
 	void ScanGpu(double Stamp);
 	void PumpGpu();                                     // Collect finished GPU scans
 	// Ranges (metres, NaN = no return) and intensities per beam -> packet + outbox.
-	void Publish(double Stamp, uint64 FrameId, const TArray<float>& Range, const TArray<float>& Intensity);
+	void Publish(double Stamp, uint64 FrameId, const TArray<float>& Range, const TArray<float>& Intensity,
+	             const FTransform* CpuCapturePose = nullptr);
 	bool TryConnect();
 
 	TArray<FVector> Beams;                  // Unit directions, sensor frame (Unreal axes)

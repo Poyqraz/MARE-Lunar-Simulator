@@ -111,7 +111,7 @@ def fake_rover_for_sensor_export(*, invalid_lidar=False):
     values = {
         "left_capture_name": "NavcamLeft", "right_capture_name": "NavcamRight",
         "center_capture_name": "NavcamCenter", "capture_width": 640, "capture_height": 480,
-        "depth_cam_id": 4, "left_cam_id": 1, "right_cam_id": 2,
+        "depth_cam_id": 4, "left_cam_id": 1, "right_cam_id": 2, "center_cam_id": 0,
     }
     streamer.get_editor_property.side_effect = values.__getitem__
     streamer.set_editor_property.side_effect = values.__setitem__
@@ -151,10 +151,25 @@ def test_valid_sensor_mounts_export_measured_rigid_transforms(tmp_path):
     for sensor in ("lidar", "depth", "stereo"):
         transform_matrix(config[sensor]["to_body"])
     assert config["stereo"]["baseline_m"] == pytest.approx(0.2)
+    assert config["depth"]["color_camera_id"] == 0
     assert config["native_sensor_stream_verified"] is False
     assert config["native_rover_motion_verified"] is False
     lidar.set_editor_property.assert_any_call("server_port", 3007)
     streamer.set_editor_property.assert_any_call("server_port", 3004)
+
+
+def test_duplicate_rgb_camera_ids_fail_before_sensor_changes(tmp_path):
+    m = setup()
+    engine, rover, lidar, streamer = fake_rover_for_sensor_export()
+    streamer._test_values["center_cam_id"] = 1
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    output = tmp_path / "sensors.json"
+    with pytest.raises(ValueError, match="camera IDs"):
+        m.configure_and_export(engine, rover, manifest, output)
+    lidar.set_editor_property.assert_not_called()
+    streamer.set_editor_property.assert_not_called()
+    assert not output.exists()
 
 
 def test_export_rechecks_geometry_after_editor_property_changes(tmp_path):
