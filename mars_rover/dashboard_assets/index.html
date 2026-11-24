@@ -303,18 +303,18 @@
           <div class="feed" id="f-cam_rear"><div class="nosig">REAR — NO SIGNAL</div><img></div>
         </div>
         <div class="cam-row" style="grid-template-columns:1fr 1fr 1fr">
-          <div class="feed" id="f-depth"><div class="nosig">STEREO DEPTH</div><img></div>
+          <div class="feed" id="f-depth" title="No backend: this service computes stereo depth only inside the planner (--depth-source stereo) and does not stream it"><div class="nosig">STEREO DEPTH — NO BACKEND</div><img></div>
           <div class="feed" id="f-depth_gt"><div class="nosig">GROUND TRUTH DEPTH</div><img></div>
-          <div class="feed" id="f-mask"><div class="nosig">SEGMENTATION</div><img></div>
+          <div class="feed" id="f-mask" title="No backend: Unreal streams the Navcam_Mask capture (id 3), but this service does not decode it and the Mars terrain carries no stencil labels"><div class="nosig">SEGMENTATION — NO BACKEND</div><img></div>
         </div>
         <div class="cam-row" style="grid-template-columns:1fr 1fr 1fr">
-          <div class="feed" id="f-shadow"><div class="nosig">SHADOW MASK</div><img></div>
-          <div class="feed" id="f-events"><div class="nosig">EVENT CAM</div><img></div>
-          <div class="feed" id="f-spad"><div class="nosig">SPAD CAM</div><img></div>
+          <div class="feed" id="f-shadow" title="No backend: the shadow mask is derived from the mask capture, which is not decoded here and is unlabelled on the Mars terrain"><div class="nosig">SHADOW MASK — NO BACKEND</div><img></div>
+          <div class="feed" id="f-events" title="No backend: Unreal's event camera sends to TCP 3005, which this service does not open"><div class="nosig">EVENT CAM — NO BACKEND</div><img></div>
+          <div class="feed" id="f-spad" title="No backend: Unreal's SPAD camera sends to TCP 3006, which this service does not open"><div class="nosig">SPAD CAM — NO BACKEND</div><img></div>
         </div>
         <div class="cam-row">
-          <div class="feed" id="f-rear_mask" data-default-off><div class="nosig">REAR SEGMENTATION</div><img></div>
-          <div class="feed" id="f-rear_shadow" data-default-off><div class="nosig">REAR SHADOW MASK</div><img></div>
+          <div class="feed" id="f-rear_mask" data-default-off title="No backend: the RearCam_Mask capture (id 13) is not decoded by this service"><div class="nosig">REAR SEGMENTATION — NO BACKEND</div><img></div>
+          <div class="feed" id="f-rear_shadow" data-default-off title="No backend: derived from the undecoded rear mask capture"><div class="nosig">REAR SHADOW MASK — NO BACKEND</div><img></div>
         </div>
       </div>
     </div>
@@ -466,11 +466,7 @@ setInterval(() => {
       (t === 0 ? ' dead' : now - t < freshMs ? ' ok' : now - t < freshMs*4 ? ' stale' : ' dead');
   };
   if (socket.connected) lastSeen.link = now;
-  set('li-link',  lastSeen.link,  3000);
-  set('li-odom',  lastSeen.odom,  2000);
-  set('li-cam',   lastSeen.cam,   4000);
-  set('li-depth', lastSeen.depth, 4000);
-  set('li-lidar', lastSeen.lidar, 4000);
+  set('li-link',  lastSeen.link,  3000);   /* sensor lights: the health handler, from server ages */
 }, 700);
 
 /* ---------------- camera feeds ---------------- */
@@ -479,19 +475,15 @@ socket.on('feed', msg => {
   if (!box) return;
   box.querySelector('.nosig').style.display = 'none';
   showJpeg(box.querySelector('img'), msg.image);
-  if (msg.id.startsWith('cam_')) lastSeen.cam = Date.now();
-  if (msg.id === 'depth_gt') lastSeen.depth = Date.now();
 });
 socket.on('feed_lost', id => {
   const box = $('f-' + id);
   if (box) { box.querySelector('.nosig').style.display = ''; box.querySelector('img').removeAttribute('src'); }
-  if (id === 'depth_gt') lastSeen.depth = 0;
 });
 
 /* ---------------- telemetry ---------------- */
 let odomTimes = [];
 socket.on('odom_update', m => {
-  lastSeen.odom = Date.now();
   odomTimes.push(Date.now());
   odomTimes = odomTimes.filter(t => Date.now() - t < 3000);
   $('t-x').textContent   = m.x.toFixed(2) + ' m';
@@ -517,8 +509,8 @@ socket.on('odom_update', m => {
 });
 socket.on('odom_lost', () => {
   currentPose = null; speedHist.length = 0;
-  lastSeen.odom = 0;
-  ['t-x', 't-y', 't-z', 't-yaw', 't-spd', 't-hz'].forEach(id => { $(id).textContent = '—'; });
+  ['t-x', 't-y', 't-z', 't-yaw', 't-spd', 't-hz', 't-att', 't-tilt'].forEach(id => { $(id).textContent = '—'; });
+  $('t-tiltfill').style.width = '0'; $('t-tiltlim').style.display = 'none';
   drawOverlay();
 });
 
@@ -572,7 +564,8 @@ socket.on('health', h => {
   light('li-depth', ['depth_gt']); light('li-lidar', ['lidar']);
 
 
-  bag = h.bag || bag;
+  if (!h.bag) return;                 /* no recorder behind this service: leave REC disabled as it is */
+  bag = h.bag;
   const rec = $('btn-rec');
   rec.classList.toggle('rec', !!bag.recording);
   const mbytes = b => b >= 1e9 ? (b / 1e9).toFixed(1) + ' GB' : Math.round((b || 0) / 1e6) + ' MB';
@@ -736,8 +729,8 @@ const demView = LocalDemView($('demView'), { info: $('dem-info'), nosig: $('dem-
 socket.on('local_dem', m => demView.update(m));
 socket.on('local_dem_lost', () => demView.clear());
 socket.on('local_dem_lidar', m => demView.updateLidar(m));
-FeedLegends.attach(socket, { depth: [$('f-depth'), $('f-depth_gt')], mask: [$('f-mask'), $('f-rear_mask')],
-                             shadow: [$('f-shadow'), $('f-rear_shadow')] });
+/* Legends only on feeds this service streams; a legend must not suggest a live panel. */
+FeedLegends.attach(socket, { depth: [$('f-depth_gt')], mask: [$('f-mask'), $('f-rear_mask')], shadow: [] });
 NavOverlay.attach(socket, [$('f-cam_central')]);
 
 /* ---------------- rover command buttons ---------------- */
@@ -770,6 +763,8 @@ function showView(m) {
   viewMode = m.mode || 'follow';
   const b = $('btn-view');
   b.disabled = !m.linked;
+  b.title = m.linked ? `Unreal viewport camera (${m.rover || 'rover'}): click to cycle follow / orbit / top`
+                     : 'Unreal is not polling this dashboard (rover_cameras.py dashboard link)';
   const label = { follow: 'FOLLOW', orbit: 'ORBIT', top: 'TOP' }[viewMode] || 'FOLLOW';
   if (!m.linked) {
     b.textContent = `🎥 ${label} (Unreal not linked)`;
@@ -794,7 +789,7 @@ function showRover(r) {
   if (r.busy) { chip.textContent = 'switching…'; }
   else if (r.unknown) { chip.textContent = 'Unreal: unknown (API unreachable)'; chip.title = ''; }
   else if (!r.unreal_linked) { chip.textContent = 'Unreal: not linked'; chip.title = ''; }
-  else if (!r.unreal) { chip.textContent = 'Unreal: not playing'; chip.title = ''; }
+  else if (!r.unreal) { chip.textContent = 'Unreal: no fresh telemetry'; chip.title = 'Rover bridge connected; Play paused, stopping or starting'; }
   else if (r.match) { chip.textContent = `Unreal: ${r.unreal_label} ✓`; chip.className = 'ok'; chip.title = ''; }
   else {
     chip.textContent = `Unreal: ${r.unreal_label} ≠`; chip.className = 'bad';
@@ -1172,8 +1167,7 @@ window.addEventListener('mouseup', e => {
       e.clientY < r.top  || e.clientY > r.bottom) return;
   const gx = (e.clientX - r.left) / r.width * (mapW - 1) * mapRes;
   const gy = (1 - (e.clientY - r.top) / r.height) * (mapH - 1) * mapRes;
-  $('planning').style.display = 'block';
-  $('t-goal').textContent = `${gx.toFixed(0)}, ${gy.toFixed(0)} m`;
+  $('planning').style.display = 'block';   /* LAST GOAL follows the service's accepted mission goal */
   addLocal('INFO', `Goal requested: (${gx.toFixed(1)}, ${gy.toFixed(1)}) m.`);
   socket.emit('send_goal', { x: gx, y: gy });
 });

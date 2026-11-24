@@ -311,3 +311,55 @@ applied earlier; it is not a live query of the current groups. The two checks
 and the later `/goal` HTTP request are not atomic, and network delays or a
 failed stop can exceed the intended limits. An operator must supervise and be
 ready to stop Play. All existing freshness and movement checks remain in use.
+
+## Feature audit, 2026-11-24
+
+The dashboard was checked in the in-app browser against a running PIE session
+(`JezeroRover_5c8b3fa632eb`, GPU LiDAR, `--rear-camera-id 10`) and the
+runtime Unreal components, not only from code.
+
+Runtime sources: `NavCam_UnrealStereoCam` streams centre 0, left 1, right 2,
+mask 3 and ground-truth depth 4 to TCP 3004; `RearCam_Stream` streams rear 10
+and mask 13 to the same port; LiDAR `LidarCam` (sensor 0) to 3007; the event
+camera to 3005 and the SPAD camera to 3006, which this service does not open.
+
+Observed working end to end: the four RGB tiles, ground-truth depth, the
+local depth/terrain view, the LiDAR view (an idle probe matched 48 display
+points to landscape collision within ±11 mm; sensor matrix equal to the
+configuration), position/heading/speed against Unreal telemetry,
+click-to-goal (planner rejection shown as ABORTED with its reason), ALL STOP
+(wheel commands zero), pause (pose and feeds marked stale, LINK still on),
+Play stop (Uplink lost) and a new Play (new session, track and LAST GOAL
+cleared, feeds back).
+
+Fixed after confirming the defect:
+
+- The Unreal viewport link polled `:5001` (the ROS overview) while this
+  service serves `/viewport_camera` on `:8766`, so VIEW stayed "not linked".
+  `rover_cameras.py` now tries 8766 then 5001 (an explicit URL still pins
+  one). Verified: linked, rover `Leo_Raph_C`, and the editor viewport switched
+  to orbit and top-down from the dashboard.
+- ROLL / PITCH / TILT were always "—": the snapshot now carries
+  `attitude_deg` (Unreal convention, only while the pose is fresh) and the
+  planner's slope limit as the tilt reference. Unit-tested; not yet seen in
+  the browser with Unreal running.
+- LAST GOAL was written on click, before the service accepted the goal; it
+  now follows the accepted mission goal.
+- A trail error (e.g. a mission no longer retained) was treated as an
+  unreachable API and cleared every panel; an empty first trail looked like
+  a session reset. Both are now ignored for that poll.
+- Sensor lights had two competing writers; they now follow only the server
+  ages, and all go dark when the API is unreachable.
+- Stereo depth, segmentation, shadow mask, rear masks, event and SPAD tiles
+  showed live-looking legends without any stream. They now read
+  "NO BACKEND" with the reason in the tooltip, and only ground-truth depth
+  carries the depth legend. The mask capture does stream, but on this Mars
+  level 75 % of it is unlabelled and the upstream shadow decoding would
+  label the terrain as sunlit objects, so it is not displayed.
+- The rover chip said "not linked" while the bridge was connected but Play
+  was paused; it now says "no fresh telemetry". REC no longer rewrites its
+  tooltip to a rosbag preset.
+
+Still without a backend in this service: lights, AVOID, SNAPSHOT, REC,
+SYSTEM, RESTART NODE, timeline CLEAR, the alert banner, the local-DEM LiDAR
+overlay and the camera ribbon's original-route/obstacle markers.

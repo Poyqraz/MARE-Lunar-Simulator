@@ -84,12 +84,15 @@
       }
       previousSession = s.session_id;
       const fresh = !!(s.pose_fresh && s.capture_clock_advancing && s.live_pose);
-      dispatch('rover', {label: 'Reference', unreal_linked: fresh, unreal: fresh ? 'reference' : null,
-                         unreal_label: 'connected', match: true});
+      // Linked = the rover bridge is connected; playing = its telemetry is fresh (not paused or stopped).
+      dispatch('rover', {label: 'Reference', unreal_linked: s.state !== 'disconnected',
+                         unreal: fresh ? 'reference' : null, unreal_label: 'connected', match: true});
       if (fresh) {
-        const p = s.live_pose.position_m;
+        const p = s.live_pose.position_m, a = s.attitude_deg;
         dispatch('odom_update', {x: p[0], y: p[1], z: p[2], yaw: s.live_pose.heading_rad * 180 / Math.PI,
-                                 speed: s.speed_estimate_m_s});
+                                 speed: s.speed_estimate_m_s,
+                                 ...(a ? {roll: a.roll, pitch: a.pitch, tilt: a.tilt,
+                                          tilt_limit: s.tilt_limit_deg} : {})});
       } else dispatch('odom_lost');
       const m = s.mission;
       dispatch('mission', {state: missionState(s.state), goal: m && m.goal,
@@ -98,9 +101,14 @@
       dispatch('global_path_update', {path: route(m && m.active_plan), first: route(m && m.initial_plan),
                                       replans: m ? Math.max(0, m.plan_revision - 1) : 0});
       if (m && m.mission_id) {
-        const trail = await json('/mission/trail?mission_id=' + encodeURIComponent(m.mission_id));
-        dispatch('trajectory_update', {path: trail.points.map(p => ({x: p.position_m[0], y: p.position_m[1],
-                                                                     break_before: p.break_before}))});
+        // A trail error is not an unreachable API, and an empty trail (first poll of a new mission) is not
+        // the session reset that an empty path means to the overview.
+        try {
+          const trail = await json('/mission/trail?mission_id=' + encodeURIComponent(m.mission_id));
+          if (trail.points.length)
+            dispatch('trajectory_update', {path: trail.points.map(p => ({x: p.position_m[0], y: p.position_m[1],
+                                                                         break_before: p.break_before}))});
+        } catch (_) { /* keep the last drawn trail; the next poll retries */ }
       }
       return s;
     }
@@ -217,6 +225,7 @@
       } catch (e) {
         if (apiReachable !== false) log('ERROR', `Dashboard API unreachable (${e.message}); rover state unknown.`);
         apiReachable = false; snapshot = null; setLink(false);
+        dispatch('health', {feeds: {}});
         dispatch('rover', {label: 'Reference', unknown: true});
         dispatch('mission', {state: 'unknown', goal: null, reason: 'dashboard API unreachable'});
         dispatch('odom_lost');
