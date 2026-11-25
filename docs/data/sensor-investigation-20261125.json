@@ -1,0 +1,229 @@
+{
+ "schema_version": 1,
+ "date": "2026-11-25",
+ "conditions": {
+  "levels": [
+   "/Game/Mars/BelvaLab01",
+   "/Game/Mars/BelvaRockLab01"
+  ],
+  "engine": "UE 5.7 PIE",
+  "telemetry_format": "unreal-tr-v1",
+  "timer_resolution_s": 0.0156
+ },
+ "gt_freshness": {
+  "idle_gpu_lidar": {
+   "samples": 198,
+   "lag_s": {
+    "p50": 0.267,
+    "p90": 0.333,
+    "max": 0.4
+   },
+   "fraction_le_0_35": 0.93,
+   "received_age_p50_s": 0.25,
+   "capture_period_s": 0.2,
+   "preparation_s": 0.062,
+   "classification_s": 0.062,
+   "locked_processing_max_s": 0.016
+  },
+  "idle_cpu_lidar": {
+   "samples": 148,
+   "lag_s": {
+    "p50": 0.267,
+    "p90": 0.367,
+    "max": 0.433
+   },
+   "fraction_le_0_35": 0.9
+  },
+  "offline_single_thread_ms": {
+   "projection_and_8m_filter": 28,
+   "transform": 4,
+   "classify_belva": 31.9,
+   "classify_jezero_c": 32.5
+  },
+  "detour_preflight_readonly": {
+   "attempts": 6,
+   "passed": 0,
+   "second_snapshot_gt_lag_s": [
+    0.233,
+    0.333
+   ],
+   "choose_goal_s": 0.11,
+   "reason": "ground_truth stale during preflight"
+  },
+  "map_endpoint": {
+   "bytes": 4922993,
+   "service_s": [
+    0.172,
+    0.281
+   ],
+   "gt_lag_mean_before_s": 0.267,
+   "gt_lag_mean_after_s": 0.325,
+   "pairs": 8
+  },
+  "rejected": {
+   "exact_faster_projection_ms": [
+    27.4,
+    25.2
+   ],
+   "send_hz_10": {
+    "gt_lag_s": [
+     1.57,
+     3.9
+    ],
+    "preflight_passed": "0/6",
+    "restored_to_hz": 5
+   }
+  },
+  "threshold_changed": false,
+  "fix_verified": false
+ },
+ "gpu_lidar": {
+  "tick_groups": {
+   "rover_actor": "TG_PrePhysics",
+   "lidar_component": "TG_PostPhysics"
+  },
+  "idle_last_frame_obstacles": 0,
+  "terrain_lab_blocked_run": {
+   "lidar_first_cells": 214,
+   "distance_m": {
+    "p10": 3.68,
+    "p50": 6.68,
+    "p90": 8.57,
+    "max": 9.71
+   },
+   "max_tilt_deg": 29.9
+  },
+  "fix": "--lidar-pose-source telemetry_post_physics (opt-in; default unchanged)",
+  "drives": [
+   {
+    "label": "A",
+    "level": "BelvaLab01",
+    "pose_source": "telemetry_post_physics",
+    "goal": [
+     180,
+     275
+    ],
+    "result": "arrived",
+    "elapsed_s": 164.9,
+    "goal_distance_m": 0.245,
+    "map_revision": [
+     0,
+     0
+    ],
+    "lidar_first_cells": 0,
+    "max_tilt_deg": 5.0,
+    "mission_id": "7f8e86d2-2897-4317-8a40-b24ccbffbd08"
+   },
+   {
+    "label": "B",
+    "level": "BelvaLab01",
+    "pose_source": "telemetry",
+    "goal": [
+     180,
+     275
+    ],
+    "result": "blocked",
+    "elapsed_s": 39.7,
+    "map_revision": [
+     5,
+     36
+    ],
+    "lidar_first_cells": {
+     "start": 65,
+     "end": 195
+    },
+    "cell_distance_m": [
+     4.2,
+     9.5
+    ],
+    "max_tilt_deg": 14.1,
+    "mission_id": "01e32be0-4890-4907-b726-db2c6d88f9af"
+   },
+   {
+    "label": "C",
+    "level": "BelvaRockLab01",
+    "pose_source": "telemetry_post_physics",
+    "goal": [
+     178.2926,
+     288.1221
+    ],
+    "result": "arrived",
+    "elapsed_s": 91.7,
+    "goal_distance_m": 0.24,
+    "map_revision": [
+     1,
+     4
+    ],
+    "lidar_first_cells": 4,
+    "rocks_marked": [
+     "detour_blocker",
+     "row_threshold",
+     "row_blocker"
+    ],
+    "rocks_free": [
+     "row_pebble",
+     "row_belly"
+    ],
+    "cells_farther_than_1_5_m_from_rocks": 0,
+    "max_tilt_deg": 6.2,
+    "mission_id": "a22e3342-be58-4f7c-a3fe-f827485c3751"
+   }
+  ],
+  "single_runs": true
+ },
+ "cameras": {
+  "settings": {
+   "navcam_ev100": [
+    13,
+    13
+   ],
+   "rear_ev100": [
+    12,
+    12
+   ],
+   "post_process_ev100": 13,
+   "extend_default_luminance_range": true,
+   "capture_source_runtime": "SCS_FinalColorLDR",
+   "sun_lux": 30000,
+   "sun_elevation_deg": 35,
+   "terrain_albedo_linear": [
+    0.23,
+    0.1,
+    0.05
+   ]
+  },
+  "editor_capture_luma": {
+   "ev13": {
+    "ground": 15.2,
+    "sky": 64.0
+   },
+   "ev10": {
+    "ground": 115.6,
+    "sky": 191.5
+   },
+   "ev13_no_atmosphere_transmittance": {
+    "ground": 26.0
+   }
+  },
+  "pie_capture_luma": {
+   "ev13": {
+    "ground": 3.0,
+    "sky": 43.6,
+    "black_fraction": 0.799
+   },
+   "ev10": {
+    "ground": 90.0,
+    "sky": 176.1,
+    "black_fraction": 0.0,
+    "saturated_fraction": 0.0,
+    "ground_rgb": [
+     137.6,
+     80.5,
+     44.4
+    ]
+   }
+  },
+  "restored_ev100": 13,
+  "permanent_change": false
+ }
+}

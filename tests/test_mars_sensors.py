@@ -106,6 +106,20 @@ def test_pose_history_does_not_use_current_pose_for_an_old_capture():
         history.at(1500000000)
 
 
+def test_post_physics_capture_takes_the_next_telemetry_pose():
+    # Telemetry is read before physics, so the sample stamped t+1 holds the pose a
+    # post-physics capture stamped t saw (CPU capture pose == next sample, 2026-11-24).
+    s = sensors()
+    history = s.PoseHistory()
+    for ns, x in [(1000000000, 0), (1033000000, -100), (1066000000, -200)]:
+        history.add(s.pose_from_telemetry(dict(x=x, y=0, z=0, roll=0, pitch=0, yaw=180, t_ns=str(ns))))
+    assert history.at(1033000000).matrix[0, 3] == pytest.approx(1)
+    assert history.at(1033000000, post_physics=True).matrix[0, 3] == pytest.approx(2)
+    assert history.at(1016500000, post_physics=True).matrix[0, 3] == pytest.approx(1.5)
+    with pytest.raises(ValueError, match="wait"):  # the next sample has not arrived yet
+        history.at(1066000000, post_physics=True)
+
+
 def test_bad_organized_indices_and_absurd_epoch_are_rejected():
     s = sensors()
     packet = bytearray(lidar_packet([[1, 2, 3], [1, 2, 3]]))

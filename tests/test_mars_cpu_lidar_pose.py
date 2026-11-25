@@ -116,3 +116,32 @@ def test_capture_pose_from_wrong_origin_stops_without_mapping_points():
     assert session.state == "waiting_for_sensors"
     assert "disagrees" in session.error
     assert session.grid.revision == 0
+
+
+def run_gpu_scan(mode):
+    """A GPU scan stamped t was rendered with the post-physics pose that telemetry reports at t+1."""
+    grid = TerrainMap(np.zeros((24, 24)), 1, PlanningLimits(robot_radius_m=0))
+    config = {"schema_version": 1, "manifest_sha256": None,
+              "lidar": {"sensor_id": 0, "to_body": np.eye(4).tolist()},
+              "depth": {"camera_id": 4, "hfov_deg": 90, "to_body": np.eye(4).tolist()}}
+    session = NavigationSession(grid, config, min_points=1, settle_s=0,
+                                obstacle_diagnostics=True, lidar_pose_source=mode)
+    before = {"x": -1000, "y": 1000, "z": 100, "roll": 0, "pitch": 0, "yaw": 180, "t_ns": "1700000000000000000"}
+    after = {**before, "pitch": 3, "t_ns": "1700000000033000000"}
+    capture = pose_from_telemetry(after).matrix
+    world = np.array([[16, 10, 0], [14, 9, 0.30], [14, 11, -0.30]])
+    local = (world - capture[:3, 3]) @ capture[:3, :3]
+    for now, telemetry in ((1.0, before), (1.033, after)):
+        session.step({"connected": True, "connection_id": 1, "telemetry_age_s": 0, "telemetry_unreal": telemetry},
+                     now=now)
+    session.feed_lidar(LidarScan(0, 1, 1700000000000000000, local, 1, 3), now=1.04)
+    session.step({"connected": True, "connection_id": 1, "telemetry_age_s": 0, "telemetry_unreal": after}, now=1.05)
+    return session
+
+
+def test_gpu_scan_with_post_physics_pose_keeps_ground_free_and_hazards():
+    session = run_gpu_scan("telemetry_post_physics")
+    assert not session.grid.raw_blocked[10, 16]
+    assert session.grid.raw_blocked[9, 14] and session.grid.raw_blocked[11, 14]
+    assert session.health["lidar"]["pose_source"] == "telemetry_post_physics"
+    assert run_gpu_scan("telemetry").grid.raw_blocked[10, 16]  # same-stamp pose tilts the ground into a hazard

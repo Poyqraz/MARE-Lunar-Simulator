@@ -690,8 +690,10 @@ def main(argv=None):
                         help="record bounded sensor/map-change diagnostics in mission export")
     parser.add_argument("--fusion-shadow", action="store_true",
                         help="display sampled LiDAR/depth comparison; never changes map or motion")
-    parser.add_argument("--lidar-pose-source", choices=("telemetry", "cpu_capture"), default="telemetry",
-                        help="experimental: cpu_capture requires a CPU-only LIDR v2 producer")
+    parser.add_argument("--lidar-pose-source", choices=("telemetry", "cpu_capture", "telemetry_post_physics"),
+                        default="telemetry",
+                        help="experimental: cpu_capture requires a CPU-only LIDR v2 producer; "
+                             "telemetry_post_physics gives a GPU scan the next telemetry sample's pose")
     parser.add_argument("--prefer-short-direct", action="store_true",
                         help="experimental: prefer a clear, lower sampled terrain-cost direct route up to 8 m")
     follow = parser.add_mutually_exclusive_group()

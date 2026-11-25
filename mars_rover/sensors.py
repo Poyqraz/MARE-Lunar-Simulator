@@ -226,11 +226,17 @@ class PoseHistory:
         else:
             self.samples.append(pose)
 
-    def at(self, stamp_ns):
-        for pose in self.samples:
+    def at(self, stamp_ns, *, post_physics=False):
+        samples = list(self.samples)
+        if post_physics:
+            # Rover telemetry is read before physics; a capture made after physics
+            # in the same frame sees the pose the next sample reports.
+            # shortcut: assumes one telemetry sample per frame; revisit if telemetry is throttled below FPS.
+            samples = [Pose(a.stamp_ns, b.matrix) for a, b in zip(samples, samples[1:])]
+        for pose in samples:
             if abs(pose.stamp_ns - stamp_ns) <= CAPTURE_CLOCK_TOLERANCE_NS:
                 return Pose(stamp_ns, pose.matrix.copy())
-        for a, b in zip(self.samples, list(self.samples)[1:]):
+        for a, b in zip(samples, samples[1:]):
             if a.stamp_ns < stamp_ns < b.stamp_ns:
                 if b.stamp_ns - a.stamp_ns > self.max_gap_ns:
                     break

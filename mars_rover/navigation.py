@@ -196,7 +196,7 @@ class NavigationSession:
             or not 0 <= settle_s <= 30
             or type(obstacle_diagnostics) is not bool
             or type(fusion_shadow) is not bool
-            or lidar_pose_source not in ("telemetry", "cpu_capture")
+            or lidar_pose_source not in ("telemetry", "cpu_capture", "telemetry_post_physics")
             or type(prefer_short_direct) is not bool
             or type(smooth_follow) is not bool
         ):
@@ -423,6 +423,10 @@ class NavigationSession:
         return (self.config["lidar"] if key == "lidar"
                 else self.config["depth"] if key == "ground_truth" else self.config["stereo"])
 
+    def _capture_pose(self, key, stamp_ns):
+        # GPU LiDAR ticks post-physics; telemetry reports the pre-physics pose of its stamp.
+        return self.history.at(stamp_ns, post_physics=key == "lidar" and self.lidar_pose_source == "telemetry_post_physics")
+
     def _capture_matrix(self, key, frame, pose):
         """World-from-sensor for a capture and a problem string when the CPU pose is implausible."""
         matrix = pose.matrix @ transform_matrix(self._settings(key)["to_body"])
@@ -461,7 +465,7 @@ class NavigationSession:
             return None
         with self.lock:
             try:
-                matrix, problem = self._capture_matrix(key, frame, self.history.at(frame.stamp_ns))
+                matrix, problem = self._capture_matrix(key, frame, self._capture_pose(key, frame.stamp_ns))
             except ValueError:
                 return None
             if problem:
@@ -490,7 +494,7 @@ class NavigationSession:
             processing_started = time.monotonic()
             # Wait for a bracketing pose, rather than using the rover's current
             # pose on an asynchronously returned scan/image.
-            pose = self.history.at(frame.stamp_ns)
+            pose = self._capture_pose(key, frame.stamp_ns)
             if self._capture_too_old(frame.stamp_ns):
                 self.health[key] = {"received_at": received, "valid_inside_points": 0,
                                     "capture_stale": True, "stamp_ns": frame.stamp_ns}
