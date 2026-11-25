@@ -559,5 +559,48 @@
   ],
   "placed_on_terrain": false,
   "placement_requirements": "rover pose from this label plus PDS PLACES localization; verify they agree"
+ },
+ "reproducibility": {
+  "checked": "2026-11-25, same machine only; no other machine tried",
+  "belva_bundle_rerun": {
+   "command": "python -m mars_rover.prepare --preset Config/Mars/belva.json --output generated/belva-lab-rerun-20261125",
+   "source_read": "preset HTTPS URL (range reads)",
+   "identical_files": [
+    "heightmap.r16",
+    "elevation.csv",
+    "soil.csv",
+    "source_dem.xml",
+    "manifest.json"
+   ],
+   "manifest_sha256": "9fb81a1ae6c4752fe116eff8d28067d94e611a376e3bfd9b552e2db70e6229e5"
+  },
+  "rock_scenario_rerun": {
+   "command": "python -m mars_rover.rock_scenario --manifest generated/belva-lab-20261125/manifest.json --start 180 300 --heading-deg -98.18 --output <new>",
+   "sha256": "3fd909ba1bc25a70ff3ab42085e518be6856e252ee9e38f1665e803d59f09993",
+   "identical_to_placed_scenario": true
+  },
+  "not_rerun": [
+   "fidelity audit",
+   "Unreal level creation",
+   "rock placement",
+   "gravity runs",
+   "drives"
+  ],
+  "software": {
+   "python": "3.12.10",
+   "numpy": "2.3.5",
+   "rasterio": "1.5.2",
+   "gdal": "3.12.2",
+   "pyproj": "3.8.0",
+   "proj": "9.8.1",
+   "unreal_engine": "5.7"
+  },
+  "local_only": [
+   "generated/belva-lab-20261125/",
+   ".cache/mars/jezero_dl.tif",
+   "Content/Mars/BelvaLab01*",
+   "Content/Mars/BelvaRockLab01*",
+   "Saved/Mars/ raw reports, recordings and screenshots"
+  ]
  }
 }

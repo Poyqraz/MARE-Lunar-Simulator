@@ -89,6 +89,7 @@ def place_drop_probe(height_m=60.0, offset_xy_m=(0.0, 20.0)):
     component.set_mobility(unreal.ComponentMobility.MOVABLE)
     component.set_collision_profile_name("PhysicsActor")
     component.set_simulate_physics(True)
+    component.set_linear_damping(0.0)  # the 0.01 default biased runs 1-2 low (3.66, 3.60 m/s2)
     unreal.EditorLoadingAndSavingUtils.save_current_level()
     return {"probe_start_z_cm": hit[5].z + height_m * 100, "ground_z_cm": hit[5].z}
 

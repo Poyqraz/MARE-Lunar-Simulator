@@ -87,13 +87,8 @@ Belva neden yeni bir kaynak gerektiriyor? **[ölçüldü]**
   yani rota için çoğunlukla engel. Krater tabanı da düz değil (merkezde 20 m içinde 11,7°).
 - **Ortogörüntü:** bu pakette yok. DL çiftine ait kayıtlı bir ortogörüntü seçilmedi.
 
-Büyük paket (27 MB) Git'e eklenmedi. Şu komutla yeniden üretilir:
-
-```powershell
-.\.venv\Scripts\python.exe -m mars_rover.prepare --preset Config/Mars/belva.json --output generated/belva-lab-NEW
-```
-
-Dosya hash'leri JSON kanıtındadır.
+Büyük paket (27 MB) Git'e eklenmedi. Üretim komutu ve doğrulama durumu
+[7. bölümdedir](#7-yeniden-üretim); dosya hash'leri JSON kanıtındadır.
 
 **Unreal sahneleri [ölçüldü]**
 
@@ -228,6 +223,38 @@ reddetti. Sebep, GT yakalama yaşının 0,36–0,40 s olması (sınır 0,35 s). 
 zamana yakın çalışıyordu: telemetri 30 Hz, 6,06 s duvar saatinde 5,8 s oyun süresi.
 Yani darboğaz FPS değil; 5 Hz GT yakalama, geri okuma ve işleme gecikmesi. Eşik
 değiştirilmedi.
+
+## 7. Yeniden üretim
+
+**Git'te olanlar:** kod, preset, bu belge ve JSON kanıtı. JSON kanıtı şunları içerir:
+kaynak ve paket hash'leri, kaya senaryosunun tamamı, yerleştirme ölçümleri, yerçekimi
+uydurmaları, import özetleri ve sürüş özetleri.
+
+**Yalnız bu makinede olanlar (Git dışı):**
+- `generated/belva-lab-20261125/` (27 MB)
+- `.cache/mars/jezero_dl.tif` (115 MB)
+- `Content/Mars/BelvaLab01*` ve `Content/Mars/BelvaRockLab01*` seviyeleri (binary)
+- `Saved/Mars/` altındaki ham import raporları, sensör yapılandırmaları, yerçekimi
+  örnekleri, görev kayıtları ve dashboard görüntüleri
+
+Adımlar ve doğrulama durumları:
+
+| # | Adım | Komut | Durum |
+|---|---|---|---|
+| 1 | Belva paketi | `python -m mars_rover.prepare --preset Config/Mars/belva.json --output generated/belva-lab-NEW` | **Aynı makinede yeniden koşuldu [ölçüldü].** Beş dosya ve manifest bayt bayt aynı çıktı (manifest `9fb81a1a…`). Kaynak HTTPS'ten okundu, süre 12 s. |
+| 2 | Kaynak denetimi | `python -m mars_rover.fidelity --manifest generated/belva-lab-NEW/manifest.json --source-dem <preset URL'si veya yerel kopya> --output <yeni.json>` | Bir kez koşuldu. |
+| 3 | Kaya senaryosu | `python -m mars_rover.rock_scenario --manifest generated/belva-lab-NEW/manifest.json --start 180 300 --heading-deg -98.18 --output <yeni.json>` | **Aynı makinede yeniden koşuldu [ölçüldü].** SHA-256 `3fd909ba…` ile bayt bayt aynı. |
+| 4 | Unreal sahnesi | Editör Python'u: `mars_setup.build(<manifest>, level_path="/Game/Mars/<YeniAd>", rover_blueprint="/Game/Blueprints/Leo_Raph", spawn_cell=(180, 300), navigation_config_path=<yeni sensör json>, report_path=<yeni rapor json>)` | Her seviye için bir kez çalıştırıldı (BelvaLab01, BelvaRockLab01). Yeniden kurulum denenmedi. |
+| 5 | Kaya yerleştirme | Adında "Rock" geçen, kayasız yeni seviyede: `mars_rock_scenario.place(<senaryo.json>)` | Bir kez çalıştırıldı. Her kaya basit ve karmaşık izle doğrulandı. |
+| 6 | Yerçekimi | Adında "Lab" geçen seviyede `mars_physics_probe.place_drop_probe()`, sonra Play, `start_recording()` ve `stop_recording(<yeni.json>)` | Üç koşu yapıldı. 3. koşuda probun sönümü elle 0'a çekilmişti; `place_drop_probe` artık bunu kendisi yapıyor (editörde yeniden koşulmadı). |
+| 7 | Sürüşler | `python -m mars_rover.nav_service --sensors <sensör json> --manifest <manifest> --telemetry-format unreal-tr-v1 --lidar-pose-source cpu_capture`, geçici `mars_cpu_lidar_setup.apply()`, Play, `POST /goal {"x", "y"}` | Her sürüş bir kez yapıldı. |
+
+**Yazılım sürümleri (bu makine):** Python 3.12.10, numpy 2.3.5, rasterio 1.5.2
+(GDAL 3.12.2), pyproj 3.8.0 (PROJ 9.8.1), Unreal Engine 5.7.
+
+**Başka bir makinede hiçbir adım denenmedi.** Farklı GDAL ya da PROJ sürümleri farklı
+baytlar üretebilir. Bu durumda paketi JSON'daki hash'lerle ve `fidelity` raporuyla
+karşılaştırmak gerekir.
 
 ## Sınırlar
 
