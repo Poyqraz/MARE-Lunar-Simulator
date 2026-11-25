@@ -145,3 +145,58 @@ def test_gpu_scan_with_post_physics_pose_keeps_ground_free_and_hazards():
     assert session.grid.raw_blocked[9, 14] and session.grid.raw_blocked[11, 14]
     assert session.health["lidar"]["pose_source"] == "telemetry_post_physics"
     assert run_gpu_scan("telemetry").grid.raw_blocked[10, 16]  # same-stamp pose tilts the ground into a hazard
+
+
+
+def gpu_session():
+    grid = TerrainMap(np.zeros((24, 24)), 1, PlanningLimits(robot_radius_m=0))
+    config = {"schema_version": 1, "manifest_sha256": None,
+              "lidar": {"sensor_id": 0, "to_body": np.eye(4).tolist()},
+              "depth": {"camera_id": 4, "hfov_deg": 90, "to_body": np.eye(4).tolist()}}
+    return NavigationSession(grid, config, min_points=1, settle_s=0, obstacle_diagnostics=True,
+                             lidar_pose_source="telemetry_post_physics")
+
+
+def telemetry(ms, connection=1, pitch=0):
+    pose = {"x": -1000, "y": 1000, "z": 100, "roll": 0, "pitch": pitch, "yaw": 180,
+            "t_ns": str(1700000000000000000 + ms * 1_000_000)}
+    return {"connected": True, "connection_id": connection, "telemetry_age_s": 0, "telemetry_unreal": pose}
+
+
+def flat_scan(ms, frame=1):
+    """Three ground points 6 m ahead at map height 0 (sensor at 1 m)."""
+    return LidarScan(0, frame, 1700000000000000000 + ms * 1_000_000,
+                     np.array([[6.0, -1.0, -1.0], [6.0, 0.0, -1.0], [6.0, 1.0, -1.0]]), 1, 3)
+
+
+def test_delayed_next_telemetry_holds_the_scan_until_its_post_physics_pose_arrives():
+    session = gpu_session()
+    session.step(telemetry(0), now=1.0)
+    session.feed_lidar(flat_scan(0), now=1.01)  # the 33 ms sample has not arrived yet
+    session.step(telemetry(0), now=1.02)
+    assert "lidar" not in session.health
+    session.step(telemetry(33), now=1.05)
+    assert session.health["lidar"]["stamp_ns"] == flat_scan(0).stamp_ns  # never the telemetry stamp
+    assert session.health["lidar"]["valid_inside_points"] == 3 and not session.grid.raw_blocked[9:12, 16].any()
+
+
+def test_old_scan_is_reported_stale_not_refreshed_by_a_later_pose():
+    session = gpu_session()
+    for i in range(14):  # 0 .. 429 ms, continuous 33 ms telemetry
+        session.step(telemetry(33 * i), now=1.0 + 0.033 * i)
+    session.feed_lidar(flat_scan(0), now=1.45)
+    session.step(telemetry(33 * 14), now=1.47)
+    assert session.health["lidar"]["capture_stale"] is True
+    assert session.health["lidar"]["stamp_ns"] == flat_scan(0).stamp_ns
+
+
+def test_scan_from_before_a_session_change_is_never_placed():
+    session = gpu_session()
+    session.step(telemetry(0), now=1.0)
+    session.step(telemetry(33), now=1.03)
+    session.step(telemetry(1000, connection=2), now=1.04)  # new connection: history restarts
+    session.step(telemetry(1033, connection=2), now=1.07)
+    session.feed_lidar(flat_scan(0), now=1.08)
+    session.step(telemetry(1066, connection=2), now=1.10)
+    assert "lidar" not in session.health or session.health["lidar"].get("valid_inside_points", 0) == 0
+    assert session.grid.revision == 0

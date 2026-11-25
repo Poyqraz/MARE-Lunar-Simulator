@@ -120,6 +120,56 @@ def test_post_physics_capture_takes_the_next_telemetry_pose():
         history.at(1066000000, post_physics=True)
 
 
+
+def post_physics_history(stamps_ms, x_of=lambda i: -100 * i):
+    s = sensors()
+    history = s.PoseHistory()
+    for i, ms in enumerate(stamps_ms):
+        history.add(s.pose_from_telemetry(dict(x=x_of(i), y=0, z=0, roll=0, pitch=0, yaw=180,
+                                               t_ns=str(1_000_000_000 + ms * 1_000_000))))
+    return history
+
+
+def ns(ms):
+    return 1_000_000_000 + ms * 1_000_000
+
+
+def test_post_physics_refuses_a_capture_whose_next_telemetry_frame_is_missing():
+    # Frames at 0, 33, (66 missing), 99, 132 ms: the scan at 33 ms saw the pose of the
+    # missing 66 ms frame, which no sample reports. Pairing it with 99 ms would be a frame late.
+    history = post_physics_history([0, 33, 99, 132])
+    assert history.at(ns(0), post_physics=True).matrix[0, 3] == pytest.approx(1)
+    for stamp in (ns(33), ns(66)):
+        with pytest.raises(ValueError, match="missing"):
+            history.at(stamp, post_physics=True)
+    assert history.at(ns(99), post_physics=True).matrix[0, 3] == pytest.approx(3)
+    assert history.at(ns(33)).matrix[0, 3] == pytest.approx(1)  # the default mode is unaffected
+
+
+def test_post_physics_accepts_variable_frame_times_without_skips():
+    stamps = [0, 25, 65, 90, 130, 155]  # alternating 25/40 ms frames, none skipped
+    history = post_physics_history(stamps)
+    for i, ms in enumerate(stamps[:-1]):
+        assert history.at(ns(ms), post_physics=True).matrix[0, 3] == pytest.approx(i + 1)
+
+
+def test_post_physics_with_duplicate_or_out_of_order_telemetry():
+    s = sensors()
+    history = post_physics_history([0, 33, 66])
+    # A repeated stamp replaces the sample instead of creating a zero-length frame.
+    history.add(s.pose_from_telemetry(dict(x=-150, y=0, z=0, roll=0, pitch=0, yaw=180, t_ns=str(ns(66)))))
+    assert history.at(ns(33), post_physics=True).matrix[0, 3] == pytest.approx(1.5)
+    # An older stamp means a new clock: earlier samples cannot pair with later ones.
+    history.add(s.pose_from_telemetry(dict(x=0, y=0, z=0, roll=0, pitch=0, yaw=180, t_ns=str(ns(10)))))
+    with pytest.raises(ValueError, match="wait"):
+        history.at(ns(0), post_physics=True)
+
+
+def test_post_physics_pose_keeps_the_capture_stamp():
+    history = post_physics_history([0, 33, 66])
+    pose = history.at(ns(33), post_physics=True)
+    assert pose.stamp_ns == ns(33) and pose.matrix[0, 3] == pytest.approx(2)
+
 def test_bad_organized_indices_and_absurd_epoch_are_rejected():
     s = sensors()
     packet = bytearray(lidar_packet([[1, 2, 3], [1, 2, 3]]))
