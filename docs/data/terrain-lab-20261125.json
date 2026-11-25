@@ -1,0 +1,563 @@
+{
+ "schema_version": 1,
+ "date": "2026-11-25",
+ "baseline_jezero_c": {
+  "bundle_manifest_sha256": "aea08f2fbc305462a0b9c59f2566197fa33d08da3312cedb4c921e5e59230f88",
+  "regenerated_from_source": "python -m mars_rover.prepare --output generated/jezero-baseline-20261125",
+  "identical_bytes": [
+   "heightmap.r16",
+   "soil.csv",
+   "source_dem.xml",
+   "source_ortho.xml"
+  ],
+  "elevation_csv_max_abs_diff_m": 1e-09,
+  "ortho_png_pixel_max_diff": 0,
+  "manifest_differences": "only the elevation.csv and ortho_reference.png sha256 values (text rounding / PNG encoder)",
+  "fidelity": {
+   "sample_count": 64009,
+   "max_abs_error_m": 5.00676833325997e-10,
+   "rmse_m": 2.880423172932069e-10,
+   "tolerance_m": 2e-06,
+   "source_file_sha256": null,
+   "method": "inverse CRS transform and independent four-source-post bilinear interpolation",
+   "is_ground_truth_accuracy_measurement": false
+  }
+ },
+ "belva_lab": {
+  "preset": "Config/Mars/belva.json",
+  "source_file_sha256": "1cd061c66ce4a9f38afade744256009b7e5c1fa40d8ddad3d14d6eba887bbdc1",
+  "source_bytes": 114658582,
+  "manifest_sha256": "9fb81a1ae6c4752fe116eff8d28067d94e611a376e3bfd9b552e2db70e6229e5",
+  "files": {
+   "heightmap.r16": {
+    "sha256": "e6b1f32a5dac40086f4a4b4c126b6acf99652c223fccd82ae9ef2ef12b66db6e"
+   },
+   "elevation.csv": {
+    "sha256": "3e3ae475182b7e9512fef3c17e3b3691bbe0cd347c74f2bb41e8cd8699a5c7c8"
+   },
+   "soil.csv": {
+    "sha256": "5a2af2abec2f04404045f0484680aaf45aa6094f80da58400b9a778765ae90a3"
+   },
+   "source_dem.xml": {
+    "sha256": "b3bbf4522f0c972e7319858f26788a2849b51c50168366af34e420068c364aa8"
+   }
+  },
+  "grid": {
+   "width": 1281,
+   "height": 1281,
+   "resolution_m": 1.0,
+   "extent_m": [
+    1280.0,
+    1280.0
+   ]
+  },
+  "reprojection": {
+   "method": "bilinear; Mars azimuthal equidistant centred on source window",
+   "warp_transform_tolerance_px": 0.0,
+   "height_interpolation": "bilinear point sampling; XSCALE=YSCALE=1, no footprint averaging",
+   "center_longitude_deg": 77.37945604101992,
+   "center_latitude_deg": 18.48296477228885,
+   "source_x_ground_scale_at_center": 0.9484179545672792,
+   "reference_semi_major_m": 3396190.0,
+   "reference_semi_minor_m": 3396190.0,
+   "geometry_model": "planar local heightfield; no planetary curvature displacement",
+   "max_reference_sphere_sag_m": 0.12060573760596432
+  },
+  "vertical_datum_offset_m": -2493.666201000186,
+  "vertical_quantization_m": 0.0014971694682073134,
+  "landscape": {
+   "section_size": 63,
+   "sections_per_component": 1,
+   "component_count_x": 21,
+   "component_count_y": 21,
+   "width": 1324,
+   "height": 1324,
+   "scale": [
+    100.0,
+    100.0,
+    19.16376919305361
+   ],
+   "location_cm": [
+    -132300.0,
+    0,
+    4905.924913421724
+   ]
+  },
+  "belva_centre_fit": {
+   "lat_deg": 18.48296,
+   "lon_deg_e": 77.37946,
+   "local_xy_m": [
+    640.0,
+    640.0
+   ],
+   "rim_diameter_m": 940,
+   "depth_rim_mean_to_floor_m": 74,
+   "method": "crater fit on the Jezero_DL DTM; agrees with USGS Gazetteer feature 15872 (18.48N, 77.38E, 0.90 km)"
+  },
+  "fidelity": {
+   "sample_count": 1640961,
+   "max_abs_error_m": 5.011315806768835e-10,
+   "rmse_m": 2.8862534442598986e-10,
+   "tolerance_m": 2e-06,
+   "source_file_sha256": "1cd061c66ce4a9f38afade744256009b7e5c1fa40d8ddad3d14d6eba887bbdc1",
+   "method": "inverse CRS transform and independent four-source-post bilinear interpolation",
+   "is_ground_truth_accuracy_measurement": false
+  },
+  "encoding": {
+   "post_count": 1640961,
+   "max_abs_error_m": 0.000748584529276286,
+   "quantization_step_m": 0.0014971694682073134,
+   "is_source_accuracy": false
+  },
+  "terrain": {
+   "height_range_m": 98.117001099,
+   "central_difference_slopes": {
+    "2": {
+     "baseline_m": 2.0,
+     "max_deg": 54.17606925231835,
+     "p95_deg": 20.806045734463503,
+     "sample_count": 1635841,
+     "border_excluded_cells": 1
+    },
+    "4": {
+     "baseline_m": 4.0,
+     "max_deg": 42.903218802120165,
+     "p95_deg": 20.506684716298587,
+     "sample_count": 1630729,
+     "border_excluded_cells": 2
+    },
+    "10": {
+     "baseline_m": 10.0,
+     "max_deg": 37.30222544401276,
+     "p95_deg": 19.84884490045386,
+     "sample_count": 1615441,
+     "border_excluded_cells": 5
+    },
+    "20": {
+     "baseline_m": 20.0,
+     "max_deg": 34.38339445119007,
+     "p95_deg": 19.376649230859574,
+     "sample_count": 1590121,
+     "border_excluded_cells": 10
+    }
+   }
+  },
+  "unreal_imports": [
+   {
+    "level": "/Game/Mars/BelvaLab01",
+    "status": "saved",
+    "heightmap_verified": true,
+    "collision_verified": true,
+    "manifest_sha256": "9fb81a1ae6c4752fe116eff8d28067d94e611a376e3bfd9b552e2db70e6229e5",
+    "collision": {
+     "verified": true,
+     "probe_point_count": 365,
+     "trace_count": 730,
+     "simple_and_complex": true,
+     "max_abs_position_error_m": 0.0004050479083070968,
+     "numerical_tolerance_m": 0.002,
+     "all_triangles_verified": false,
+     "wheel_contact_physics_verified": false,
+     "coverage": "interior posts, representative seams, height extrema, largest adjacent height step and edge midpoints"
+    }
+   },
+   {
+    "level": "/Game/Mars/BelvaRockLab01",
+    "status": "saved",
+    "heightmap_verified": true,
+    "collision_verified": true,
+    "manifest_sha256": "9fb81a1ae6c4752fe116eff8d28067d94e611a376e3bfd9b552e2db70e6229e5",
+    "collision": {
+     "verified": true,
+     "probe_point_count": 365,
+     "trace_count": 730,
+     "simple_and_complex": true,
+     "max_abs_position_error_m": 0.0004050479083070968,
+     "numerical_tolerance_m": 0.002,
+     "all_triangles_verified": false,
+     "wheel_contact_physics_verified": false,
+     "coverage": "interior posts, representative seams, height extrema, largest adjacent height step and edge midpoints"
+    }
+   }
+  ]
+ },
+ "synthetic_rocks": {
+  "scenario": {
+   "schema_version": 1,
+   "kind": "synthetic_rock_test",
+   "notice": "Procedural test obstacles for pipeline validation. NOT measured Mars rocks.",
+   "seed": 20261125,
+   "rover": {
+    "source": "/Game/Blueprints/Leo_Raph (editor read 2026-11-25)",
+    "wheel_radius_m": 0.0886,
+    "wheel_width_m": 0.0836,
+    "track_m": 0.38,
+    "wheelbase_m": 0.39,
+    "belly_clearance_m": 0.089
+   },
+   "start_cell": [
+    180,
+    300
+   ],
+   "heading_deg": -98.18,
+   "detour_goal_xy_m": [
+    178.2926,
+    288.1221
+   ],
+   "rocks": [
+    {
+     "id": "detour_blocker",
+     "class": "blocker",
+     "purpose": "clearly blocking: about 2x the threshold",
+     "size_rule": "exposed height = 3.4 x rover wheel_radius_m",
+     "center_xy_m": [
+      178.9325,
+      293.9525
+     ],
+     "terrain_z_m": 73.0162,
+     "terrain_slope_deg": 1.05,
+     "exposed_height_m": 0.3012,
+     "burial_fraction": 0.3,
+     "size_m": [
+      0.5637,
+      0.5262,
+      0.4303
+     ],
+     "yaw_deg": 6.66
+    },
+    {
+     "id": "row_pebble",
+     "class": "pebble",
+     "purpose": "below the 0.15 m obstacle threshold: expected traversable",
+     "size_rule": "exposed height = 0.5 x rover wheel_radius_m",
+     "center_xy_m": [
+      182.4731,
+      295.6451
+     ],
+     "terrain_z_m": 73.0979,
+     "terrain_slope_deg": 5.06,
+     "exposed_height_m": 0.0443,
+     "burial_fraction": 0.3,
+     "size_m": [
+      0.0912,
+      0.0742,
+      0.0633
+     ],
+     "yaw_deg": 169.55
+    },
+    {
+     "id": "row_belly",
+     "class": "belly",
+     "purpose": "about belly clearance: expected below threshold, wheel climbs it",
+     "size_rule": "exposed height = 1.0 x rover belly_clearance_m",
+     "center_xy_m": [
+      182.1469,
+      293.1438
+     ],
+     "terrain_z_m": 73.0364,
+     "terrain_slope_deg": 2.6,
+     "exposed_height_m": 0.089,
+     "burial_fraction": 0.3,
+     "size_m": [
+      0.1889,
+      0.1906,
+      0.1271
+     ],
+     "yaw_deg": 114.22
+    },
+    {
+     "id": "row_threshold",
+     "class": "threshold",
+     "purpose": "just over the 0.15 m map obstacle threshold",
+     "size_rule": "exposed height = 1.7 x rover wheel_radius_m",
+     "center_xy_m": [
+      181.7546,
+      290.7316
+     ],
+     "terrain_z_m": 73.0025,
+     "terrain_slope_deg": 2.43,
+     "exposed_height_m": 0.1506,
+     "burial_fraction": 0.3,
+     "size_m": [
+      0.308,
+      0.2432,
+      0.2151
+     ],
+     "yaw_deg": 51.28
+    },
+    {
+     "id": "row_blocker",
+     "class": "blocker",
+     "purpose": "clearly blocking: about 2x the threshold",
+     "size_rule": "exposed height = 3.4 x rover wheel_radius_m",
+     "center_xy_m": [
+      181.3464,
+      288.0973
+     ],
+     "terrain_z_m": 72.9596,
+     "terrain_slope_deg": 1.6,
+     "exposed_height_m": 0.3012,
+     "burial_fraction": 0.3,
+     "size_m": [
+      0.5941,
+      0.5256,
+      0.4303
+     ],
+     "yaw_deg": 78.33
+    }
+   ],
+   "manifest_sha256": "9fb81a1ae6c4752fe116eff8d28067d94e611a376e3bfd9b552e2db70e6229e5"
+  },
+  "placed": {
+   "level": "/Game/Mars/BelvaRockLab01",
+   "scenario_sha256": "3fd909ba1bc25a70ff3ab42085e518be6856e252ee9e38f1665e803d59f09993",
+   "rocks": [
+    {
+     "id": "detour_blocker",
+     "ground_z_cm": 7301.531713463584,
+     "center_cm": [
+      -17893.25,
+      29395.25,
+      7310.136713463584
+     ],
+     "traced_top_above_ground_m": [
+      0.3012,
+      0.3012
+     ]
+    },
+    {
+     "id": "row_pebble",
+     "ground_z_cm": 7310.821099370121,
+     "center_cm": [
+      -18247.309999999998,
+      29564.510000000002,
+      7312.086099370123
+     ],
+     "traced_top_above_ground_m": [
+      0.0443,
+      0.0443
+     ]
+    },
+    {
+     "id": "row_belly",
+     "ground_z_cm": 7304.293990291873,
+     "center_cm": [
+      -18214.69,
+      29314.38,
+      7306.8389902918725
+     ],
+     "traced_top_above_ground_m": [
+      0.089,
+      0.089
+     ]
+    },
+    {
+     "id": "row_threshold",
+     "ground_z_cm": 7300.4698764441855,
+     "center_cm": [
+      -18175.460000000003,
+      29073.16,
+      7304.774876444185
+     ],
+     "traced_top_above_ground_m": [
+      0.1506,
+      0.1506
+     ]
+    },
+    {
+     "id": "row_blocker",
+     "ground_z_cm": 7296.146760988733,
+     "center_cm": [
+      -18134.64,
+      28809.730000000003,
+      7304.751760988734
+     ],
+     "traced_top_above_ground_m": [
+      0.3012,
+      0.3012
+     ]
+    }
+   ],
+   "measured_mars_objects": false
+  }
+ },
+ "gravity_drop_tests": {
+  "run1": {
+   "probe_linear_damping": 0.01,
+   "drop_height_m": 10,
+   "world_settings": {
+    "global_gravity_set": true,
+    "global_gravity_z_cm_s2": -371.0
+   },
+   "fit": {
+    "g_m_s2": 3.66124749399085,
+    "initial_speed_m_s": -1.5055256890435567,
+    "max_residual_m": 0.0017810706542888965,
+    "samples": 56,
+    "duration_s": 1.8333334289491177
+   }
+  },
+  "run2": {
+   "probe_linear_damping": 0.01,
+   "drop_height_m": 60,
+   "world_settings": {
+    "global_gravity_set": true,
+    "global_gravity_z_cm_s2": -371.0
+   },
+   "fit": {
+    "g_m_s2": 3.600893281802063,
+    "initial_speed_m_s": -1.3483586751085463,
+    "max_residual_m": 0.04399782859709944,
+    "samples": 160,
+    "duration_s": 5.30000027641654
+   }
+  },
+  "run3": {
+   "probe_linear_damping": 0.0,
+   "drop_height_m": 60,
+   "world_settings": {
+    "global_gravity_set": true,
+    "global_gravity_z_cm_s2": -371.0
+   },
+   "fit": {
+    "g_m_s2": 3.7100490090331704,
+    "initial_speed_m_s": -2.3619490036915964,
+    "max_residual_m": 3.7824926607754605e-05,
+    "samples": 150,
+    "duration_s": 4.966666925698519
+   }
+  }
+ },
+ "rover_physics_baseline": {
+  "source": "editor read and PIE read of /Game/Blueprints/Leo_Raph, 2026-11-25",
+  "masses_kg": {
+   "body_runtime": 200.0,
+   "body_override": 150.0,
+   "payload_sensor_welded_override": 50.0,
+   "each_wheel": 10.0,
+   "total_runtime": 240.0
+  },
+  "wheel_collision": "sphere radius 0.08857 m (mesh width 0.0836 m)",
+  "track_m": 0.38,
+  "wheelbase_m": 0.39,
+  "suspension": "none: wheel constraints lock all linear axes and both swing axes; twist (axle) free",
+  "wheel_material": {
+   "asset": "/Game/Blueprints/WheelPhysics",
+   "friction": 0.6,
+   "static_friction": 0.2,
+   "combine": "MIN (override)",
+   "restitution": 0.0
+  },
+  "terrain_material": "none (engine default physical material)",
+  "physics_settings": {
+   "substepping": true,
+   "max_substep_delta_time_s": 0.008333,
+   "max_substeps": 8,
+   "default_gravity_z_cm_s2": -980.0,
+   "world_override_gravity_z_cm_s2": -371.0
+  },
+  "reference_raph_urdf": {
+   "repo": "SpaceR-Raph-Rover-ROS2 6b5722b",
+   "base_link_mass_kg": 3.0,
+   "wheel_mass_kg": 0.5,
+   "wheel_collision_radius_m": 0.091,
+   "kinematic_wheel_radius_m": 0.08,
+   "wheelbase_m": 0.378,
+   "track_m": 0.384,
+   "note": "simulation description values, not a weighed vehicle"
+  },
+  "wheel_contact_at_rest": {
+   "vertical_gap_cm": {
+    "BR": 0.102,
+    "FL": 0.01,
+    "FR": 0.002,
+    "BL": 0.006
+   },
+   "terrain_normal_z": 0.999,
+   "rover_tilt_deg": 4.6
+  }
+ },
+ "drives": {
+  "detour": {
+   "level": "/Game/Mars/BelvaRockLab01",
+   "session_id": "2e8ccf76-9708-4df2-b0ee-5fc6b3ed155a",
+   "mission_id": "8bed5b13-557f-4b92-b5ae-f241b046c1ac",
+   "start_xy_m": [
+    179.96,
+    299.95
+   ],
+   "goal_xy_m": [
+    178.29,
+    288.12
+   ],
+   "result": "arrived",
+   "final_distance_m": 0.24,
+   "elapsed_s": 103.1,
+   "lidar": "CPU, capture pose (temporary editor setting, restored)",
+   "sensor_waits": 7,
+   "min_edge_clearance_to_detour_rock_m": 1.65,
+   "max_tilt_deg": 8.07,
+   "map": "3 rocks >= 0.15 m blocked (lidar/ground_truth), 2 rocks < 0.15 m free, 0 sensor cells > 1.5 m from a rock",
+   "route_preview": "13.9 m route around the 0.30 m rock (direct segment closed)",
+   "probe_preflight": "tools/mars_detour_probe.py --send refused 4 times: ground-truth capture age 0.36-0.40 s > 0.35 s; goal sent through the service /goal API instead"
+  },
+  "open_ground": {
+   "level": "/Game/Mars/BelvaLab01",
+   "mission_id": "cb195e54-2ed8-4dc2-9e9a-003478a5a4f1",
+   "start_xy_m": [
+    180.0,
+    300.0
+   ],
+   "goal_xy_m": [
+    180.0,
+    275.0
+   ],
+   "result": "arrived",
+   "final_distance_m": 0.24,
+   "elapsed_s": 177.3,
+   "lidar": "CPU, capture pose (temporary, restored)",
+   "sensor_cells": 0,
+   "max_cross_track_from_x_180_m": 0.031,
+   "max_tilt_deg": 6.61
+  },
+  "open_ground_gpu_lidar": {
+   "mission_id": "dae2efc4-3b17-428c-aca6-a5740c474a17",
+   "result": "blocked after 13.9 s",
+   "cause": "214 GPU-LiDAR-first cells around the rover in a rock-free scene"
+  }
+ },
+ "m2020_xyz_sample": {
+  "file": "NLF_0420_0704212988_190XYZ_N0232532NCAM13419_0A0195J01.IMG",
+  "sha256": "02840cf23f0b1f65e0cbb60ad35bd38d16789eb18616bf3dab9dc7e5284df94a",
+  "bytes": 29552640,
+  "derived_image_type": "XYZ_FILTER_MAP",
+  "reference_frame": {
+   "name": "SITE_FRAME",
+   "index": "23"
+  },
+  "units": "m",
+  "axes_note": "SITE/local-level frame: +X north, +Y east, +Z down (Mars 2020 camera SIS)",
+  "lines_samples": [
+   960,
+   2560
+  ],
+  "valid_fraction": 0.38731201171875,
+  "min_m": [
+   -283.9104919433594,
+   -299.5140075683594,
+   -33.27372741699219
+  ],
+  "max_m": [
+   -174.85623168945312,
+   -134.2379608154297,
+   -24.193988800048828
+  ],
+  "median_m": [
+   -199.01219940185547,
+   -249.3000946044922,
+   -25.115422248840332
+  ],
+  "placed_on_terrain": false,
+  "placement_requirements": "rover pose from this label plus PDS PLACES localization; verify they agree"
+ }
+}
