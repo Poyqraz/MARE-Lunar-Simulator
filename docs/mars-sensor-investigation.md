@@ -10,14 +10,22 @@ dosyasındadır.
 - **[hipotez]**: ölçümlerle uyumlu, ama doğrulanmadı.
 - **[çürütüldü]**: ölçümle elendi.
 - **[doğrulanmış düzeltme]**: Unreal'da önce/sonra ölçümüyle denendi.
+- **[birim testli]**: kod değişikliği testlerle doğrulandı, Unreal'da doğrulanmadı.
+- **[kod incelemesi]**: koddan okundu, çalıştırılarak ölçülmedi.
+
+Belge iki turdan oluşur. İkinci tur (aynı gün, PR #5 açıldıktan sonra) her
+bölümün sonunda "İkinci tur" başlığı altındadır.
 
 Windows'ta `time.monotonic()` çözünürlüğü ~15,6 ms'dir. Servisin işleme süreleri
 bu adımlarla raporlanır.
 
 ## 1. GT derinlik tazeliği
 
-**Bulunamadı.** GT yakalama ve işleme süresini azaltan doğrulanmış bir düzeltme
-yok. 0,35 s eşiği değiştirilmedi.
+**Birinci tur:** GT yakalama ve işleme süresini azaltan doğrulanmış bir düzeltme
+bulunamadı. **İkinci tur:** işleme yavaşlığının baskın nedeni ölçüldü (Windows
+çekirdek zamanlaması, GIL değil) ve ön kontrolün başarısızlık nedeni kodda
+giderildi (birim testli; Unreal doğrulaması tamamlanamadı). 0,35 s eşiği hiçbir
+turda değiştirilmedi.
 
 **Ölçülenler [ölçüldü]**
 
@@ -85,15 +93,128 @@ Destekleyen ölçümler:
 
 Doğrulanmayan: süreç başına CPU payı ve GIL bekleme süresi ölçülmedi.
 
-**Öneriler (uygulanmadı)**
+**Birinci tur önerileri:** ayrı süreç ya da derlenmiş kod, ikili `/map`, ön
+kontrolde yetkilendirmeyi planlamadan sonraya almak. Üçüncüsü ikinci turda
+uygulandı; ilki aşağıdaki ölçümle yeniden değerlendirildi.
 
-1. GT izdüşüm ve sınıflandırmasını ayrı bir sürece ya da derlenmiş koda taşımak,
-   ardından 5 ve 10 Hz'de yeniden ölçmek.
-2. `/map` yanıtını ikili ya da vektörel JSON olarak üretmek; ön kontrol anındaki
-   GIL duraklamasını azaltır.
-3. Ön kontrolde yetkilendiren anlık görüntüyü rota önizlemesinden sonra almak.
-   Rover ve harita revizyonu aynı kalmalı. Eşik aynı kalır, ama kapının sırası
-   değişir; bu yüzden operatör onayı gerekir.
+### İkinci tur: saat alanlarına göre ayrıştırma
+
+**Yöntem [ölçüldü]**
+
+Servis, davranışını değiştirmeyen bir ölçüm sarmalayıcısıyla çalıştırıldı
+(geçici betik, depoda değil). Tek fark, oturum kilidinin bekleme süresini ölçen
+bir sarmalayıcı. BelvaLab01, GPU LiDAR, rover boşta, PIE.
+
+Saat alanları:
+- **Unreal GncSimTime** (yakalama ve poz damgaları): sabit 1/30 s adım.
+  - Host saatine göre koşu boyunca %1,7 geri kaldı.
+  - Takılmalarda tek seferde 1,07 s'ye kadar sıçradı.
+  - Bu yüzden sim ile host arasında sabit bir ofset kullanılmadı.
+- **Host saati:** `perf_counter` (QPC, süreçler arasında ortak). Referans
+  noktası, GT karesiyle aynı damgayı taşıyan telemetri örneğinin varış anı.
+- **İş parçacığı CPU süresi:** `thread_time`, Windows'ta 15,6 ms adımlı. Yalnız
+  ortalamalar karşılaştırıldı.
+
+**Kare başına aşamalar [ölçüldü]** (koşu 1, A evresi, varsayılan zamanlama, 126 kare)
+
+| Aşama | Ortalama | p90 |
+|---|---|---|
+| İlk bayt, aynı karenin telemetrisinden sonra (Unreal yakalama, okuma, gönderim) | 53 ms | 61 ms |
+| Soketten aktarım + çözme | 6 + 1,6 ms | 10 + 1,9 ms |
+| İzdüşüm (okuyucu iş parçacığı), duvar / CPU | 65 / 56 ms | 74 / 78 ms |
+| İşçi kuyruğunda bekleme | 0,3 ms | 0,4 ms |
+| Dönüşüm + sınıflandırma + yayın (işçi), duvar / CPU | 75 / 63 ms | 92 / 78 ms |
+| Oturum kilidi bekleme | 0,02 ms | 0,01 ms |
+| Yayından kontrol döngüsünde tüketime (20 Hz) | 29 ms | 54 ms |
+| Tüketim anı, aynı karenin telemetrisinden sonra | 234 ms | 275 ms |
+
+- Tüketim anında sim gecikmesi (poz damgası − GT damgası): p50 0,200 s.
+- 5 Hz anlık görüntü sorgusunda GT gecikmesi: p50 0,267 s, p90 0,367 s; %71'i
+  ≤ 0,35 s. Anlık görüntü, tüketimden sonraki 0–0,2 s içinde herhangi bir anda
+  alındığı için tüketimdeki gecikmeye 5 Hz periyodunun bir kısmı eklenir.
+
+**GIL hipotezi [çürütüldü, ana neden olarak]**
+
+- Aşamalarda duvar − CPU farkı 9–12 ms. Bu, GIL ve işletim sistemi beklemesinin
+  toplam üst sınırı.
+- Aynı iş, servisle GIL paylaşmayan **ayrı bir süreçte**, aynı Play sırasında
+  56 / 63 ms sürdü (izdüşüm / sınıflandırma). Editör boştayken aynı ölçüm
+  23 / 28 ms.
+- Yani yavaşlık servise özgü değil; Unreal Play'le eşzamanlı çalışmaktan geliyor.
+
+**Çekirdek zamanlaması [ölçüldü]**
+
+İşlemci i7-14700HX: 8 performans (P, mantıksal 0–15) ve 12 verimlilik (E,
+16–27) çekirdeği. Güç planı "Dengeli".
+
+- Editör boşta, ayrı süreç: P-çekirdekte 25 / 31 ms, E-çekirdekte 58 / 67 ms.
+  E-çekirdek değerleri Play sırasındaki yavaş değerlerle örtüşüyor.
+- Koşu 3: aynı Play oturumunda servisin modu çalışırken değiştirildi (her biri
+  20 s):
+
+  | Servis modu | İzdüşüm | İşçi | Tüketim, aynı-kare telemetriden sonra | Tüketimde sim gecikmesi p50 |
+  |---|---|---|---|---|
+  | Varsayılan | 77 ms | 88 ms | 304 ms | 0,233 s |
+  | EcoQoS kısıtlaması kapalı | 45 ms | 51 ms | 236 ms | 0,200 s |
+  | Yalnız P-çekirdekler | 46 ms | 47 ms | 217 ms | 0,200 s |
+  | Yeniden varsayılan | 57 ms | 59 ms | 239 ms | 0,200 s |
+
+- Aynı koşuda ayrı süreç: varsayılan 59 / 65 ms, kısıtlama kapalı 43 / 51 ms.
+- Koşu 2'de ayrı süreç: varsayılan 83 / 96, kısıtlama kapalı 42 / 49,
+  P-çekirdek 45 / 53, yüksek öncelik 74 / 82 ms. Yüksek öncelik tek başına
+  yardımcı olmadı.
+
+**Yorum [hipotez]:** Unreal ön plandayken Windows arka plandaki Python sürecini
+EcoQoS ile verimlilik çekirdeklerine yerleştiriyor. Bunu kapatmak ya da
+P-çekirdeğe sabitlemek işlemeyi yaklaşık yarıya indiriyor. P-çekirdekte bile
+Play sırasında 45 ms (boşta 25 ms) sürmesinin nedeni ölçülmedi.
+
+**Sınırlar**
+- Tek bir oturum içi karşılaştırma; varsayılana dönüş tam geri dönmedi
+  (57 / 59 ms).
+- Koşular arası fark büyük: ayrı süreçteki varsayılan ölçüm 56–83 ms arasında
+  değişti.
+- Kodda uygulanmadı. İyileşmeyle bile GT yaşı rastgele bir anda 0,2–0,4 s; 5 Hz
+  periyodu baskın kalıyor.
+
+### İkinci tur: planlamadan sonra yetkilendiren ön kontrol
+
+**[birim testli, Unreal doğrulaması tamamlanamadı]** commit `c9548a1`
+
+- Rota önizlemesi artık sensör verisini yaşlandırmıyor. Planlamadan sonra en
+  fazla 1,0 s (beş GT periyodu), 25 ms aralıkla yeni bir anlık görüntü bekleniyor.
+- Yetki için o anlık görüntüde:
+  - LiDAR ve GT yakalamaları planlanan verilerden **daha yeni** olmalı;
+  - aynı eşikler geçilmeli (poz 0,3 s, sensörler 0,35 s), kendi isteğinin ve
+    köprü kontrolünün süresi de sayılarak;
+  - geçerli nokta bulunmalı ve `capture_stale` olmamalı;
+  - oturum, harita revizyonu ve durağan poz planlanan değerlerle aynı olmalı.
+- Harita revizyonu değişirse yeni haritada yeniden planlanır. Oturum ya da poz
+  değişirse reddedilir. Hiçbir retde hedef gönderilmez.
+- Ön kontrol sonucu ölçülen tazeliği taşır; salt okunur önizleme
+  `ON_KONTROL_TAZELIK` satırını yazar.
+- Testler: 6 yeni durum (yavaş planlamaya rağmen yeni örnekle yetki, yeni örnek
+  gelmemesi, yeni ama eski örnek, harita değişimi, oturum değişimi, poz değişimi).
+
+**Kalan yarış [kod incelemesi]:** hedef, yetkilendiren anlık görüntüden sonra
+gönderiliyor. Arada yeni bir harita revizyonu ya da eskiyen bir sensör
+oluşabilir. Servis rotayı kendi canlı haritasında, ancak sensör tazeliği
+geçtikten sonra planlıyor ve her hareket kararında tazeliği yeniden denetliyor.
+Prob ise yeniden planlamada (izin verilmediyse), oturum ya da görev değişiminde
+ve uzun sensör beklemesinde duruyor. Bu pencereyi engellemiyor; yalnız sonrasını
+sınırlıyor.
+
+**Unreal doğrulaması:** BelvaRockLab01'de geçici CPU LiDAR ile 3 × 8 salt okunur
+deneme planlandı. Play başladıktan 11 s sonra editör penceresi arayüzden
+kapatıldı (bkz. §4). Ardından çalışan 24 deneme Unreal olmadan koştu ve kanıt
+değildir.
+
+**Güncel öneriler (uygulanmadı)**
+1. Ön kontrolü Unreal'da salt okunur, sonra bir denetimli `--send` sürüşüyle
+   doğrulamak.
+2. Servis için Windows'ta isteğe bağlı EcoQoS'tan çıkma; daha fazla koşuyla
+   yeniden ölçmek.
+3. `/map` yanıtını ikili üretmek.
 
 ## 2. GPU LiDAR sahte engelleri
 
@@ -150,6 +271,37 @@ Varsayılan mod, daha önceki engellenen koşuyla birlikte 2 koşunun 2'sinde en
 - GPU render pozu doğrudan ölçülmedi.
 - Varsayılanın değiştirilmesi operatör onayı ve daha fazla sürüş gerektirir.
 
+### İkinci tur: sağlamlık incelemesi
+
+**Varış gecikmesi [ölçüldü]:** GPU taraması servise vardığında köprüdeki son
+telemetri, tarama damgasından 2 kare ileride (821 örnek) ya da 3 kare ileride
+(36 örnek); üç boşta koşu. Yani "bir sonraki örnek" normalde hazır.
+
+**Atlanan telemetri karesi [birim testli]** commit `3e8965b`
+- Önceki kod, t'den sonraki kare hiç raporlanmadıysa taramaya sessizce bir kare
+  geç pozu veriyordu.
+- Artık `[a, b)` aralığındaki bir damga, `b − a` ortanca kare süresinin 1,75
+  katını aşıyorsa reddediliyor (atlanan kare yaklaşık iki kare boşluk bırakır).
+- Telemetride kare sayacı yok; bu yüzden tek bir uzun takılma da reddediliyor.
+  Bu yalnız o taramayı düşürür.
+- Tekdüze kısılmış telemetri (her ikinci kare) hâlâ fark edilemez.
+
+**Diğer durumlar [birim testli]**
+- Değişken kare süresi (25/40 ms, atlamasız) kabul ediliyor.
+- Aynı damga tekrarlanınca örnek değiştiriliyor; daha eski damga geçmişi
+  temizliyor.
+- Dönen poz yakalama damgasını taşıyor; sağlık kaydı telemetri damgasını değil,
+  tarama damgasını tutuyor.
+- Sonraki örnek gelene kadar tarama bekletiliyor, sonra yerleştiriliyor.
+- Eski bir tarama sonradan gelen pozla tazelenmiyor; `capture_stale` raporlanıyor.
+- Oturum değişiminden önceki tarama haritaya yerleşmiyor.
+
+**[kod incelemesi]** `_consume` içinde LiDAR "poz bekle" hatası verirse aynı
+döngüde GT de tüketilmiyor ve sürüşte o döngüde sıfır komut gidiyor. Bu iki modda
+da var; yeni mod "bekle" durumunu daha sık üretebilir. Ölçülmedi.
+
+**Tekrar sürüşleri:** yapılamadı (editör kapandı, §4).
+
 ## 3. Kamera karanlığı
 
 **[ölçüldü, kalıcı değişiklik yapılmadı]** Baskın neden sabit EV100 13 pozlaması.
@@ -200,3 +352,24 @@ Varsayılan mod, daha önceki engellenen koşuyla birlikte 2 koşunun 2'sinde en
 - Sürüş sırasında görüntü.
 - Stereo derinlik kalitesi.
 - Arka kamera (bu koşularda `--rear-camera-id` verilmediği için akış yoktu).
+
+### İkinci tur
+
+Yapılamadı: kamera görünümleri, aydınlık ve gölgeli zemin ve kaya sahnesi
+karşılaştırması için Unreal gerekiyordu; editör kapandı (§4). Yapılandırma
+değişikliği yapılmadı. EV10 hâlâ yalnız BelvaLab01 spawn görünümünde ölçülmüş
+bir deney sonucudur.
+
+## 4. Kesintiler ve bırakılan durum
+
+- Unreal Editor penceresi iki kez arayüzden kapatıldı (`QUIT_EDITOR`):
+  - 18:18:35, rover boştayken; kaydedilmemiş değişiklik yoktu.
+  - 18:29:06, Play sırasında. Kapanıştaki kaydet istemi
+    `/Game/Mars/BelvaRockLab01`'i geçici CPU LiDAR ayarlarıyla kaydetti.
+- Ölçüm betikleri yalnız Play başlatma/durdurma, seviye yükleme, sensör
+  ayarlama ve test seviyelerini kaydetme yapıyor; pencere kapatmıyor.
+- Editör ilk kapanıştan sonra bir kez BelvaRockLab01 ile yeniden açıldı; ikinci
+  kapanıştan sonra açılmadı.
+- **BelvaRockLab01'de bekleyen geri yükleme:** LiDAR şu an CPU, 160 × 120, 5 Hz,
+  `send_cpu_capture_pose = true`. Asıl değerler: GPU, 320 × 240, 10 Hz,
+  `send_cpu_capture_pose = false`. BelvaLab01 etkilenmedi.
