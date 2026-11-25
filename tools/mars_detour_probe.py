@@ -3,7 +3,8 @@
 Default mode never sends a command: it runs the CPU LiDAR short-probe preflight
 (stationary rover, fresh pose/sensors, same session twice, map revision match),
 rebuilds the planner on the live inflated /map with this checkout's planner
-code and prints MARS_ROTA_ONIZLEME.
+code and prints MARS_ROTA_ONIZLEME. Freshness is judged on a snapshot taken
+after planning (see mars_cpu_lidar_short_probe._authorize_after_planning).
 
 --send sends one goal and a stop only when the preflight is repeated and the
 current session and map revision equal the values the operator copied from the
@@ -130,6 +131,7 @@ def main(argv=None, *, get=short.common._get, post=short.common._post, log=print
             ready = short._wait_for_preflight(get, now=time.monotonic, sleep=time.sleep, log=log,
                                               choose_goal=goal_chooser(static, goal))
             log("MARS_ROTA_ONIZLEME: " + json.dumps(ready["preview"], ensure_ascii=False, allow_nan=False))
+            log("ON_KONTROL_TAZELIK: " + json.dumps(ready["freshness"], ensure_ascii=False, allow_nan=False))
             log("Hedef gonderilmedi (salt okunur onizleme).")
             return ready["preview"]
         chooser = goal_chooser(static, goal, expect_session=args.expect_session,
