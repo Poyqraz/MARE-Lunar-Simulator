@@ -162,4 +162,7 @@ desteklenir; yerel grid aracı standart boyutlar için tek sayı 3..4033 ve
 en fazla 4096 m kapsam kullanır. Büyük dünya/tiled World Partition ayrı
 geliştirme gerektirir; bu kesiti tüm Mars'ın simülasyonu saymayın.
 
+Belva kraterini içeren 1,28 km'lik ölçülmüş bölge, sentetik kaya senaryosu ve
+fizik taban çizgisi: [Jezero Terrain Lab](mars-terrain-lab.md).
+
 [Kaynak ve araştırma kararları](mars-research.md) · [Test/review raporu](mars-validation.md)
