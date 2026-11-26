@@ -204,10 +204,35 @@ Prob ise yeniden planlamada (izin verilmediyse), oturum ya da görev değişimin
 ve uzun sensör beklemesinde duruyor. Bu pencereyi engellemiyor; yalnız sonrasını
 sınırlıyor.
 
-**Unreal doğrulaması:** BelvaRockLab01'de geçici CPU LiDAR ile 3 × 8 salt okunur
-deneme planlandı. Play başladıktan 11 s sonra editör penceresi arayüzden
-kapatıldı (bkz. §4). Ardından çalışan 24 deneme Unreal olmadan koştu ve kanıt
-değildir.
+**Unreal doğrulaması, 25 Kasım:** BelvaRockLab01'de geçici CPU LiDAR ile 3 × 8
+salt okunur deneme planlandı. Play başladıktan 11 s sonra editör penceresi
+arayüzden kapatıldı (bkz. §4). Ardından çalışan 24 deneme Unreal olmadan koştu
+ve kanıt değildir.
+
+**Unreal doğrulaması, 26 Kasım [ölçüldü]** (BelvaRockLab01, geçici CPU LiDAR,
+gerçek servis, ölçüm sarmalayıcısı yok)
+
+- **Koşu 1, salt okunur, 8 tek deneme:** 3'ü geçti.
+  - 5 ret planlamadan önce geldi: ilk ya da planlama anlık görüntüsü, var olan
+    0,35 s kontrolü. Yeni aşamaya hiç ulaşmadılar.
+  - Geçenlerde: planlama 0,08–0,10 s; planlamadan sonra bekleme 0,007–0,113 s;
+    yetkilendiren isteğin süresi 0,007–0,034 s; GT gecikmesi 0,233 s; GT varış
+    yaşı 0,17–0,22 s.
+- **Aynı oturumda prob ile denetimli dolaşma** (`--send --allow-replan`):
+  - Önizleme ve gönderim ön kontrolü geçti (planlama 0,062 s, bekleme 0,125 s,
+    GT gecikmesi 0,200 s).
+  - Rover 12,05 m yol aldı; en büyük rota sapması 0,16 m; harita revizyonu
+    1 → 4; plan revizyonu 1 (yeniden planlama yok).
+  - Yaklaşık 83 s'de `pose_stale` ile durdu, hedefe ~1,5 m kala. Stop isteği
+    onaylandı. Servisin poz yaşı 1,0 s'ye çıktı; Unreal log'u ise Play bitene
+    kadar telemetri üretmeye devam etti. Neden belirlenmedi.
+- **Bulunan ve düzeltilen hata [birim testli]** commit `ee378ab`: yetkilendirme
+  döngüsü 0,35 s'den eski bir anlık görüntüde beklemek yerine denemeyi
+  bitiriyordu. Koşu 1'de tetiklenmedi.
+- **Koşu 2, salt okunur, 10 tek deneme (düzeltmeden sonra):** 0 geçti; hepsi
+  planlamadan önce reddedildi (eski GT, eksik GT damgası, eksik CPU LiDAR pozu).
+  Koşudan hemen sonra ön planda başka bir uygulama vardı. Unreal arka planda
+  yavaşlıyor [hipotez]; bu koşu temsil edici değil.
 
 **Güncel öneriler (uygulanmadı)**
 1. Ön kontrolü Unreal'da salt okunur, sonra bir denetimli `--send` sürüşüyle
@@ -370,6 +395,9 @@ bir deney sonucudur.
   ayarlama ve test seviyelerini kaydetme yapıyor; pencere kapatmıyor.
 - Editör ilk kapanıştan sonra bir kez BelvaRockLab01 ile yeniden açıldı; ikinci
   kapanıştan sonra açılmadı.
-- **BelvaRockLab01'de bekleyen geri yükleme:** LiDAR şu an CPU, 160 × 120, 5 Hz,
-  `send_cpu_capture_pose = true`. Asıl değerler: GPU, 320 × 240, 10 Hz,
-  `send_cpu_capture_pose = false`. BelvaLab01 etkilenmedi.
+- **BelvaRockLab01 geri yüklendi (26 Kasım, izinle editör yeniden açıldıktan
+  sonra):** LiDAR CPU, 160 × 120, 5 Hz, `send_cpu_capture_pose = true` iken
+  GPU, 320 × 240, 10 Hz, `send_cpu_capture_pose = false` yapıldı ve seviye
+  kaydedildi. BelvaLab01 etkilenmedi.
+- 26 Kasım'da Unreal koşuları, ön planda başka bir uygulama kullanıldığı için
+  durduruldu. Tekrar GPU sürüşleri ve kamera kontrolleri yapılmadı.

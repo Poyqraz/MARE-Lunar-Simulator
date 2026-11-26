@@ -1163,7 +1163,61 @@
   "post_plan_wait_s": 1.0,
   "poll_s": 0.025,
   "thresholds_changed": false,
-  "native_validation": "not completed: the Unreal Editor window was closed from its UI 11 s into the Play session; the 24 attempts that followed ran without Unreal and are not evidence"
+  "native_validation": "not completed: the Unreal Editor window was closed from its UI 11 s into the Play session; the 24 attempts that followed ran without Unreal and are not evidence",
+  "native_2026_11_26": {
+   "run1_single_attempts": {
+    "attempts": 8,
+    "passed": 3,
+    "failed_before_planning": 5,
+    "passed_planning_s": [
+     0.082,
+     0.101
+    ],
+    "passed_post_planning_wait_s": [
+     0.007,
+     0.113
+    ],
+    "passed_authorizing_elapsed_s": [
+     0.007,
+     0.034
+    ],
+    "passed_gt_lag_s": 0.233,
+    "passed_gt_received_age_s": [
+     0.172,
+     0.219
+    ]
+   },
+   "run1_supervised_detour": {
+    "preview_authorized": true,
+    "planning_s": 0.062,
+    "post_planning_wait_s": 0.125,
+    "gt_lag_s": 0.2,
+    "sampled_path_m": 12.05,
+    "max_cross_track_m": 0.164,
+    "map_revisions_seen": [
+     1,
+     2,
+     3,
+     4
+    ],
+    "plan_revisions_seen": [
+     0,
+     1
+    ],
+    "reason": "pose_stale",
+    "stopped_after_s": 83,
+    "distance_to_goal_m": 1.5,
+    "stop_request_succeeded": true,
+    "cause": "not determined; Unreal kept logging telemetry"
+   },
+   "fix_after_run1": "ee378ab: wait out a stale snapshot after planning",
+   "run2_single_attempts": {
+    "attempts": 10,
+    "passed": 0,
+    "failed_before_planning": 10,
+    "note": "another application was in the foreground right after the run; not representative"
+   }
+  }
  },
  "post_physics_robustness": {
   "commit": "3e8965b",
@@ -1202,6 +1256,7 @@
    "channels": 240,
    "scan_rate_hz": 10.0,
    "send_cpu_capture_pose": false
-  }
+  },
+  "belvarocklab01_restored": "2026-11-26, GPU 320x240 10 Hz, send_cpu_capture_pose false, saved"
  }
 }
