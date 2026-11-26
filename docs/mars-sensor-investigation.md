@@ -13,8 +13,9 @@ dosyasındadır.
 - **[birim testli]**: kod değişikliği testlerle doğrulandı, Unreal'da doğrulanmadı.
 - **[kod incelemesi]**: koddan okundu, çalıştırılarak ölçülmedi.
 
-Belge iki turdan oluşur. İkinci tur (aynı gün, PR #5 açıldıktan sonra) her
-bölümün sonunda "İkinci tur" başlığı altındadır.
+Belge üç turdan oluşur. İkinci tur (aynı gün, PR #5 açıldıktan sonra) ve
+üçüncü tur (26 Kasım, bilgisayar Unreal'a bırakıldıktan sonra) her bölümün
+sonunda kendi başlığı altındadır.
 
 Windows'ta `time.monotonic()` çözünürlüğü ~15,6 ms'dir. Servisin işleme süreleri
 bu adımlarla raporlanır.
@@ -234,12 +235,48 @@ gerçek servis, ölçüm sarmalayıcısı yok)
   Koşudan hemen sonra ön planda başka bir uygulama vardı. Unreal arka planda
   yavaşlıyor [hipotez]; bu koşu temsil edici değil.
 
-**Güncel öneriler (uygulanmadı)**
-1. Ön kontrolü Unreal'da salt okunur, sonra bir denetimli `--send` sürüşüyle
-   doğrulamak.
-2. Servis için Windows'ta isteğe bağlı EcoQoS'tan çıkma; daha fazla koşuyla
-   yeniden ölçmek.
-3. `/map` yanıtını ikili üretmek.
+**Güncel öneriler:** 1 ve 2 üçüncü turda yapıldı (aşağıda); `/map` yanıtını
+ikili üretmek hâlâ uygulanmadı.
+
+### Üçüncü tur: Unreal'da ön kontrol ve EcoQoS bayrağı
+
+Hepsi BelvaRockLab01'de, geçici CPU LiDAR ile, gerçek servisle. Ön plan
+uygulaması 2 s'de bir kaydedildi.
+
+**Editör arka plan kısıtlaması:** bu koşular için editörün "arka planda daha az
+CPU kullan" ayarı (`bThrottleCPUWhenNotForeground`) **yalnız bellekte**
+kapatıldı. Yapılandırma dosyasının SHA-1'i değişmedi; ayar sonunda `True`'ya
+geri alındı. Unreal'ı öne çekmeden çalışmak için gerekiyordu, çünkü bilgisayar
+aynı anda kullanılıyordu.
+
+**Ön kontrol [ölçüldü]**
+- Unreal ön plandayken, bayraksız: 10 tek denemenin 7'si geçti; 3 ret
+  planlamadan önce geldi. Aynı oturumda prob ile gönderilen denetimli dolaşma
+  hedefe vardı (90,6 s; 13,30 m; en büyük rota sapması 0,153 m). Bu, dolaşma
+  sürüşünün ilk kez probun kendi ön kontrolüyle gönderilip tamamlanmasıdır.
+- Unreal arka plandayken, bayraksız: 10'da 3; probun kendi önizlemesi 10 s
+  içinde onay alamadı (GT sağlık kaydı boş).
+
+**EcoQoS bayrağı [doğrulanmış düzeltme, isteğe bağlı]** commit `fb254f0`,
+`--windows-no-power-throttling`. Unreal arka planda, kullanıcı uygulamaları
+önde; koşular dönüşümlü:
+
+| Koşu | Bayrak | Ön kontrol | GT işleme p50 | GT gecikmesi p50 / p90 | Boş GT kaydı |
+|---|---|---|---|---|---|
+| a1 | yok | 0/10 | 78 ms | 0,333 / 0,400 s | 10/69 örnek |
+| b1 | var | 7/10 | 62 ms | 0,267 / 0,367 s | 0/83 |
+| a2 | yok | 0/10 | 78 ms | 0,333 / 0,400 s | 5/69 |
+| b2 | var | 10/10 | 47 ms | 0,233 / 0,333 s | 0/82 |
+
+- "GT işleme" burada servisin sağlık kaydındaki `processing_s` (izdüşüm +
+  kilitli işleme).
+- Bayrakla, arka planda: ön kontrol 6/6 ve prob ile denetimli dolaşma hedefe
+  vardı (13,30 m; rota sapması en fazla 0,161 m).
+- Dört karşılaştırmalı koşu; istatistik değil. Bayrak varsayılan olarak kapalı.
+
+**Bulunan ikinci hata [birim testli]** commit `ee378ab`: yetkilendirme döngüsü
+eski bir anlık görüntüde beklemek yerine denemeyi bitiriyordu (§1, 26 Kasım
+koşu 1'de bulundu).
 
 ## 2. GPU LiDAR sahte engelleri
 
@@ -325,7 +362,27 @@ telemetri, tarama damgasından 2 kare ileride (821 örnek) ya da 3 kare ileride
 döngüde GT de tüketilmiyor ve sürüşte o döngüde sıfır komut gidiyor. Bu iki modda
 da var; yeni mod "bekle" durumunu daha sık üretebilir. Ölçülmedi.
 
-**Tekrar sürüşleri:** yapılamadı (editör kapandı, §4).
+**Tekrar sürüşleri:** ikinci turda yapılamadı (editör kapandı, §4); üçüncü
+turda yapıldı (aşağıda).
+
+### Üçüncü tur: tekrar sürüşleri [ölçüldü]
+
+GPU LiDAR; bayraklar `--obstacle-diagnostics --max-turn-rate-deg-s 20
+--prefer-short-direct --windows-no-power-throttling`; başlangıç (180, 300).
+Sürüşler sırasında Unreal öndeydi (ön plan kaydı).
+
+| Koşu | Poz eşleşmesi | Sonuç | LiDAR-önce hücre |
+|---|---|---|---|
+| BelvaLab01 (180, 275) #1 | `telemetry_post_physics` | vardı, 165,2 s, hedefe 0,243 m | 0 |
+| BelvaLab01 (180, 275) | `telemetry` (varsayılan) | 34,0 s'de `blocked`, harita rev. 39 | 219 (rover'a 1,4–11,7 m, medyan 7,3 m) |
+| BelvaLab01 (180, 275) #2 | `telemetry_post_physics` | vardı, 165,0 s, hedefe 0,240 m | 0 |
+| BelvaRockLab01 dolaşma #1 | `telemetry_post_physics` | vardı, 90,8 s, hedefe 0,244 m | 4; hepsi eşik üstü üç kayanın 1,5 m içinde |
+| BelvaRockLab01 dolaşma #2 | `telemetry_post_physics` | vardı, 90,7 s, hedefe 0,241 m | 4; aynı |
+
+İki günün toplamı: Belva açık zeminde varsayılan mod 3 sürüşün 3'ünde
+engellendi; yeni mod 6 sürüşün 6'sında vardı (açık zemin 3, kayalar 3). Kaya
+sürüşlerinde çakıl ve gövde altı kayası engel sayılmadı. Hâlâ tek sahne ve tek
+güneş açısı; GPU render pozu doğrudan ölçülmedi.
 
 ## 3. Kamera karanlığı
 
@@ -381,9 +438,81 @@ da var; yeni mod "bekle" durumunu daha sık üretebilir. Ölçülmedi.
 ### İkinci tur
 
 Yapılamadı: kamera görünümleri, aydınlık ve gölgeli zemin ve kaya sahnesi
-karşılaştırması için Unreal gerekiyordu; editör kapandı (§4). Yapılandırma
-değişikliği yapılmadı. EV10 hâlâ yalnız BelvaLab01 spawn görünümünde ölçülmüş
-bir deney sonucudur.
+karşılaştırması için Unreal gerekiyordu; editör kapandı (§4).
+
+### Üçüncü tur: görünümler, gölgeler, kaya sahnesi [ölçüldü]
+
+**Yöntem**
+- Port 3004'ten ham 640×480 kareler alındı; her yapılandırmada Play'in
+  16. saniyesinden sonraki son kare kullanıldı.
+- Rover köprüsü çalışıyordu (sıfır komut, farlar kapalı).
+- EV, navcam ve arka kamera akışında `min = max` yapıldı ve eklentinin
+  logunda her koşu için doğrulandı.
+- Parlaklık 8 bit son renk çıktısından hesaplandı.
+- Zemin/gök ayrımı merkez kameranın GT derinliğinden yapıldı.
+- Gölge maskesi: güneş gölgeleri kapalıyken aynı pikselin %60'ından karanlık
+  olan zemin.
+- Rover yönü Play'den önce editörde değiştirildi ve her koşudan sonra geri
+  alındı.
+  - Yön 0'da navcam güneş azimutuna 53° bakıyor (zemin ters ışıkta).
+  - Yön 180'de güneş arkada.
+- İlk denemede yalnız alt EV sınırı uygulanmıştı (bileşen yeniden oluşturuluyor);
+  o kareler atıldı ve matris baştan alındı.
+
+**BelvaLab01, dört yön** (merkez navcam zemini; sol/sağ ortancalar merkezden en fazla 0,7 farklı):
+
+| EV100 | Zemin ortancası | Siyah zemin (<10) | Gök ortancası | Arka kamera ortancası / siyah |
+|---|---|---|---|---|
+| 13 | 3,6–6,4 | %86–99 | 10–47 | 4–7 / %70–82 |
+| 12 | 16,8–25,0 | %5–8 | 36–96 | 18–26 / %2–6 |
+| 11 | 47,8–62,4 | %0–2,5 | 80–146 | 51–64 / ≤%0,1 |
+| 10 | 95,4–113,7 | %0 | 133–187 | 100–115 / %0 |
+
+- EV10'da en parlak değerler: gök p95 ≤ 217, arka kamera p95 ≤ 224.
+  Hiçbir kamerada ve yönde ≥ 250 piksel yok.
+- EV9 (yalnız kaya sahnesi, yön 180): zemin ortancası 158, arka kamera p95 232.
+  Güneşe bakan arka kamerada lens parlaması halkaları görünüyor.
+
+**Gölgeler**
+- Rover'ın kendi gölgesi (yön 180, zeminin %2,3'ü): EV10'da ortanca 19,6,
+  siyah piksel yok; aydınlık zemin 109,7.
+- Kayaların düşen gölgeleri bu görünümlerde çok küçük (87 piksel); ölçüm
+  için yetersiz.
+- **Ters ışıktaki kaya yüzleri** (yön 0; kayasız aynı görünümle derinlik
+  farkından ~540 piksel): EV13'te %99,8'i siyah; EV10'da ortanca 4/255 ve
+  %59'u siyah. Pozlama zemini düzeltiyor, gölgedeki kaya yüzlerini düzeltmiyor.
+- **[hipotez]** Gölgeyi dolduran ışık (gök ışığı) çok zayıf: rover gölgesi 8
+  bitte aydınlık zeminin ~%18'i. Sahnedeki gök ışığı ölçülmedi.
+
+**Yan gözlem [ölçüldü]:** köprü komut göndermezse rover'ın farları açık kalıyor
+ve navcam önünde büyük parlak bir leke oluşuyor. Servisle çalışırken farlar
+kapalı.
+
+**Sahneye özgü ayar [birim testli]** commit `0e0b9ca`
+- `configure_and_export(camera_ev100=13.0, rear_camera_ev100=None)`:
+  varsayılanlar eski davranışı korur. Kullanılan değerler dışa aktarılan
+  sensör yapılandırmasına (`camera_exposure_ev100`) yazılır.
+- Sahne presetleri `navigation_camera_ev100` ve `rear_camera_ev100`
+  tanımlayabilir.
+- `Config/Mars/scene-belva-ev10.json`: varsayılan sahnenin EV100 10'lu kopyası
+  (post-process, navcam, arka kamera). Bir test, pozlama dışındaki her değerin
+  `scene.json` ile aynı kaldığını denetler.
+- Kullanım: `mars_setup.build(..., scene_path="Config/Mars/scene-belva-ev10.json",
+  navigation_config_path=<yeni dosya>)`.
+- Mevcut seviyeler değiştirilmedi. Bu preset'le Unreal'da seviye kurulmadı;
+  gerçek rover'da arka akış araması salt okunur kontrol edildi (tek eşleşme,
+  `RearCam_Stream`).
+
+**EV10'un kapsamı:** yalnız bu güneş (35°, azimut 135°), Belva arazisi ve
+albedosu için; kamera kalibrasyonu değil.
+
+**Doğrulanmayanlar:**
+- başka güneş açıları;
+- sürüş sırasında görüntü;
+- EV10'da stereo derinlik kalitesi;
+- dashboard JPEG yolu.
+
+Karşılaştırma görüntüsü yerelde: `Saved/Mars/navcam-exposure-matrix-20261126.png`.
 
 ## 4. Kesintiler ve bırakılan durum
 
@@ -399,5 +528,9 @@ bir deney sonucudur.
   sonra):** LiDAR CPU, 160 × 120, 5 Hz, `send_cpu_capture_pose = true` iken
   GPU, 320 × 240, 10 Hz, `send_cpu_capture_pose = false` yapıldı ve seviye
   kaydedildi. BelvaLab01 etkilenmedi.
-- 26 Kasım'da Unreal koşuları, ön planda başka bir uygulama kullanıldığı için
-  durduruldu. Tekrar GPU sürüşleri ve kamera kontrolleri yapılmadı.
+- 26 Kasım öğlen Unreal koşuları, ön planda başka bir uygulama kullanıldığı
+  için durduruldu. Kullanıcı bilgisayarı Unreal'a bıraktıktan sonra koşular
+  editör arka plan kısıtlaması bellekte kapatılarak, pencere öne çekilmeden
+  sürdürüldü (§1 üçüncü tur).
+- Geçici betik klasörü gece boşaltılmıştı; ölçüm yardımcıları yeniden yazıldı.
+  Önceki ölçüm sonuçları bu belgedeki JSON'da korunuyordu.

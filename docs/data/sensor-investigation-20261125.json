@@ -1258,5 +1258,1099 @@
    "send_cpu_capture_pose": false
   },
   "belvarocklab01_restored": "2026-11-26, GPU 320x240 10 Hz, send_cpu_capture_pose false, saved"
+ },
+ "round3_2026_11_26": {
+  "preflight_native": {
+   "unreal_foreground_rock3": {
+    "attempts": 10,
+    "passed": 7,
+    "refused_before_planning": 3,
+    "supervised_detour": "arrived 90.6 s, 13.30 m sampled, max cross-track 0.153 m"
+   },
+   "background_without_flag_rock5": {
+    "attempts": 10,
+    "passed": 3,
+    "refused_before_planning": 7
+   },
+   "foreground_logs": "fgwatch samples every 2 s; see ecoqos_ab foreground counts"
+  },
+  "editor_background_throttle": "bThrottleCPUWhenNotForeground set False in memory only for these runs (config file hash unchanged), restored to True at the end",
+  "ecoqos_ab_background": {
+   "eco-a1": {
+    "passed": 0,
+    "attempts": 10,
+    "gt_processing_p50_s": 0.078,
+    "gt_lag_p50_s": 0.333,
+    "gt_lag_p90_s": 0.4,
+    "gt_health_missing_samples": [
+     10,
+     69
+    ]
+   },
+   "eco-b1": {
+    "passed": 7,
+    "attempts": 10,
+    "gt_processing_p50_s": 0.062,
+    "gt_lag_p50_s": 0.267,
+    "gt_lag_p90_s": 0.367,
+    "gt_health_missing_samples": [
+     0,
+     83
+    ]
+   },
+   "eco-a2": {
+    "passed": 0,
+    "attempts": 10,
+    "gt_processing_p50_s": 0.078,
+    "gt_lag_p50_s": 0.333,
+    "gt_lag_p90_s": 0.4,
+    "gt_health_missing_samples": [
+     5,
+     69
+    ]
+   },
+   "eco-b2": {
+    "passed": 10,
+    "attempts": 10,
+    "gt_processing_p50_s": 0.047,
+    "gt_lag_p50_s": 0.233,
+    "gt_lag_p90_s": 0.333,
+    "gt_health_missing_samples": [
+     0,
+     82
+    ]
+   },
+   "eco-send1": {
+    "passed": 6,
+    "attempts": 6,
+    "gt_processing_p50_s": 0.047,
+    "gt_lag_p50_s": 0.267,
+    "gt_lag_p90_s": 0.333,
+    "gt_health_missing_samples": [
+     0,
+     56
+    ]
+   }
+  },
+  "ecoqos_flag_commit": "fb254f0",
+  "supervised_detour_with_flag_background": "arrived; 13.30 m sampled, max cross-track 0.161 m; preflight 6/6",
+  "preflight_stale_wait_fix_commit": "ee378ab",
+  "gpu_drives": {
+   "flags": "--obstacle-diagnostics --max-turn-rate-deg-s 20 --prefer-short-direct --windows-no-power-throttling",
+   "open_post_physics_1": {
+    "result": "arrived",
+    "elapsed_s": 165.2,
+    "goal_distance_m": 0.243,
+    "map_revision_end": 0,
+    "lidar_cells": {
+     "cells": 0
+    },
+    "foreground": {
+     "UnrealEditor": 87
+    }
+   },
+   "open_default": {
+    "result": "blocked",
+    "elapsed_s": 34.0,
+    "goal_distance_m": 26.116,
+    "map_revision_end": 39,
+    "lidar_cells": {
+     "cells": 219,
+     "dist_from_start_m": [
+      1.4,
+      7.3,
+      11.7
+     ]
+    },
+    "foreground": {
+     "UnrealEditor": 22
+    }
+   },
+   "open_post_physics_2": {
+    "result": "arrived",
+    "elapsed_s": 165.0,
+    "goal_distance_m": 0.24,
+    "map_revision_end": 0,
+    "lidar_cells": {
+     "cells": 0
+    },
+    "foreground": {
+     "UnrealEditor": 87
+    }
+   },
+   "rocks_post_physics_1": {
+    "result": "arrived",
+    "elapsed_s": 90.8,
+    "goal_distance_m": 0.244,
+    "map_revision_end": 4,
+    "lidar_cells": {
+     "cells": 4,
+     "dist_from_start_m": [
+      6.1,
+      10.6,
+      12.2
+     ],
+     "cells_over_1_5m_from_rock": 0,
+     "rocks_with_a_cell_within_1_5m": [
+      "detour_blocker",
+      "row_blocker",
+      "row_threshold"
+     ]
+    },
+    "foreground": {
+     "UnrealEditor": 50
+    }
+   },
+   "rocks_post_physics_2": {
+    "result": "arrived",
+    "elapsed_s": 90.7,
+    "goal_distance_m": 0.241,
+    "map_revision_end": 4,
+    "lidar_cells": {
+     "cells": 4,
+     "dist_from_start_m": [
+      6.1,
+      10.6,
+      12.2
+     ],
+     "cells_over_1_5m_from_rock": 0,
+     "rocks_with_a_cell_within_1_5m": [
+      "detour_blocker",
+      "row_blocker",
+      "row_threshold"
+     ]
+    },
+    "foreground": {
+     "UnrealEditor": 50
+    }
+   }
+  },
+  "camera_exposure": {
+   "method": "raw 640x480 frames from port 3004 after 16 s of Play, one frame per camera and configuration; rover bridge running (zero commands, headlights off); EV100 fixed min=max on navcam and rear streamers, confirmed in the plugin log; luminance from the 8-bit final colour; ground/sky split by centre GT depth; shadow mask = < 60% of the same pixel with sun shadows disabled",
+   "headings": "yaw offsets 0/90/180/270 deg from the spawn; at 0 the navcams face 53 deg from the sun azimuth (backlit)",
+   "stats": [
+    {
+     "label": "lab-ev10-y0",
+     "ground_fraction": 0.793,
+     "center_ground": {
+      "p5": 76.0,
+      "p50": 95.4,
+      "p95": 120.8,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 132.9,
+      "p50": 184.9,
+      "p95": 210.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 95.7,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 95.4,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 83.5,
+      "p50": 114.7,
+      "p95": 146.7,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev10-y0-noshadow",
+     "ground_fraction": 0.793,
+     "center_ground": {
+      "p5": 76.0,
+      "p50": 95.4,
+      "p95": 120.7,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 132.9,
+      "p50": 184.9,
+      "p95": 210.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 95.7,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 95.4,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 83.5,
+      "p50": 114.7,
+      "p95": 146.7,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev10-y180",
+     "ground_fraction": 0.762,
+     "center_ground": {
+      "p5": 78.7,
+      "p50": 109.2,
+      "p95": 137.2,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 111.9,
+      "p50": 132.9,
+      "p95": 150.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 108.8,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 109.5,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 77.5,
+      "p50": 99.5,
+      "p95": 210.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "shadow_fraction_of_ground": 0.0229,
+     "shadowed_ground": {
+      "p50": 19.6,
+      "black_lt10": 0.0,
+      "n": 5352
+     },
+     "lit_ground": {
+      "p50": 109.7,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev10-y180-noshadow",
+     "ground_fraction": 0.762,
+     "center_ground": {
+      "p5": 82.5,
+      "p50": 109.2,
+      "p95": 137.1,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 112.0,
+      "p50": 132.9,
+      "p95": 150.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 108.8,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 109.5,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 77.5,
+      "p50": 99.4,
+      "p95": 210.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev10-y270",
+     "ground_fraction": 0.71,
+     "center_ground": {
+      "p5": 78.6,
+      "p50": 100.6,
+      "p95": 121.4,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 129.0,
+      "p50": 186.9,
+      "p95": 217.0,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 99.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 101.2,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 82.9,
+      "p50": 115.1,
+      "p95": 143.7,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev10-y90",
+     "ground_fraction": 0.819,
+     "center_ground": {
+      "p5": 72.4,
+      "p50": 113.7,
+      "p95": 140.0,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 111.9,
+      "p50": 132.9,
+      "p95": 148.0,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 114.0,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 113.2,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 77.7,
+      "p50": 107.8,
+      "p95": 223.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev11-y0",
+     "ground_fraction": 0.793,
+     "center_ground": {
+      "p5": 33.5,
+      "p50": 47.8,
+      "p95": 68.8,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 79.9,
+      "p50": 143.9,
+      "p95": 179.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 48.0,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 47.7,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 38.4,
+      "p50": 63.4,
+      "p95": 95.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev11-y180",
+     "ground_fraction": 0.762,
+     "center_ground": {
+      "p5": 35.1,
+      "p50": 58.6,
+      "p95": 85.7,
+      "black_lt10": 0.0223,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 60.7,
+      "p50": 79.9,
+      "p95": 100.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 58.3,
+      "black_lt10": 0.0367,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 59.0,
+      "black_lt10": 0.007,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 34.5,
+      "p50": 50.8,
+      "p95": 179.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev11-y270",
+     "ground_fraction": 0.71,
+     "center_ground": {
+      "p5": 35.1,
+      "p50": 51.7,
+      "p95": 69.5,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 76.9,
+      "p50": 145.9,
+      "p95": 188.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 51.2,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 52.1,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 38.1,
+      "p50": 63.7,
+      "p95": 92.5,
+      "black_lt10": 0.0008,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev11-y90",
+     "ground_fraction": 0.819,
+     "center_ground": {
+      "p5": 31.2,
+      "p50": 62.4,
+      "p95": 88.5,
+      "black_lt10": 0.0252,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 60.6,
+      "p50": 80.0,
+      "p95": 97.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 62.7,
+      "black_lt10": 0.0339,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 62.0,
+      "black_lt10": 0.0185,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 34.6,
+      "p50": 57.0,
+      "p95": 198.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev12-y0",
+     "ground_fraction": 0.793,
+     "center_ground": {
+      "p5": 9.3,
+      "p50": 16.8,
+      "p95": 28.7,
+      "black_lt10": 0.0765,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 35.9,
+      "p50": 92.9,
+      "p95": 137.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 16.9,
+      "black_lt10": 0.0708,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 16.7,
+      "black_lt10": 0.0841,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 12.0,
+      "p50": 25.4,
+      "p95": 47.6,
+      "black_lt10": 0.0241,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev12-y180",
+     "ground_fraction": 0.762,
+     "center_ground": {
+      "p5": 10.1,
+      "p50": 22.3,
+      "p95": 39.9,
+      "black_lt10": 0.0479,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 23.7,
+      "p50": 36.0,
+      "p95": 50.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 22.2,
+      "black_lt10": 0.064,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 22.5,
+      "black_lt10": 0.0311,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 9.8,
+      "p50": 18.2,
+      "p95": 137.1,
+      "black_lt10": 0.057,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev12-y270",
+     "ground_fraction": 0.71,
+     "center_ground": {
+      "p5": 9.9,
+      "p50": 18.5,
+      "p95": 29.2,
+      "black_lt10": 0.0523,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 33.0,
+      "p50": 95.6,
+      "p95": 149.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 18.2,
+      "black_lt10": 0.0558,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 18.9,
+      "black_lt10": 0.0497,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 11.5,
+      "p50": 25.9,
+      "p95": 44.9,
+      "black_lt10": 0.0279,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev12-y90",
+     "ground_fraction": 0.819,
+     "center_ground": {
+      "p5": 8.8,
+      "p50": 25.0,
+      "p95": 42.3,
+      "black_lt10": 0.0686,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 23.0,
+      "p50": 36.0,
+      "p95": 48.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 25.1,
+      "black_lt10": 0.0737,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 24.8,
+      "black_lt10": 0.0633,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 9.8,
+      "p50": 21.3,
+      "p95": 162.8,
+      "black_lt10": 0.0592,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev13-y0",
+     "ground_fraction": 0.793,
+     "center_ground": {
+      "p5": 1.6,
+      "p50": 3.6,
+      "p95": 7.2,
+      "black_lt10": 0.9932,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 10.0,
+      "p50": 45.0,
+      "p95": 84.9,
+      "black_lt10": 0.046,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 3.6,
+      "black_lt10": 0.9931,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 3.6,
+      "black_lt10": 0.9934,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 2.4,
+      "p50": 6.3,
+      "p95": 15.9,
+      "black_lt10": 0.8094,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev13-y180",
+     "ground_fraction": 0.762,
+     "center_ground": {
+      "p5": 2.0,
+      "p50": 5.8,
+      "p95": 13.0,
+      "black_lt10": 0.9083,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 4.7,
+      "p50": 10.0,
+      "p95": 17.7,
+      "black_lt10": 0.4786,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 5.8,
+      "black_lt10": 0.906,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 5.8,
+      "black_lt10": 0.9083,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 1.8,
+      "p50": 4.0,
+      "p95": 84.9,
+      "black_lt10": 0.7816,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev13-y270",
+     "ground_fraction": 0.71,
+     "center_ground": {
+      "p5": 1.8,
+      "p50": 4.0,
+      "p95": 7.7,
+      "black_lt10": 0.9859,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 8.9,
+      "p50": 46.9,
+      "p95": 99.9,
+      "black_lt10": 0.0669,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 4.0,
+      "black_lt10": 0.986,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 4.0,
+      "black_lt10": 0.9855,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 2.3,
+      "p50": 6.8,
+      "p95": 14.5,
+      "black_lt10": 0.8159,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "lab-ev13-y90",
+     "ground_fraction": 0.819,
+     "center_ground": {
+      "p5": 1.2,
+      "p50": 6.4,
+      "p95": 14.1,
+      "black_lt10": 0.8596,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 4.0,
+      "p50": 10.0,
+      "p95": 16.0,
+      "black_lt10": 0.4744,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 6.6,
+      "black_lt10": 0.8544,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 6.4,
+      "black_lt10": 0.8668,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 1.8,
+      "p50": 5.0,
+      "p95": 114.9,
+      "black_lt10": 0.7006,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "rock-ev10-y0",
+     "ground_fraction": 0.793,
+     "center_ground": {
+      "p5": 75.6,
+      "p50": 95.5,
+      "p95": 120.6,
+      "black_lt10": 0.002,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 132.9,
+      "p50": 185.0,
+      "p95": 210.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 95.7,
+      "black_lt10": 0.002,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 95.4,
+      "black_lt10": 0.0021,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 83.7,
+      "p50": 114.9,
+      "p95": 146.7,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "shadow_fraction_of_ground": 0.0004,
+     "shadowed_ground": {
+      "p50": 42.2,
+      "black_lt10": 0.2414,
+      "n": 87
+     },
+     "lit_ground": {
+      "p50": 95.5,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "rock-ev10-y0-noshadow",
+     "ground_fraction": 0.793,
+     "center_ground": {
+      "p5": 75.7,
+      "p50": 95.5,
+      "p95": 120.6,
+      "black_lt10": 0.002,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 132.9,
+      "p50": 185.0,
+      "p95": 210.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 95.7,
+      "black_lt10": 0.002,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 95.4,
+      "black_lt10": 0.0021,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 83.7,
+      "p50": 114.9,
+      "p95": 146.7,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "rock-ev10-y180",
+     "ground_fraction": 0.762,
+     "center_ground": {
+      "p5": 78.6,
+      "p50": 109.4,
+      "p95": 137.2,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 111.9,
+      "p50": 132.9,
+      "p95": 150.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 109.0,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 109.6,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 77.1,
+      "p50": 99.5,
+      "p95": 210.9,
+      "black_lt10": 0.0016,
+      "clip_ge250": 0.0
+     },
+     "shadow_fraction_of_ground": 0.0229,
+     "shadowed_ground": {
+      "p50": 19.6,
+      "black_lt10": 0.0,
+      "n": 5352
+     },
+     "lit_ground": {
+      "p50": 109.7,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "rock-ev10-y180-noshadow",
+     "ground_fraction": 0.762,
+     "center_ground": {
+      "p5": 82.4,
+      "p50": 109.4,
+      "p95": 137.1,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 112.0,
+      "p50": 132.9,
+      "p95": 150.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 108.9,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 109.6,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 77.1,
+      "p50": 99.4,
+      "p95": 210.9,
+      "black_lt10": 0.0016,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "rock-ev13-y0",
+     "ground_fraction": 0.793,
+     "center_ground": {
+      "p5": 1.6,
+      "p50": 3.6,
+      "p95": 7.2,
+      "black_lt10": 0.9938,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 10.0,
+      "p50": 45.0,
+      "p95": 84.9,
+      "black_lt10": 0.0463,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 3.6,
+      "black_lt10": 0.9937,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 3.6,
+      "black_lt10": 0.9941,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 2.4,
+      "p50": 6.4,
+      "p95": 15.9,
+      "black_lt10": 0.8093,
+      "clip_ge250": 0.0
+     }
+    },
+    {
+     "label": "rock-ev9-y180",
+     "ground_fraction": 0.762,
+     "center_ground": {
+      "p5": 130.4,
+      "p50": 157.7,
+      "p95": 179.8,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "center_sky": {
+      "p5": 160.0,
+      "p50": 176.0,
+      "p95": 190.0,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "left_ground": {
+      "p50": 157.6,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "right_ground": {
+      "p50": 157.8,
+      "black_lt10": 0.0,
+      "clip_ge250": 0.0
+     },
+     "rear_all": {
+      "p5": 129.0,
+      "p50": 150.2,
+      "p95": 231.9,
+      "black_lt10": 0.001,
+      "clip_ge250": 0.0
+     }
+    }
+   ],
+   "rock_faces_centre_camera": {
+    "rock-ev13-y0": {
+     "rock": "rock-ev13-y0",
+     "rock_pixels": 531,
+     "cam0": {
+      "p50": 0.0,
+      "p95": 2.0,
+      "black_lt10": 0.998,
+      "black_lt20": 0.998
+     },
+     "cam1": {
+      "p50": 0.0,
+      "p95": 9.2,
+      "black_lt10": 0.97,
+      "black_lt20": 0.998
+     },
+     "cam2": {
+      "p50": 0.0,
+      "p95": 6.1,
+      "black_lt10": 0.992,
+      "black_lt20": 0.998
+     }
+    },
+    "rock-ev10-y0": {
+     "rock": "rock-ev10-y0",
+     "rock_pixels": 541,
+     "cam0": {
+      "p50": 4.0,
+      "p95": 103.1,
+      "black_lt10": 0.59,
+      "black_lt20": 0.649
+     },
+     "cam1": {
+      "p50": 28.1,
+      "p95": 128.3,
+      "black_lt10": 0.414,
+      "black_lt20": 0.458
+     },
+     "cam2": {
+      "p50": 3.9,
+      "p95": 116.8,
+      "black_lt10": 0.601,
+      "black_lt20": 0.651
+     }
+    }
+   },
+   "invalid_first_attempt": "a first matrix set only min_ev100 (max stayed 13; rear unchanged) because editor edits reinstance the components; those grabs were discarded",
+   "preset": "Config/Mars/scene-belva-ev10.json (commit 0e0b9ca); no level built with it yet",
+   "images_local": [
+    "Saved/Mars/navcam-exposure-matrix-20261126.png"
+   ]
+  }
  }
 }
