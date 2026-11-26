@@ -14,6 +14,7 @@ import json
 import math
 from pathlib import Path
 import socket
+import sys
 import threading
 import time
 from urllib.parse import parse_qs, urlsplit
@@ -678,6 +679,29 @@ class NavigationService:
         self.close()
 
 
+def disable_power_throttling():
+    """Opt this process out of Windows EcoQoS execution-speed throttling; False where unavailable.
+
+    Measured 2026-11-25 on a hybrid i7-14700HX during PIE: ground-truth projection and
+    classification took ~77 + 88 ms per frame by default and ~45 + 51 ms with this opt-out.
+    """
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    class PowerThrottlingState(ctypes.Structure):
+        _fields_ = [("Version", wintypes.ULONG), ("ControlMask", wintypes.ULONG), ("StateMask", wintypes.ULONG)]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.SetProcessInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+    # ProcessPowerThrottling = 4; control EXECUTION_SPEED (1) with state 0 = never throttle.
+    state = PowerThrottlingState(1, 1, 0)
+    return bool(kernel32.SetProcessInformation(kernel32.GetCurrentProcess(), 4, ctypes.byref(state),
+                                               ctypes.sizeof(state)))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sensors", type=Path, required=True)
@@ -705,7 +729,14 @@ def main(argv=None):
                         help="limit commanded turns in degrees/s, no higher than the existing default (~34.38)")
     parser.add_argument("--rear-camera-id", type=int, default=None,
                         help="display an existing Unreal RGB camera stream with this distinct ID (0..255)")
+    parser.add_argument("--windows-no-power-throttling", action="store_true",
+                        help="Windows: opt this process out of EcoQoS throttling, which slowed sensor "
+                             "processing while Unreal was in the foreground; fails if unavailable")
     args = parser.parse_args(argv)
+    if args.windows_no_power_throttling:
+        if not disable_power_throttling():
+            parser.error("--windows-no-power-throttling could not be applied on this system")
+        print("Windows power throttling (EcoQoS) disabled for this process.", flush=True)
     if args.max_turn_rate_deg_s is not None and not 0 < args.max_turn_rate_deg_s <= math.degrees(
         DEFAULT_ANGULAR_LIMIT_RAD_S
     ):
