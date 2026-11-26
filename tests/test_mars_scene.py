@@ -294,3 +294,25 @@ def test_material_connection_rejected_by_unreal_is_not_silenced():
     lib.connect_material_expressions.return_value = False
     with pytest.raises(RuntimeError, match="Cannot connect material input World Position"):
         module.connect_input(lib, object(), object(), "Position")
+
+
+BELVA = Path(__file__).parents[1] / "Config/Mars/scene-belva-ev10.json"
+EXPOSURE_KEYS = {"fixed_exposure_ev100", "navigation_camera_ev100", "rear_camera_ev100", "purpose", "provenance"}
+
+
+def test_belva_exposure_preset_differs_from_the_default_scene_only_in_exposure():
+    default, belva = scene_module.load_scene(), scene_module.load_scene(BELVA)
+    assert {k: v for k, v in belva.items() if k not in EXPOSURE_KEYS} == \
+        {k: v for k, v in default.items() if k not in EXPOSURE_KEYS}
+    assert belva["fixed_exposure_ev100"] == belva["navigation_camera_ev100"] == belva["rear_camera_ev100"] == 10
+    assert "navigation_camera_ev100" not in default  # existing levels and the default build keep EV100 13
+
+
+@pytest.mark.parametrize("value", [float("nan"), "10", True, -20, 30])
+def test_invalid_camera_exposure_is_rejected(tmp_path, value):
+    scene = scene_module.load_scene()
+    scene["navigation_camera_ev100"] = value
+    path = tmp_path / "scene.json"
+    path.write_text(json.dumps(scene, allow_nan=True))
+    with pytest.raises(ValueError):
+        scene_module.load_scene(path)

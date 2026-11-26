@@ -37,6 +37,8 @@ class Simulation:
         self.bridge_delay = 0.0
         self.position = [5.2, 5.0, 1.0]
         self.monitor_lidar_missing = False
+        self.snapshots = 0
+        self.frozen_sensors = False  # True: no capture newer than the first snapshot ever arrives
 
     def now(self):
         return self.clock
@@ -52,6 +54,13 @@ class Simulation:
             return copy.deepcopy(self.grid)
         assert path == "/mission/snapshot"
         data = copy.deepcopy(self.start)
+        # Every snapshot sees a new 5 Hz capture and its matching pose, as the live service does.
+        self.snapshots += 1
+        tick = str(STAMP + self.snapshots * 200_000_000)
+        data["live_pose"]["stamp_ns"] = tick
+        for sensor in data["sensor_health"].values():
+            if sensor.get("stamp_ns") == str(STAMP) and not self.frozen_sensors:
+                sensor["stamp_ns"] = tick
         if self.goal is not None and not self.stopped:
             data["state"] = self.states.pop(0) if len(self.states) > 1 else self.states[0]
             data["mission"] = {"mission_id": "mission", "goal": list(self.goal), "plan_revision": 1}
@@ -157,3 +166,82 @@ def test_distance_limit_or_lost_lidar_stops_the_test():
     sim.monitor_lidar_missing = True
     assert sim.run()["reason"] == "lidar_unavailable"
     assert sim.calls == ["/goal", "/stop"]
+
+
+def test_slow_route_planning_is_authorized_by_a_newer_sample_taken_after_it():
+    sim = Simulation()
+    planned = {}
+
+    def choose(context):
+        planned["stamp"] = context["snapshot"]["sensor_health"]["ground_truth"]["stamp_ns"]
+        sim.clock += 0.32  # with the 0.05 s receive age, planning alone would exceed 0.35 s
+        return probe._straight_goal(context)
+
+    ready = probe._wait_for_preflight(sim.get, now=sim.now, sleep=sim.sleep, log=lambda _: None, choose_goal=choose)
+    freshness = ready["freshness"]
+    assert int(freshness["ground_truth_stamp_ns"]) > int(planned["stamp"])
+    assert freshness["planning_s"] == pytest.approx(0.32)
+    assert freshness["authorizing_elapsed_s"] <= 0.35 - 0.05
+    assert sim.calls == []
+
+
+@pytest.mark.parametrize("change", ["frozen_sensors", "stale_newer_sample"])
+def test_no_fresh_sample_after_planning_never_authorizes_a_goal(change):
+    sim = Simulation()
+    if change == "frozen_sensors":
+        sim.frozen_sensors = True
+    else:
+        sim.start["sensor_health"]["ground_truth"]["received_age_s"] = 0.36
+    with pytest.raises(ValueError, match="tazelenmedi"):
+        sim.run()
+    assert sim.calls == []
+
+
+def test_map_revision_change_after_planning_plans_again_on_the_new_map():
+    sim = Simulation()
+    revisions = []
+
+    def choose(context):
+        revisions.append(context["map_revision"])
+        if len(revisions) == 1:  # a new observation lands while the first route is planned
+            sim.grid["revision"] = sim.start["map_revision"] = 1
+        return probe._straight_goal(context)
+
+    ready = probe._wait_for_preflight(sim.get, now=sim.now, sleep=sim.sleep, log=lambda _: None, choose_goal=choose)
+    assert revisions == [0, 1] and ready["map_revision"] == 1
+
+
+@pytest.mark.parametrize("change", ["session", "pose"])
+def test_session_or_pose_change_after_planning_refuses(change):
+    sim = Simulation()
+
+    def choose(context):
+        if change == "session":
+            sim.start["session_id"] = "new-session"
+        else:
+            sim.start["live_pose"]["position_m"] = [5.05, 5.0, 1.0]
+        return probe._straight_goal(context)
+
+    with pytest.raises(ValueError, match="planlamadan sonra"):
+        probe._wait_for_preflight(sim.get, now=sim.now, sleep=sim.sleep, log=lambda _: None, choose_goal=choose)
+    assert sim.calls == []
+
+
+def test_a_stale_snapshot_after_planning_is_waited_out_not_fatal():
+    sim = Simulation()
+    get = sim.get
+    stale_polls = []
+
+    def choose(context):
+        stale_polls.append(sim.snapshots + 1)  # the first poll after planning sees a stale GT receive age
+        return probe._straight_goal(context)
+
+    def flaky_get(path):
+        data = get(path)
+        if path == "/mission/snapshot" and stale_polls and sim.snapshots == stale_polls[0]:
+            data["sensor_health"]["ground_truth"]["received_age_s"] = 0.5
+        return data
+
+    ready = probe._preflight(flaky_get, now=sim.now, sleep=sim.sleep, choose_goal=choose)
+    assert int(ready["freshness"]["ground_truth_stamp_ns"]) > probe.common._stamp(sim.start["live_pose"]["stamp_ns"])
+    assert sim.calls == []

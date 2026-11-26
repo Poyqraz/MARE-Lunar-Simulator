@@ -226,11 +226,25 @@ class PoseHistory:
         else:
             self.samples.append(pose)
 
-    def at(self, stamp_ns):
-        for pose in self.samples:
+    def at(self, stamp_ns, *, post_physics=False):
+        samples = list(self.samples)
+        if post_physics:
+            # Rover telemetry is read before physics; a capture made after physics
+            # in the same frame sees the pose the next sample reports.
+            pairs = list(zip(samples, samples[1:]))
+            gaps = sorted(b.stamp_ns - a.stamp_ns for a, b in pairs)
+            for a, b in pairs:
+                # A skipped sample makes a gap of about two frames, and the next sample is a frame late.
+                # shortcut: a single hitch above 1.75x the median frame time is refused too; telemetry
+                # carries no frame counter to tell the two apart.
+                if (a.stamp_ns - CAPTURE_CLOCK_TOLERANCE_NS <= stamp_ns < b.stamp_ns
+                        and b.stamp_ns - a.stamp_ns > 1.75 * gaps[len(gaps) // 2]):
+                    raise ValueError("Telemetry frame missing after the capture; no post-physics pose")
+            samples = [Pose(a.stamp_ns, b.matrix) for a, b in pairs]
+        for pose in samples:
             if abs(pose.stamp_ns - stamp_ns) <= CAPTURE_CLOCK_TOLERANCE_NS:
                 return Pose(stamp_ns, pose.matrix.copy())
-        for a, b in zip(self.samples, list(self.samples)[1:]):
+        for a, b in zip(samples, samples[1:]):
             if a.stamp_ns < stamp_ns < b.stamp_ns:
                 if b.stamp_ns - a.stamp_ns > self.max_gap_ns:
                     break

@@ -267,8 +267,11 @@ karşılaştırmak gerekir.
 - Kütle, sürtünme ve süspansiyon yukarıdaki taban değerlerinde kaldı. Gerçek araçla
   karşılaştırma yapılmadı.
 - Sürüşler birer kez yapıldı; istatistik değildir.
-- Sahnede kameralar hâlâ çok karanlık.
-- GPU LiDAR sahte hücreleri çözülmedi.
+- Sahnede kameralar hâlâ çok karanlık. Neden sabit EV100 13 pozlaması; bkz.
+  [sensör incelemesi](mars-sensor-investigation.md).
+- GPU LiDAR sahte hücreleri varsayılan modda sürüyor. İsteğe bağlı
+  `--lidar-pose-source telemetry_post_physics` ile üç sürüşte giderildi; bkz.
+  [sensör incelemesi](mars-sensor-investigation.md).
 
 ## Sonraki adımlar
 

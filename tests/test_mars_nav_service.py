@@ -1,10 +1,14 @@
 import importlib
 import json
 import socket
+import sys
 import time
 import urllib.request
 
 import numpy as np
+import pytest
+
+from mars_rover import nav_service
 
 from mars_rover.planning import TerrainMap, PlanningLimits
 from test_mars_sensors import lidar_packet, nav_packet
@@ -108,3 +112,23 @@ def test_mission_map_and_legacy_stop_api_are_connected():
         with urllib.request.urlopen(request) as response:
             assert json.load(response)["ok"]
         assert service.session.status()["goal"] is None
+
+
+def test_power_throttling_opt_out_is_unavailable_off_windows(monkeypatch):
+    monkeypatch.setattr(nav_service.sys, "platform", "linux")
+    assert nav_service.disable_power_throttling() is False
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows process API")
+def test_power_throttling_opt_out_applies_on_windows():
+    assert nav_service.disable_power_throttling() is True
+
+
+def test_requested_power_throttling_opt_out_that_fails_stops_before_the_service(monkeypatch, tmp_path):
+    monkeypatch.setattr(nav_service, "disable_power_throttling", lambda: False)
+    monkeypatch.setattr(nav_service, "NavigationService", lambda *a, **k: pytest.fail("service must not start"))
+    sensors = tmp_path / "sensors.json"
+    sensors.write_text("{}", encoding="utf-8")
+    with pytest.raises(SystemExit) as stop:
+        nav_service.main(["--sensors", str(sensors), "--windows-no-power-throttling"])
+    assert stop.value.code != 0

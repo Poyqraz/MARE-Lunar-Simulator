@@ -3,6 +3,13 @@
 This sends one goal and a stop to the local simulation service. The operator
 must watch the scene. Synchronous HTTP requests and sampled poses mean the
 duration and distance limits are not hard real-time or collision guarantees.
+
+Remaining race: the goal is posted after the authorizing snapshot, so a new map
+revision or a stale sensor can still appear before the service receives it.
+The service plans its own route on its live map and refuses every motion
+decision without fresh sensors; this probe then stops on a replan (unless
+allowed), a session or mission change, or a long sensor wait. It does not
+prevent that window, it only bounds what happens after it.
 """
 
 import json
@@ -23,6 +30,9 @@ MAX_DURATION_S = 35.0
 MAX_DISPLACEMENT_M = 2.5
 MAX_SAMPLED_PATH_M = 3.0
 MAX_SENSOR_WAIT_S = 3.0
+# Bounded wait for a sample captured after route planning: five 5 Hz ground-truth periods.
+POST_PLAN_WAIT_S = 1.0
+POST_PLAN_POLL_S = 0.025
 
 
 def _cpu(snapshot):
@@ -54,13 +64,65 @@ def _cross_track_m(point, route):
     return best
 
 
-def _preflight(get, *, now, choose_goal=_straight_goal):
+def _stale_reason(snapshot, elapsed):
+    """The existing freshness limits for one snapshot, counting `elapsed` request and processing time."""
+    pose_age = snapshot.get("pose_age_s")
+    if type(pose_age) not in (float, int) or not math.isfinite(pose_age) or pose_age + elapsed > 0.3:
+        return "Poz, on kontrol sirasinda eskidi"
+    for name in ("lidar", "ground_truth"):
+        sensor = snapshot["sensor_health"][name]
+        lag_s = (common._stamp(snapshot["live_pose"]["stamp_ns"]) - common._stamp(sensor["stamp_ns"])) / 1e9
+        if sensor["received_age_s"] + elapsed > 0.35 or lag_s + elapsed > 0.35:
+            return f"{name} verisi on kontrol sirasinda eskidi"
+        if sensor.get("capture_stale") or type(sensor.get("valid_inside_points")) is not int                 or sensor["valid_inside_points"] < 1:
+            return f"{name} gecerli nokta icermiyor"
+    return None
+
+
+def _authorize_after_planning(get, *, now, sleep, planned, session, revision, position, heading):
+    """Wait, bounded, for a snapshot newer than the planning one that passes the unchanged limits.
+
+    Route planning (~0.1 s on a 1281 m map) used to count against the 0.35 s sensor limit. Here it
+    does not age the data: the authorizing snapshot is taken after planning, must carry captures newer
+    than the planned ones, and is judged with only its own request time. The session, map revision
+    and stationary pose must still equal the ones the route was planned on.
+    """
+    deadline = now() + POST_PLAN_WAIT_S
+    old = {name: common._stamp(planned["sensor_health"][name]["stamp_ns"]) for name in ("lidar", "ground_truth")}
+    while True:
+        started = now()
+        snapshot = get("/mission/snapshot")
+        try:
+            _cpu(snapshot)
+            current, current_heading, _ = common._stationary(snapshot)
+        except common.SensorPreflightNotReady:  # a stale sample: keep waiting until the deadline
+            if now() >= deadline:
+                raise
+            sleep(min(POST_PLAN_POLL_S, max(0.0, deadline - now())))
+            continue
+        common._bridge_stationary(get("bridge"))
+        elapsed = max(0.0, now() - started)
+        drift = abs(math.atan2(math.sin(current_heading - heading), math.cos(current_heading - heading)))
+        if (snapshot.get("session_id") != session or math.dist(current[:2], position[:2]) > 0.02
+                or drift > 0.02):
+            raise ValueError("Oturum veya roverin durgunlugu planlamadan sonra degisti")
+        if snapshot.get("map_revision") != revision:
+            raise common.SensorPreflightNotReady("Harita planlama sirasinda degisti; yeniden planlanacak")
+        newer = all(common._stamp(snapshot["sensor_health"][name]["stamp_ns"]) > stamp for name, stamp in old.items())
+        reason = _stale_reason(snapshot, elapsed) if newer else "Planlamadan sonra yeni sensor ornegi bekleniyor"
+        if reason is None:
+            return snapshot, elapsed
+        if now() >= deadline:
+            raise common.SensorPreflightNotReady(reason)
+        sleep(min(POST_PLAN_POLL_S, max(0.0, deadline - now())))
+
+
+def _preflight(get, *, now, choose_goal=_straight_goal, sleep=time.sleep):
     first = get("/mission/snapshot")
     _cpu(first)
     start, heading, _ = common._stationary(first)
     common._bridge_stationary(get("bridge"))
     grid = get("/map")
-    snapshot_started = now()
     second = get("/mission/snapshot")
     _cpu(second)
     position, current_heading, _ = common._stationary(second)
@@ -73,21 +135,21 @@ def _preflight(get, *, now, choose_goal=_straight_goal):
             or second.get("map_revision") != grid.get("revision")
             or math.dist(start[:2], position[:2]) > 0.02 or angular_drift > 0.02):
         raise ValueError("Oturum, harita veya roverin durgunlugu degisti")
+    planning_started = now()
     plan = choose_goal({"session_id": session, "map_revision": revision, "grid": grid, "snapshot": second,
                         "position_m": position, "heading_rad": current_heading})
-    # Count preflight processing and response time against the existing
-    # freshness limits; a slow HTTP call must not authorize an old snapshot.
-    elapsed = max(0.0, now() - snapshot_started)
-    pose_age = second.get("pose_age_s")
-    if type(pose_age) not in (float, int) or not math.isfinite(pose_age) or pose_age + elapsed > 0.3:
-        raise common.SensorPreflightNotReady("Poz, on kontrol sirasinda eskidi")
+    planned_at = now()
+    authorizing, elapsed = _authorize_after_planning(get, now=now, sleep=sleep, planned=second, session=session,
+                                                     revision=revision, position=position, heading=current_heading)
+    health, pose_stamp = authorizing["sensor_health"], common._stamp(authorizing["live_pose"]["stamp_ns"])
+    freshness = {"planning_s": planned_at - planning_started, "post_planning_wait_s": now() - planned_at,
+                 "authorizing_elapsed_s": elapsed, "pose_age_s": authorizing["pose_age_s"]}
     for name in ("lidar", "ground_truth"):
-        sensor = second["sensor_health"][name]
-        lag_s = (common._stamp(second["live_pose"]["stamp_ns"]) - common._stamp(sensor["stamp_ns"])) / 1e9
-        if sensor["received_age_s"] + elapsed > 0.35 or lag_s + elapsed > 0.35:
-            raise common.SensorPreflightNotReady(f"{name} verisi on kontrol sirasinda eskidi")
+        freshness[f"{name}_stamp_ns"] = health[name]["stamp_ns"]
+        freshness[f"{name}_lag_s"] = (pose_stamp - common._stamp(health[name]["stamp_ns"])) / 1e9
+        freshness[f"{name}_received_age_s"] = health[name]["received_age_s"]
     return {"session_id": session, "position_m": position, "heading_rad": current_heading,
-            "map_revision": grid.get("revision"), **plan}
+            "map_revision": grid.get("revision"), "freshness": freshness, **plan}
 
 
 def _wait_for_preflight(get, *, now, sleep, log, wait_s=10, choose_goal=_straight_goal):
@@ -95,7 +157,7 @@ def _wait_for_preflight(get, *, now, sleep, log, wait_s=10, choose_goal=_straigh
     announced = False
     while True:
         try:
-            ready = _preflight(get, now=now, choose_goal=choose_goal)
+            ready = _preflight(get, now=now, choose_goal=choose_goal, sleep=sleep)
             if now() > deadline:
                 raise common.SensorPreflightNotReady("On kontrol suresi doldu")
             return ready
@@ -115,7 +177,8 @@ def run(*, get=common._get, post=common._post, now=time.monotonic, sleep=time.sl
     log("MARS_CPU_ON_KONTROL: " + json.dumps({"session_id": ready["session_id"],
                                              "start_m": ready["position_m"], "goal_m": ready["goal_m"],
                                              **ready.get("details", {}),
-                                             "map_revision": ready["map_revision"]}, ensure_ascii=False))
+                                             "map_revision": ready["map_revision"],
+                                             "freshness": ready["freshness"]}, ensure_ascii=False))
     limits = {"duration_s": MAX_DURATION_S, "displacement_m": MAX_DISPLACEMENT_M,
               "sampled_path_m": MAX_SAMPLED_PATH_M, **ready.get("limits", {})}
     route = ready.get("route_m")
