@@ -225,3 +225,23 @@ def test_session_or_pose_change_after_planning_refuses(change):
     with pytest.raises(ValueError, match="planlamadan sonra"):
         probe._wait_for_preflight(sim.get, now=sim.now, sleep=sim.sleep, log=lambda _: None, choose_goal=choose)
     assert sim.calls == []
+
+
+def test_a_stale_snapshot_after_planning_is_waited_out_not_fatal():
+    sim = Simulation()
+    get = sim.get
+    stale_polls = []
+
+    def choose(context):
+        stale_polls.append(sim.snapshots + 1)  # the first poll after planning sees a stale GT receive age
+        return probe._straight_goal(context)
+
+    def flaky_get(path):
+        data = get(path)
+        if path == "/mission/snapshot" and stale_polls and sim.snapshots == stale_polls[0]:
+            data["sensor_health"]["ground_truth"]["received_age_s"] = 0.5
+        return data
+
+    ready = probe._preflight(flaky_get, now=sim.now, sleep=sim.sleep, choose_goal=choose)
+    assert int(ready["freshness"]["ground_truth_stamp_ns"]) > probe.common._stamp(sim.start["live_pose"]["stamp_ns"])
+    assert sim.calls == []

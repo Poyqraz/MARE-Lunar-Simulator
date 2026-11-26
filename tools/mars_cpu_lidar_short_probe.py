@@ -92,8 +92,14 @@ def _authorize_after_planning(get, *, now, sleep, planned, session, revision, po
     while True:
         started = now()
         snapshot = get("/mission/snapshot")
-        _cpu(snapshot)
-        current, current_heading, _ = common._stationary(snapshot)
+        try:
+            _cpu(snapshot)
+            current, current_heading, _ = common._stationary(snapshot)
+        except common.SensorPreflightNotReady:  # a stale sample: keep waiting until the deadline
+            if now() >= deadline:
+                raise
+            sleep(min(POST_PLAN_POLL_S, max(0.0, deadline - now())))
+            continue
         common._bridge_stationary(get("bridge"))
         elapsed = max(0.0, now() - started)
         drift = abs(math.atan2(math.sin(current_heading - heading), math.cos(current_heading - heading)))
