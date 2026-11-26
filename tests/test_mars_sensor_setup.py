@@ -298,3 +298,54 @@ def test_runtime_sensor_plugins_are_explicitly_enabled_in_project():
     path = Path(__file__).parents[1] / "Moon_Simulator.uproject"
     enabled = {item["Name"] for item in json.loads(path.read_text())["Plugins"] if item.get("Enabled")}
     assert {"UnrealStereoCam", "UnrealLidarCam", "UnrealSimClock"} <= enabled
+
+
+def add_rear_streamer(engine, rover):
+    rear = MagicMock()
+    values = {"left_capture_name": "None", "center_capture_name": "RearCam", "min_ev100": 12.0, "max_ev100": 12.0}
+    rear.get_editor_property.side_effect = values.__getitem__
+    rear.set_editor_property.side_effect = values.__setitem__
+    rear._test_values = values
+    lookup = dict(rover.get_components_by_class.side_effect.__self__)
+    lookup[engine.UnrealStereoCam] = lookup[engine.UnrealStereoCam] + [rear]
+    rover.get_components_by_class.side_effect = lookup.__getitem__
+    return rear
+
+
+def test_scene_camera_exposure_is_applied_and_recorded(tmp_path):
+    m = setup()
+    engine, rover, lidar, streamer = fake_rover_for_sensor_export()
+    rear = add_rear_streamer(engine, rover)
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    output = tmp_path / "sensors.json"
+    m.configure_and_export(engine, rover, manifest, output, camera_ev100=10.0, rear_camera_ev100=10.0)
+    assert streamer._test_values["min_ev100"] == streamer._test_values["max_ev100"] == 10.0
+    assert rear._test_values["min_ev100"] == rear._test_values["max_ev100"] == 10.0
+    assert json.loads(output.read_text())["camera_exposure_ev100"] == {"navigation": 10.0, "rear": 10.0}
+
+
+def test_default_export_keeps_ev13_and_leaves_the_rear_camera_alone(tmp_path):
+    m = setup()
+    engine, rover, lidar, streamer = fake_rover_for_sensor_export()
+    rear = add_rear_streamer(engine, rover)
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    output = tmp_path / "sensors.json"
+    m.configure_and_export(engine, rover, manifest, output)
+    assert streamer._test_values["min_ev100"] == streamer._test_values["max_ev100"] == 13.0
+    assert rear._test_values["min_ev100"] == 12.0
+    rear.set_editor_property.assert_not_called()
+    assert json.loads(output.read_text())["camera_exposure_ev100"] == {"navigation": 13.0, "rear": None}
+
+
+def test_rear_exposure_needs_exactly_one_rear_streamer(tmp_path):
+    m = setup()
+    engine, rover, lidar, streamer = fake_rover_for_sensor_export()
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text("{}")
+    output = tmp_path / "sensors.json"
+    with pytest.raises(ValueError, match="rear"):
+        m.configure_and_export(engine, rover, manifest, output, rear_camera_ev100=10.0)
+    streamer.set_editor_property.assert_not_called()
+    assert not output.exists()

@@ -25,6 +25,11 @@ def load_scene(path=None):
     for key in scalar_keys:
         if type(scene[key]) not in (int, float) or not math.isfinite(scene[key]):
             raise ValueError(f"Non-finite scene value: {key}")
+    # Optional fixed camera exposures; absent keeps EV100 13 navigation and the Blueprint rear camera.
+    for key in ("navigation_camera_ev100", "rear_camera_ev100"):
+        if key in scene and (type(scene[key]) not in (int, float) or not math.isfinite(scene[key])
+                             or not -10 <= scene[key] <= 20):
+            raise ValueError(f"{key} must be a finite EV100 between -10 and 20")
     for key in color_keys:
         if len(scene[key]) != 3 or any(type(v) not in (int, float) or not math.isfinite(v) or v < 0 for v in scene[key]):
             raise ValueError(f"Invalid scene RGB vector: {key}")
@@ -208,7 +213,9 @@ def build_environment(manifest_path, level_path, *, load_bundle, pending, rover_
     navigation_config = None
     if navigation_config_path:
         from mars_sensor_setup import configure_and_export
-        navigation_config = configure_and_export(unreal, rover, manifest_path, navigation_config_path)
+        navigation_config = configure_and_export(unreal, rover, manifest_path, navigation_config_path,
+                                                 camera_ev100=scene.get("navigation_camera_ev100", 13.0),
+                                                 rear_camera_ev100=scene.get("rear_camera_ev100"))
     camera = actors.spawn_actor_from_class(unreal.CameraActor, unreal.Vector(-col * r_cm, row * r_cm, z_cm + 1500))
     camera.set_actor_label("RoverOrbitCamera" if rover else "MarsSurveyCamera")
     camera.set_editor_property("tags", ["RoverOrbitCamera"] if rover else ["MarsSurveyCamera"])

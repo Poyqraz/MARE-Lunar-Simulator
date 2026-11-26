@@ -58,7 +58,12 @@ def parallel_baseline(left, right):
     return rel[0][3]
 
 
-def configure_and_export(unreal, rover, manifest_path, output):
+def configure_and_export(unreal, rover, manifest_path, output, *, camera_ev100=13.0, rear_camera_ev100=None):
+    """Configure the rover's sensors and export their measured frames.
+
+    camera_ev100 fixes the navigation stereo exposure (13 keeps the earlier setting). rear_camera_ev100,
+    when given, fixes the one rear RGB streamer; None leaves it as the Blueprint has it.
+    """
     if unreal.EditorLevelLibrary.get_pie_worlds(False):
         raise RuntimeError("Stop Play before changing or exporting sensor configuration")
     if rover is None:
@@ -77,6 +82,13 @@ def configure_and_export(unreal, rover, manifest_path, output):
                       if str(candidate.get_editor_property("left_capture_name")).lower() not in ("none", "")]
         if len(candidates) != 1:
             raise ValueError("Expected one main stereo streamer with both eyes")
+        return candidates[0]
+
+    def current_rear():
+        candidates = [candidate for candidate in rover.get_components_by_class(unreal.UnrealStereoCam)
+                      if str(candidate.get_editor_property("left_capture_name")).lower() in ("none", "")]
+        if len(candidates) != 1:
+            raise ValueError("A rear camera exposure needs exactly one rear (single-eye) RGB streamer")
         return candidates[0]
 
     def measured_report():
@@ -158,14 +170,20 @@ def configure_and_export(unreal, rover, manifest_path, output):
 
     # Fail invalid rigs before making any changes to the placed rover.
     measured_report()
+    camera_ev100 = float(camera_ev100)
     settings = [
         ("stereo", current_streamer, {
             "server_ip": "127.0.0.1", "server_port": 3004, "send_hz": 5.0,
             "stream_center_depth": True, "limit_auto_exposure": True, "lock_exposure": False,
-            "min_ev100": 13.0, "max_ev100": 13.0,
+            "min_ev100": camera_ev100, "max_ev100": camera_ev100,
         }),
         ("lidar", current_lidar, {"server_ip": "127.0.0.1", "server_port": 3007, "scan_rate_hz": 10.0}),
     ]
+    if rear_camera_ev100 is not None:
+        current_rear()  # fail before any edit when the rear streamer is ambiguous
+        rear_camera_ev100 = float(rear_camera_ev100)
+        settings.append(("rear", current_rear, {"limit_auto_exposure": True, "lock_exposure": False,
+                                                "min_ev100": rear_camera_ev100, "max_ev100": rear_camera_ev100}))
     # Resolve on each edit: a prior edit may have reinstanced components.
     for _label, current, values in settings:
         for key, value in values.items():
@@ -183,6 +201,7 @@ def configure_and_export(unreal, rover, manifest_path, output):
                 raise RuntimeError(f"{label} property {key} did not persist: expected {expected!r}, got {actual!r}")
     # Export the geometry of the final live components, not cached pre-edit poses.
     report = measured_report()
+    report["camera_exposure_ev100"] = {"navigation": camera_ev100, "rear": rear_camera_ev100}
     output.parent.mkdir(parents=True, exist_ok=True)
     with output.open("x", encoding="utf-8", newline="\n") as handle:
         json.dump(report, handle, indent=2, allow_nan=False)
